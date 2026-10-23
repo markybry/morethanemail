@@ -1,0 +1,533 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCorners,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { arrangeEmails, createLane, deleteLane, fetchLabelEmails, refreshEmails, renameLane, reorderLanes } from "@/app/actions";
+import type { BoardEmail, LaneDTO, ThreadSnapshot, WorkspaceDTO } from "@/lib/types";
+import { CardFace } from "./CardFace";
+import { EmailPanel, UNSORTED } from "./EmailPanel";
+import { useMail } from "./MailContext";
+import { ConfirmButton, InlineEdit } from "./ui";
+
+const PRIMARY_KEY = "mte.inboxPrimaryOnly";
+const T = "t:"; // draggable email ids
+const LANE = "lane:"; // droppable column ids
+const fromId = (id: string) => id.slice(T.length);
+
+type Columns = { lanes: LaneDTO[]; unsorted: string[] };
+
+const snapshotOf = (e: BoardEmail): ThreadSnapshot => ({
+  threadId: e.threadId,
+  subject: e.subject,
+  from: e.from,
+  snippet: e.snippet,
+  date: e.date,
+});
+
+// A Gmail label's workspace: the label's emails, unsorted, plus any lanes the
+// user has added to sort them. Every card is an email; there are no other tickets.
+export function LabelBoard({
+  workspace,
+  initialEmails,
+  initialThreadId,
+}: {
+  workspace: WorkspaceDTO;
+  initialEmails: Record<string, BoardEmail>;
+  initialThreadId?: string;
+}) {
+  const { reloadLabels } = useMail();
+  const isInbox = workspace.labelId === "INBOX";
+  const [lanes, setLanes] = useState<LaneDTO[]>(workspace.lanes);
+  const [emails, setEmails] = useState<Record<string, BoardEmail>>(initialEmails);
+  const [unsorted, setUnsorted] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string | null>(initialThreadId ?? null);
+
+  const mergeEmails = useCallback((list: BoardEmail[]) => {
+    setEmails((prev) => {
+      const next = { ...prev };
+      for (const e of list) next[e.threadId] = e;
+      return next;
+    });
+  }, []);
+
+  const placed = useMemo(() => new Set(lanes.flatMap((l) => l.threadIds)), [lanes]);
+  const placedRef = useRef(placed);
+  useEffect(() => {
+    placedRef.current = placed;
+  }, [placed]);
+
+  // ----- the label's emails from Gmail (unsorted column) -----
+  const [primaryOnly, setPrimaryOnly] = useState(true);
+  const [prefsReady, setPrefsReady] = useState(false);
+  const [query, setQuery] = useState("");
+  const [loadedQuery, setLoadedQuery] = useState("");
+  const [nextPage, setNextPage] = useState<string | undefined>();
+  const [listState, setListState] = useState<"loading" | "idle" | "error">("loading");
+  const [listError, setListError] = useState("");
+
+  const load = useCallback(
+    async (q: string, pageToken?: string) => {
+      setListState("loading");
+      const res = await fetchLabelEmails(workspace.labelId, { primaryOnly, query: q, pageToken });
+      if (res.error) {
+        setListError(res.error);
+        setListState("error");
+        return;
+      }
+      mergeEmails(res.emails);
+      const ids = res.emails.map((e) => e.threadId).filter((id) => !placedRef.current.has(id));
+      setUnsorted((prev) => (pageToken ? [...prev, ...ids.filter((id) => !prev.includes(id))] : ids));
+      setNextPage(res.nextPageToken);
+      setLoadedQuery(q);
+      setListState("idle");
+    },
+    [workspace.labelId, primaryOnly, mergeEmails],
+  );
+
+  useEffect(() => {
+    try {
+      setPrimaryOnly(localStorage.getItem(PRIMARY_KEY) !== "false");
+    } catch {}
+    setPrefsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (prefsReady) void load("");
+  }, [prefsReady, load]);
+
+  // Emails sorted into lanes may be far down the label; refresh them directly
+  // so new replies show. Also fetch an email linked to directly (?thread=).
+  useEffect(() => {
+    const ids = [...new Set([...workspace.lanes.flatMap((l) => l.threadIds), ...(initialThreadId ? [initialThreadId] : [])])];
+    void refreshEmails(ids).then((r) => mergeEmails(r.emails));
+  }, [workspace.lanes, initialThreadId, mergeEmails]);
+
+  const changePrimaryOnly = (v: boolean) => {
+    setPrimaryOnly(v);
+    try {
+      localStorage.setItem(PRIMARY_KEY, String(v));
+    } catch {}
+  };
+
+  // ----- moving emails between columns -----
+  const byDate = useCallback(
+    (ids: string[]) => [...ids].sort((a, b) => (emails[b]?.date ?? "").localeCompare(emails[a]?.date ?? "")),
+    [emails],
+  );
+
+  const containerOf = (threadId: string, cols: Columns) =>
+    cols.lanes.find((l) => l.threadIds.includes(threadId))?.id ?? (cols.unsorted.includes(threadId) ? UNSORTED : undefined);
+
+  const targetOf = (overId: string, cols: Columns) =>
+    overId.startsWith(LANE) ? overId.slice(LANE.length) : containerOf(fromId(overId), cols);
+
+  const moveInto = (cols: Columns, threadId: string, target: string, before?: string): Columns => {
+    const lanesOut = cols.lanes.map((l) => ({ ...l, threadIds: l.threadIds.filter((t) => t !== threadId) }));
+    const unsortedOut = cols.unsorted.filter((t) => t !== threadId);
+    if (target === UNSORTED) return { lanes: lanesOut, unsorted: byDate([...unsortedOut, threadId]) };
+    return {
+      unsorted: unsortedOut,
+      lanes: lanesOut.map((l) => {
+        if (l.id !== target) return l;
+        const idx = before ? l.threadIds.indexOf(before) : -1;
+        const threadIds = [...l.threadIds];
+        threadIds.splice(idx < 0 ? threadIds.length : idx, 0, threadId);
+        return { ...l, threadIds };
+      }),
+    };
+  };
+
+  // Save a move from one column to another (or a reorder within a lane).
+  const persist = async (threadId: string, from: string | undefined, to: string, cols: Columns) => {
+    if (from === to && to === UNSORTED) return;
+    const affected = new Set([from, to].filter((x): x is string => !!x && x !== UNSORTED));
+    const email = emails[threadId];
+    await arrangeEmails(workspace.id, {
+      lanes: cols.lanes.filter((l) => affected.has(l.id)).map((l) => ({ laneId: l.id, threadIds: l.threadIds })),
+      unsorted: to === UNSORTED ? [threadId] : [],
+      snapshots: to !== UNSORTED && email ? [snapshotOf(email)] : [],
+    });
+  };
+
+  const apply = (cols: Columns) => {
+    setLanes(cols.lanes);
+    setUnsorted(cols.unsorted);
+  };
+
+  // From the email panel's lane picker.
+  const place = async (threadId: string, target: string) => {
+    const cols = { lanes, unsorted };
+    const from = containerOf(threadId, cols);
+    if (from === target) return;
+    const next = moveInto(cols, threadId, target);
+    apply(next);
+    await persist(threadId, from, target, next);
+  };
+
+  // ----- drag and drop -----
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const snapshot = useRef<(Columns & { from?: string }) | null>(null);
+
+  const collision: CollisionDetection = (args) => {
+    const hits = pointerWithin(args);
+    const cardHits = hits.filter((h) => String(h.id).startsWith(T));
+    if (cardHits.length) return cardHits;
+    if (hits.length) return hits;
+    return closestCorners(args);
+  };
+
+  function onDragStart({ active }: DragStartEvent) {
+    const id = fromId(String(active.id));
+    setActiveId(id);
+    snapshot.current = { lanes, unsorted, from: containerOf(id, { lanes, unsorted }) };
+  }
+
+  // Emails follow the pointer into lanes while dragging. The unsorted column
+  // keeps Gmail's date order, so it only takes an email back on drop.
+  function onDragOver({ active, over }: DragOverEvent) {
+    if (!over) return;
+    const id = fromId(String(active.id));
+    const cols = { lanes, unsorted };
+    const target = targetOf(String(over.id), cols);
+    if (!target || target === UNSORTED || target === containerOf(id, cols)) return;
+    const before = String(over.id).startsWith(T) ? fromId(String(over.id)) : undefined;
+    apply(moveInto(cols, id, target, before));
+  }
+
+  async function onDragEnd({ active, over }: DragEndEvent) {
+    const snap = snapshot.current;
+    snapshot.current = null;
+    setActiveId(null);
+    const id = fromId(String(active.id));
+    const cols = { lanes, unsorted };
+    const target = over ? targetOf(String(over.id), cols) : undefined;
+    if (!snap || !target) {
+      if (snap) apply(snap);
+      return;
+    }
+    let next = cols;
+    if (target === UNSORTED) next = moveInto(cols, id, UNSORTED);
+    else {
+      const lane = cols.lanes.find((l) => l.id === target)!;
+      const overThread = String(over!.id).startsWith(T) ? fromId(String(over!.id)) : undefined;
+      if (!lane.threadIds.includes(id)) next = moveInto(cols, id, target, overThread);
+      else if (overThread && overThread !== id && lane.threadIds.includes(overThread)) {
+        const threadIds = arrayMove(lane.threadIds, lane.threadIds.indexOf(id), lane.threadIds.indexOf(overThread));
+        next = { ...cols, lanes: cols.lanes.map((l) => (l.id === target ? { ...l, threadIds } : l)) };
+      }
+    }
+    apply(next);
+    await persist(id, snap.from, target, next);
+  }
+
+  // ----- lanes -----
+  const [newLane, setNewLane] = useState("");
+
+  async function moveLane(index: number, dir: -1 | 1) {
+    const target = index + dir;
+    if (target < 0 || target >= lanes.length) return;
+    const next = [...lanes];
+    [next[index], next[target]] = [next[target], next[index]];
+    setLanes(next);
+    await reorderLanes(workspace.id, next.map((l) => l.id));
+  }
+
+  async function removeLane(lane: LaneDTO) {
+    // Its emails go back to unsorted.
+    setLanes((prev) => prev.filter((l) => l.id !== lane.id));
+    setUnsorted((prev) => byDate([...prev, ...lane.threadIds]));
+    await deleteLane(lane.id);
+  }
+
+  const selectedEmail = selected ? emails[selected] : undefined;
+  const activeEmail = activeId ? emails[activeId] : undefined;
+
+  return (
+    <DndContext
+      id="label-board" // stable id avoids an SSR/client hydration mismatch in dnd-kit's aria ids
+      sensors={sensors}
+      collisionDetection={collision}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+      onDragCancel={() => {
+        if (snapshot.current) apply(snapshot.current);
+        snapshot.current = null;
+        setActiveId(null);
+      }}
+    >
+      <div className="flex h-full min-h-0">
+        <UnsortedColumn
+          title={workspace.name}
+          labelId={workspace.labelId}
+          isInbox={isInbox}
+          primaryOnly={primaryOnly}
+          onPrimaryOnlyChange={changePrimaryOnly}
+          threadIds={unsorted}
+          emails={emails}
+          sortedCount={placed.size}
+          query={query}
+          searching={!!loadedQuery}
+          state={listState}
+          error={listError}
+          hasMore={!!nextPage}
+          selected={selected}
+          onQueryChange={setQuery}
+          onSearch={() => {
+            void load(query.trim());
+            reloadLabels();
+          }}
+          onLoadMore={() => load(loadedQuery, nextPage)}
+          onOpen={setSelected}
+        />
+
+        <section className="flex min-w-0 flex-1 gap-3 overflow-x-auto bg-slate-100 p-4">
+          {lanes.map((lane, i) => (
+            <Lane
+              key={lane.id}
+              lane={lane}
+              emails={emails}
+              labelId={workspace.labelId}
+              isFirst={i === 0}
+              isLast={i === lanes.length - 1}
+              onMove={(dir) => moveLane(i, dir)}
+              onRename={async (name) => {
+                setLanes((prev) => prev.map((l) => (l.id === lane.id ? { ...l, name } : l)));
+                await renameLane(lane.id, name);
+              }}
+              onDelete={() => removeLane(lane)}
+              onOpen={setSelected}
+            />
+          ))}
+          <div className="w-64 shrink-0 space-y-2">
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!newLane.trim()) return;
+                const lane = await createLane(workspace.id, newLane);
+                setLanes((prev) => [...prev, lane]);
+                setNewLane("");
+              }}
+            >
+              <input
+                value={newLane}
+                onChange={(e) => setNewLane(e.target.value)}
+                placeholder="+ Add lane"
+                className="w-full rounded-lg border border-dashed border-slate-300 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-slate-500 focus:border-indigo-500 focus:bg-white"
+              />
+            </form>
+            {lanes.length === 0 && (
+              <p className="px-1 text-xs leading-relaxed text-slate-500">
+                Add lanes to sort this label&apos;s emails, for example To do, Waiting and Done, then drag emails into them.
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <DragOverlay dropAnimation={null}>
+        {activeEmail ? <CardFace email={activeEmail} hideLabelId={workspace.labelId} dragging /> : null}
+      </DragOverlay>
+
+      {selectedEmail && (
+        <EmailPanel
+          key={selectedEmail.threadId}
+          email={selectedEmail}
+          lanes={lanes}
+          laneId={containerOf(selectedEmail.threadId, { lanes, unsorted }) ?? UNSORTED}
+          onPlace={(laneId) => place(selectedEmail.threadId, laneId)}
+          onChange={(e) => mergeEmails([e])}
+          onSeen={() => mergeEmails([{ ...selectedEmail, newReply: false, unread: false }])}
+          onClose={() => setSelected(null)}
+        />
+      )}
+    </DndContext>
+  );
+}
+
+// ---------- columns ----------
+
+function UnsortedColumn(p: {
+  title: string;
+  labelId: string;
+  isInbox: boolean;
+  primaryOnly: boolean;
+  onPrimaryOnlyChange: (v: boolean) => void;
+  threadIds: string[];
+  emails: Record<string, BoardEmail>;
+  sortedCount: number;
+  query: string;
+  searching: boolean;
+  state: "loading" | "idle" | "error";
+  error: string;
+  hasMore: boolean;
+  selected: string | null;
+  onQueryChange: (q: string) => void;
+  onSearch: () => void;
+  onLoadMore: () => void;
+  onOpen: (threadId: string) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${UNSORTED}` });
+  return (
+    <aside className="flex w-80 shrink-0 flex-col border-r border-slate-200 bg-white">
+      <div className="space-y-2 border-b border-slate-200 p-3">
+        <div className="flex items-center gap-2">
+          <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900" title={p.title}>
+            {p.title.split("/").join(" › ")}
+          </h1>
+          {p.isInbox && (
+            <div className="flex shrink-0 rounded-md border border-slate-300 text-xs">
+              {[true, false].map((v) => (
+                <button
+                  key={String(v)}
+                  onClick={() => p.onPrimaryOnlyChange(v)}
+                  className={`px-2 py-0.5 ${p.primaryOnly === v ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-50"}`}
+                >
+                  {v ? "Primary" : "All tabs"}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            p.onSearch();
+          }}
+        >
+          <input
+            value={p.query}
+            onChange={(e) => p.onQueryChange(e.target.value)}
+            placeholder="Search this label"
+            className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-indigo-500"
+          />
+          <button className="rounded-md border border-slate-300 px-2 text-sm text-slate-600 hover:bg-slate-50" title="Search / refresh">
+            ↻
+          </button>
+        </form>
+        <p className="text-xs text-slate-500">
+          {p.searching ? "Search results" : "Unsorted"}
+          {p.sortedCount > 0 && ` · ${p.sortedCount} sorted into lanes`}
+        </p>
+      </div>
+      <div ref={setNodeRef} className={`min-h-0 flex-1 space-y-2 overflow-y-auto p-2 ${isOver ? "bg-indigo-50" : ""}`}>
+        {p.state === "error" && <p className="p-2 text-sm text-red-600">{p.error}</p>}
+        {p.threadIds.map((id) =>
+          p.emails[id] ? (
+            <DraggableEmail key={id} email={p.emails[id]} labelId={p.labelId} selected={p.selected === id} onOpen={() => p.onOpen(id)} />
+          ) : null,
+        )}
+        {p.state === "loading" && <p className="p-2 text-sm text-slate-500">Loading…</p>}
+        {p.state === "idle" && p.threadIds.length === 0 && (
+          <p className="p-2 text-sm text-slate-500">{p.sortedCount > 0 ? "All sorted." : "No emails with this label."}</p>
+        )}
+        {p.state === "idle" && p.hasMore && (
+          <button onClick={p.onLoadMore} className="w-full p-2 text-sm text-indigo-600 hover:bg-slate-50">
+            Load more
+          </button>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function DraggableEmail({ email, labelId, selected, onOpen }: { email: BoardEmail; labelId: string; selected: boolean; onOpen: () => void }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `${T}${email.threadId}` });
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      onClick={onOpen}
+      className={`${isDragging ? "opacity-30" : ""} ${selected ? "rounded-lg ring-2 ring-indigo-400" : ""}`}
+    >
+      <CardFace email={email} hideLabelId={labelId} />
+    </div>
+  );
+}
+
+function Lane({
+  lane,
+  emails,
+  labelId,
+  isFirst,
+  isLast,
+  onMove,
+  onRename,
+  onDelete,
+  onOpen,
+}: {
+  lane: LaneDTO;
+  emails: Record<string, BoardEmail>;
+  labelId: string;
+  isFirst: boolean;
+  isLast: boolean;
+  onMove: (dir: -1 | 1) => void;
+  onRename: (name: string) => Promise<void>;
+  onDelete: () => Promise<void>;
+  onOpen: (threadId: string) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${lane.id}` });
+  return (
+    <div className="flex max-h-full w-72 shrink-0 flex-col rounded-xl bg-slate-200/70">
+      <div className="group flex items-center gap-1 px-3 pt-2.5 pb-1">
+        <InlineEdit value={lane.name} onSave={onRename} className="text-sm font-semibold text-slate-700" />
+        <span className="text-xs text-slate-500">{lane.threadIds.length}</span>
+        <div className="ml-auto flex items-center opacity-0 transition group-hover:opacity-100">
+          <button disabled={isFirst} onClick={() => onMove(-1)} className="px-1 text-slate-500 disabled:opacity-30" title="Move left">
+            ‹
+          </button>
+          <button disabled={isLast} onClick={() => onMove(1)} className="px-1 text-slate-500 disabled:opacity-30" title="Move right">
+            ›
+          </button>
+          <ConfirmButton label="✕" confirmLabel="Delete lane?" onConfirm={onDelete} small />
+        </div>
+      </div>
+      <div ref={setNodeRef} className={`flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 ${isOver ? "rounded-lg bg-indigo-100/60" : ""}`}>
+        <SortableContext items={lane.threadIds.map((t) => `${T}${t}`)} strategy={verticalListSortingStrategy}>
+          {lane.threadIds.map((t) =>
+            emails[t] ? <SortableEmail key={t} email={emails[t]} labelId={labelId} onOpen={() => onOpen(t)} /> : null,
+          )}
+        </SortableContext>
+      </div>
+    </div>
+  );
+}
+
+function SortableEmail({ email, labelId, onOpen }: { email: BoardEmail; labelId: string; onOpen: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `${T}${email.threadId}` });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      {...attributes}
+      {...listeners}
+      onClick={onOpen}
+      className={isDragging ? "opacity-30" : ""}
+    >
+      <CardFace email={email} hideLabelId={labelId} />
+    </div>
+  );
+}

@@ -7,88 +7,75 @@ import {
   listLabels,
   listThreads,
   mailErrorMessage,
+  summarizeThreads,
   type MailLabel,
-  type MailView,
   type ThreadDetail,
-  type ThreadSummary,
 } from "@/lib/mail";
 import { requireUser } from "@/lib/session";
-import type { CardDTO, CaseOption, FiledInfo, LaneOption } from "@/lib/types";
-import { cardInclude, newProject, toCardDTO } from "@/lib/board";
+import type { BoardEmail, LaneDTO, NoteDTO, TaskDTO, ThreadSnapshot } from "@/lib/types";
+import { emailInclude, snapshotData, toBoardEmail, upsertEmail } from "@/lib/board";
 
 // ---------- ownership guards ----------
 
-async function ownProject(projectId: string) {
+async function ownWorkspace(workspaceId: string) {
   const user = await requireUser();
-  const project = await db.project.findFirst({ where: { id: projectId, userId: user.id } });
-  if (!project) throw new Error("Workspace not found");
-  return { user, project };
+  const workspace = await db.workspace.findFirst({ where: { id: workspaceId, userId: user.id } });
+  if (!workspace) throw new Error("Workspace not found");
+  return { user, workspace };
 }
 
 async function ownLane(laneId: string) {
   const user = await requireUser();
-  const lane = await db.lane.findFirst({ where: { id: laneId, project: { userId: user.id } } });
+  const lane = await db.lane.findFirst({ where: { id: laneId, workspace: { userId: user.id } } });
   if (!lane) throw new Error("Lane not found");
   return { user, lane };
 }
 
-async function ownCard(cardId: string) {
-  const user = await requireUser();
-  const card = await db.card.findFirst({ where: { id: cardId, userId: user.id } });
-  if (!card) throw new Error("Ticket not found");
-  return { user, card };
+// Gmail's live metadata merged with the app's notes, tasks and "seen" state.
+async function withStoredMeta(userId: string, live: Awaited<ReturnType<typeof summarizeThreads>>) {
+  const stored = await db.email.findMany({
+    where: { userId, threadId: { in: live.map((t) => t.threadId) } },
+    include: emailInclude,
+  });
+  const byThread = new Map(stored.map((e) => [e.threadId, e]));
+  return live.map((t) => toBoardEmail(byThread.get(t.threadId), t));
 }
-
-const loadCard = async (id: string) => toCardDTO(await db.card.findUniqueOrThrow({ where: { id }, include: cardInclude }));
-
-const emailData = (t: ThreadSummary) => ({
-  subject: t.subject,
-  from: t.from,
-  snippet: t.snippet,
-  emailDate: new Date(t.date),
-});
 
 // ---------- mail ----------
 
-type InboxResult = {
-  threads: ThreadSummary[];
-  nextPageToken?: string;
-  filed: Record<string, FiledInfo>;
-  error?: string;
-};
+type ListResult = { emails: BoardEmail[]; nextPageToken?: string; error?: string };
 
-export async function fetchInbox(view: MailView, query?: string, pageToken?: string): Promise<InboxResult> {
+// One page of a label's emails. Errors come back as readable text because
+// production hides the message of anything thrown from a server action.
+export async function fetchLabelEmails(
+  labelId: string,
+  opts: { primaryOnly?: boolean; query?: string; pageToken?: string } = {},
+): Promise<ListResult> {
   const user = await requireUser();
-  let result: Awaited<ReturnType<typeof listThreads>>;
   try {
-    result = await listThreads(user, { view, query, pageToken });
+    const res = await listThreads(user, { labelId, ...opts });
+    return { emails: await withStoredMeta(user.id, res.threads), nextPageToken: res.nextPageToken };
   } catch (e) {
-    console.error("fetchInbox failed", e);
-    return { threads: [], filed: {}, error: mailErrorMessage(e) };
+    console.error("fetchLabelEmails failed", e);
+    return { emails: [], error: mailErrorMessage(e) };
   }
-  const links = await db.cardEmail.findMany({
-    where: { userId: user.id, threadId: { in: result.threads.map((t) => t.threadId) } },
-    select: {
-      threadId: true,
-      emailDate: true,
-      card: { select: { id: true, title: true, lane: { select: { name: true, project: { select: { id: true, name: true } } } } } },
-    },
-  });
-  const latest = new Map(result.threads.map((t) => [t.threadId, t.date]));
-  const filed: Record<string, FiledInfo> = Object.fromEntries(
-    links.map((l) => [
-      l.threadId,
-      {
-        cardId: l.card.id,
-        cardTitle: l.card.title,
-        projectId: l.card.lane.project.id,
-        projectName: l.card.lane.project.name,
-        laneName: l.card.lane.name,
-        hasNewReply: new Date(latest.get(l.threadId)!).getTime() > l.emailDate.getTime() + 1000,
-      },
-    ]),
-  );
-  return { ...result, filed };
+}
+
+// Fresh Gmail state for emails already on the board (placed in lanes), so new
+// replies show even when the thread isn't on the first page of the label.
+export async function refreshEmails(threadIds: string[]): Promise<{ emails: BoardEmail[]; error?: string }> {
+  const user = await requireUser();
+  if (threadIds.length === 0) return { emails: [] };
+  try {
+    const live = await summarizeThreads(user, threadIds);
+    await Promise.all(
+      live.map((t) => db.email.updateMany({ where: { userId: user.id, threadId: t.threadId }, data: snapshotData(t) })),
+    );
+    return { emails: await withStoredMeta(user.id, live) };
+  } catch (e) {
+    console.error("refreshEmails failed", e);
+    return { emails: [], error: mailErrorMessage(e) };
+  }
 }
 
 export async function fetchLabels(): Promise<{ labels: MailLabel[]; error?: string }> {
@@ -101,18 +88,21 @@ export async function fetchLabels(): Promise<{ labels: MailLabel[]; error?: stri
   }
 }
 
-// Loading a thread also marks it as seen on its case: the stored latest-message
-// date moves forward, which clears the "new reply" flag.
+// Opening a thread marks it as seen: a later message will show as a new reply.
 export async function fetchThread(threadId: string): Promise<{ thread: ThreadDetail | null; error?: string }> {
   const user = await requireUser();
   try {
     const thread = await getThread(user, threadId);
     const last = thread?.messages[thread.messages.length - 1];
-    if (last)
-      await db.cardEmail.updateMany({
-        where: { userId: user.id, threadId },
-        data: { emailDate: new Date(last.date), from: last.from },
+    if (thread && last) {
+      const snippet = (last.text ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
+      const snap = { threadId, subject: thread.subject, from: last.from, snippet, date: last.date };
+      await db.email.upsert({
+        where: { userId_threadId: { userId: user.id, threadId } },
+        create: { userId: user.id, threadId, ...snapshotData(snap), lastSeenAt: new Date(last.date) },
+        update: { from: last.from, date: new Date(last.date), lastSeenAt: new Date(last.date) },
       });
+    }
     return { thread };
   } catch (e) {
     console.error("fetchThread failed", e);
@@ -120,57 +110,13 @@ export async function fetchThread(threadId: string): Promise<{ thread: ThreadDet
   }
 }
 
-// Everything the "move to" and "attach to" pickers need.
-export async function fetchPickers(): Promise<{ lanes: LaneOption[]; cases: CaseOption[] }> {
-  const user = await requireUser();
-  const projects = await db.project.findMany({
-    where: { userId: user.id },
-    orderBy: { position: "asc" },
-    include: {
-      lanes: {
-        orderBy: { position: "asc" },
-        include: { cards: { orderBy: { position: "asc" }, select: { id: true, title: true } } },
-      },
-    },
-  });
-  const lanes: LaneOption[] = [];
-  const cases: CaseOption[] = [];
-  for (const p of projects)
-    for (const l of p.lanes) {
-      lanes.push({ id: l.id, name: l.name, projectId: p.id, projectName: p.name });
-      for (const c of l.cards) cases.push({ id: c.id, title: c.title, projectId: p.id, projectName: p.name, laneName: l.name });
-    }
-  return { lanes, cases };
-}
-
-// ---------- projects ----------
-
-export async function createProject(name: string) {
-  const user = await requireUser();
-  const project = await newProject(user.id, name);
-  revalidatePath("/", "layout");
-  return project.id;
-}
-
-export async function renameProject(projectId: string, name: string) {
-  await ownProject(projectId);
-  await db.project.update({ where: { id: projectId }, data: { name: name.trim() || "Untitled workspace" } });
-  revalidatePath("/", "layout");
-}
-
-export async function deleteProject(projectId: string) {
-  await ownProject(projectId);
-  await db.project.delete({ where: { id: projectId } });
-  revalidatePath("/", "layout");
-}
-
 // ---------- lanes ----------
 
-export async function createLane(projectId: string, name: string) {
-  await ownProject(projectId);
-  const count = await db.lane.count({ where: { projectId } });
-  const lane = await db.lane.create({ data: { projectId, name: name.trim() || "New lane", position: count } });
-  return { id: lane.id, name: lane.name, cards: [] as CardDTO[] };
+export async function createLane(workspaceId: string, name: string): Promise<LaneDTO> {
+  await ownWorkspace(workspaceId);
+  const count = await db.lane.count({ where: { workspaceId } });
+  const lane = await db.lane.create({ data: { workspaceId, name: name.trim() || "New lane", position: count } });
+  return { id: lane.id, name: lane.name, threadIds: [] };
 }
 
 export async function renameLane(laneId: string, name: string) {
@@ -178,159 +124,79 @@ export async function renameLane(laneId: string, name: string) {
   await db.lane.update({ where: { id: laneId }, data: { name: name.trim() || "Untitled" } });
 }
 
+// Deleting a lane sends its emails back to unsorted (their placements go with it).
 export async function deleteLane(laneId: string) {
   await ownLane(laneId);
   await db.lane.delete({ where: { id: laneId } });
 }
 
-export async function reorderLanes(projectId: string, laneIds: string[]) {
-  await ownProject(projectId);
+export async function reorderLanes(workspaceId: string, laneIds: string[]) {
+  await ownWorkspace(workspaceId);
   await db.$transaction(
-    laneIds.map((id, position) => db.lane.updateMany({ where: { id, projectId }, data: { position } })),
+    laneIds.map((id, position) => db.lane.updateMany({ where: { id, workspaceId }, data: { position } })),
   );
 }
 
-// ---------- cases ----------
+// ---------- placing emails ----------
 
-async function saveLaneOrder(userId: string, laneId: string, cardIds: string[]) {
-  await db.$transaction(
-    cardIds.map((id, position) => db.card.updateMany({ where: { id, userId }, data: { laneId, position } })),
-  );
-}
+// Save the result of a drag (or a lane picked in the email panel):
+// - `lanes`: the full email order of every lane that changed
+// - `unsorted`: emails taken out of lanes, back to the label's unsorted list
+// - `snapshots`: threads that may not have an Email record yet
+export async function arrangeEmails(
+  workspaceId: string,
+  change: { lanes: { laneId: string; threadIds: string[] }[]; unsorted: string[]; snapshots: ThreadSnapshot[] },
+) {
+  const { user } = await ownWorkspace(workspaceId);
+  const laneIds = change.lanes.map((l) => l.laneId);
+  const owned = await db.lane.count({ where: { id: { in: laneIds }, workspaceId } });
+  if (owned !== new Set(laneIds).size) throw new Error("Lane not found");
 
-async function appendToLane(userId: string, cardId: string, laneId: string) {
-  const last = await db.card.findFirst({ where: { laneId }, orderBy: { position: "desc" }, select: { position: true } });
-  await db.card.updateMany({ where: { id: cardId, userId }, data: { laneId, position: (last?.position ?? -1) + 1 } });
-}
+  for (const s of change.snapshots) await upsertEmail(user.id, s);
+  const threadIds = [...change.unsorted, ...change.lanes.flatMap((l) => l.threadIds)];
+  const emails = await db.email.findMany({ where: { userId: user.id, threadId: { in: threadIds } }, select: { id: true, threadId: true } });
+  const idOf = new Map(emails.map((e) => [e.threadId, e.id]));
 
-// Drop an email onto a lane. A thread already in a case moves that whole case;
-// otherwise a new case is opened for it. `orderedCardIds` uses `email:<threadId>`
-// as the placeholder for where the dropped email landed.
-export async function fileEmail(laneId: string, thread: ThreadSummary, orderedCardIds: string[]): Promise<CardDTO> {
-  const { user } = await ownLane(laneId);
-  const existing = await db.cardEmail.findUnique({
-    where: { userId_threadId: { userId: user.id, threadId: thread.threadId } },
-  });
-  let cardId: string;
-  if (existing) {
-    cardId = existing.cardId;
-    await db.cardEmail.update({ where: { id: existing.id }, data: emailData(thread) });
-  } else {
-    const card = await db.card.create({
-      data: {
-        userId: user.id,
-        laneId,
-        title: thread.subject,
-        emails: { create: { userId: user.id, threadId: thread.threadId, ...emailData(thread) } },
-      },
-    });
-    cardId = card.id;
-  }
-  const ids = orderedCardIds.map((id) => (id === `email:${thread.threadId}` ? cardId : id)).filter((id, i, a) => a.indexOf(id) === i);
-  if (!ids.includes(cardId)) ids.push(cardId);
-  await saveLaneOrder(user.id, laneId, ids);
-  revalidatePath("/", "layout");
-  return loadCard(cardId);
-}
-
-// Open an empty case by hand (no email yet).
-export async function createCase(laneId: string, title: string) {
-  const { user } = await ownLane(laneId);
-  const card = await db.card.create({ data: { userId: user.id, laneId, title: title.trim() || "New ticket", position: 0 } });
-  await appendToLane(user.id, card.id, laneId);
-  return loadCard(card.id);
-}
-
-export async function renameCase(cardId: string, title: string) {
-  await ownCard(cardId);
-  await db.card.update({ where: { id: cardId }, data: { title: title.trim() || "Untitled ticket" } });
-  revalidatePath("/", "layout");
-}
-
-// Persist the full card order for one or more lanes after a drag.
-export async function moveCards(lanes: { laneId: string; cardIds: string[] }[]) {
-  const user = await requireUser();
-  for (const { laneId } of lanes) await ownLane(laneId);
-  for (const { laneId, cardIds } of lanes) await saveLaneOrder(user.id, laneId, cardIds);
-}
-
-// Move a case to any lane in any project.
-export async function moveCaseTo(cardId: string, laneId: string) {
-  const { user } = await ownCard(cardId);
-  await ownLane(laneId);
-  await appendToLane(user.id, cardId, laneId);
-  revalidatePath("/", "layout");
-  return loadCard(cardId);
-}
-
-// A case has outgrown a card: give it its own project board.
-// The case itself moves onto the new board so nothing is copied or lost.
-export async function promoteToProject(cardId: string) {
-  const { user, card } = await ownCard(cardId);
-  const project = await newProject(user.id, card.title, card.id);
-  await appendToLane(user.id, cardId, project.lanes[0].id);
-  revalidatePath("/", "layout");
-  return project.id;
-}
-
-export async function removeCard(cardId: string) {
-  await ownCard(cardId);
-  await db.card.delete({ where: { id: cardId } });
-  revalidatePath("/", "layout");
-}
-
-// ---------- emails on a case ----------
-
-// Link an inbox thread to an existing case (moving it off any other case).
-export async function attachEmail(cardId: string, thread: ThreadSummary) {
-  const { user } = await ownCard(cardId);
-  await db.cardEmail.upsert({
-    where: { userId_threadId: { userId: user.id, threadId: thread.threadId } },
-    create: { userId: user.id, cardId, threadId: thread.threadId, ...emailData(thread) },
-    update: { cardId, ...emailData(thread) },
-  });
-  revalidatePath("/", "layout");
-  return loadCard(cardId);
-}
-
-export async function detachEmail(cardEmailId: string) {
-  const user = await requireUser();
-  await db.cardEmail.deleteMany({ where: { id: cardEmailId, userId: user.id } });
-  revalidatePath("/", "layout");
-}
-
-// Pull one email out of a case into a new case of its own, in the same lane.
-export async function splitEmail(cardEmailId: string) {
-  const user = await requireUser();
-  const link = await db.cardEmail.findFirst({ where: { id: cardEmailId, userId: user.id }, include: { card: true } });
-  if (!link) throw new Error("Email not found");
-  const card = await db.card.create({ data: { userId: user.id, laneId: link.card.laneId, title: link.subject } });
-  await db.cardEmail.update({ where: { id: link.id }, data: { cardId: card.id } });
-  await appendToLane(user.id, card.id, link.card.laneId);
-  revalidatePath("/", "layout");
-  return { from: await loadCard(link.cardId), created: await loadCard(card.id) };
+  await db.$transaction([
+    db.placement.deleteMany({
+      where: { workspaceId, emailId: { in: change.unsorted.map((t) => idOf.get(t)).filter((x): x is string => !!x) } },
+    }),
+    ...change.lanes.flatMap((l) =>
+      l.threadIds
+        .filter((t) => idOf.has(t))
+        .map((t, position) =>
+          db.placement.upsert({
+            where: { workspaceId_emailId: { workspaceId, emailId: idOf.get(t)! } },
+            create: { workspaceId, laneId: l.laneId, emailId: idOf.get(t)!, position },
+            update: { laneId: l.laneId, position },
+          }),
+        ),
+    ),
+  ]);
 }
 
 // ---------- notes ----------
 
-export async function addNote(cardId: string, body: string) {
-  await ownCard(cardId);
-  const note = await db.note.create({ data: { cardId, body: body.trim() } });
+export async function addNote(thread: ThreadSnapshot, body: string): Promise<NoteDTO> {
+  const user = await requireUser();
+  const email = await upsertEmail(user.id, thread);
+  const note = await db.note.create({ data: { emailId: email.id, body: body.trim() } });
   return { id: note.id, body: note.body, createdAt: note.createdAt.toISOString() };
 }
 
 export async function deleteNote(noteId: string) {
   const user = await requireUser();
-  await db.note.deleteMany({ where: { id: noteId, card: { userId: user.id } } });
+  await db.note.deleteMany({ where: { id: noteId, email: { userId: user.id } } });
 }
 
 // ---------- tasks ----------
 
-export async function addTask(cardId: string, title: string, dueDate: string | null) {
-  await ownCard(cardId);
-  const count = await db.task.count({ where: { cardId } });
+export async function addTask(thread: ThreadSnapshot, title: string, dueDate: string | null): Promise<TaskDTO> {
+  const user = await requireUser();
+  const email = await upsertEmail(user.id, thread);
+  const count = await db.task.count({ where: { emailId: email.id } });
   const task = await db.task.create({
-    data: { cardId, title: title.trim(), dueDate: dueDate ? new Date(dueDate) : null, position: count },
+    data: { emailId: email.id, title: title.trim(), dueDate: dueDate ? new Date(dueDate) : null, position: count },
   });
   revalidatePath("/tasks");
   return { id: task.id, title: task.title, done: task.done, dueDate: task.dueDate?.toISOString() ?? null };
@@ -339,7 +205,7 @@ export async function addTask(cardId: string, title: string, dueDate: string | n
 export async function updateTask(taskId: string, patch: { done?: boolean; title?: string; dueDate?: string | null }) {
   const user = await requireUser();
   await db.task.updateMany({
-    where: { id: taskId, card: { userId: user.id } },
+    where: { id: taskId, email: { userId: user.id } },
     data: {
       ...(patch.done !== undefined ? { done: patch.done } : {}),
       ...(patch.title !== undefined ? { title: patch.title.trim() } : {}),
@@ -351,6 +217,6 @@ export async function updateTask(taskId: string, patch: { done?: boolean; title?
 
 export async function deleteTask(taskId: string) {
   const user = await requireUser();
-  await db.task.deleteMany({ where: { id: taskId, card: { userId: user.id } } });
+  await db.task.deleteMany({ where: { id: taskId, email: { userId: user.id } } });
   revalidatePath("/tasks");
 }

@@ -8,103 +8,100 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
+  id           String      @id @default(cuid())
+  email        String      @unique
   name         String?
   picture      String?
-  isDemo       Boolean   @default(false)
+  isDemo       Boolean     @default(false)
   accessToken  String?
   refreshToken String?
   tokenExpiry  DateTime?
-  createdAt    DateTime  @default(now())
-  projects     Project[]
-  cards        Card[]
+  createdAt    DateTime    @default(now())
+  workspaces   Workspace[]
+  emails       Email[]
 }
 
-// A project is a board, like a Trello board.
-model Project {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name         String
-  color        String   @default("#6366f1")
-  position     Int      @default(0)
-  // The case this project grew from, if it was promoted from one.
-  originCardId String?
-  createdAt    DateTime @default(now())
-  lanes        Lane[]
+// One workspace per Gmail label (INBOX included), created the first time the
+// label is opened. Gmail is the source of truth for which emails belong to it.
+model Workspace {
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  labelId    String
+  name       String // the label's name when the workspace was created
+  createdAt  DateTime    @default(now())
+  lanes      Lane[]
+  placements Placement[]
 
-  @@index([userId])
+  @@unique([userId, labelId])
 }
 
-// A swim lane is a column on a project board.
+// A column the user adds to sort a workspace's emails. Workspaces start with none.
 model Lane {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  name      String
-  position  Int     @default(0)
-  cards     Card[]
+  id          String      @id @default(cuid())
+  workspaceId String
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name        String
+  position    Int         @default(0)
+  placements  Placement[]
 
-  @@index([projectId])
+  @@index([workspaceId])
 }
 
-// A card is a "case": the unit of work. It usually starts from one email, can collect
-// more emails, notes and tasks, and can be promoted into its own project.
-model Card {
-  id        String      @id @default(cuid())
-  userId    String
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  laneId    String
-  lane      Lane        @relation(fields: [laneId], references: [id], onDelete: Cascade)
-  position  Int         @default(0)
-  title     String
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  emails    CardEmail[]
-  notes     Note[]
-  tasks     Task[]
-
-  @@index([laneId])
-  @@index([userId])
-}
-
-// An email thread linked to a case. Each thread belongs to at most one case.
-model CardEmail {
-  id        String   @id @default(cuid())
-  userId    String
-  cardId    String
-  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  threadId  String
-  subject   String
-  from      String
-  snippet   String
-  emailDate DateTime
-  addedAt   DateTime @default(now())
+// An email thread the app knows about: the ticket itself. Notes and tasks hang
+// off it and follow it into every workspace it appears in.
+model Email {
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  threadId   String
+  subject    String
+  from       String
+  snippet    String
+  date       DateTime // latest message when last refreshed
+  lastSeenAt DateTime? // latest message the user has opened; newer means a new reply
+  createdAt  DateTime    @default(now())
+  notes      Note[]
+  tasks      Task[]
+  placements Placement[]
 
   @@unique([userId, threadId])
-  @@index([cardId])
+}
+
+// Where an email sits in one workspace. No placement means it's unsorted.
+model Placement {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  laneId      String
+  lane        Lane      @relation(fields: [laneId], references: [id], onDelete: Cascade)
+  emailId     String
+  email       Email     @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  position    Int       @default(0)
+
+  @@unique([workspaceId, emailId])
+  @@index([laneId])
 }
 
 model Note {
   id        String   @id @default(cuid())
-  cardId    String
-  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  emailId   String
+  email     Email    @relation(fields: [emailId], references: [id], onDelete: Cascade)
   body      String
   createdAt DateTime @default(now())
 
-  @@index([cardId])
+  @@index([emailId])
 }
 
 model Task {
   id        String    @id @default(cuid())
-  cardId    String
-  card      Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  emailId   String
+  email     Email     @relation(fields: [emailId], references: [id], onDelete: Cascade)
   title     String
   done      Boolean   @default(false)
   dueDate   DateTime?
   position  Int       @default(0)
   createdAt DateTime  @default(now())
 
-  @@index([cardId])
+  @@index([emailId])
 }

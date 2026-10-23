@@ -15,10 +15,6 @@ export type ThreadSummary = {
   labelIds: string[];
 };
 
-// Which slice of the mailbox the inbox column shows.
-// "primary" matches Gmail's Primary inbox tab; "label:<id>" is one Gmail label.
-export type MailView = "primary" | "inbox" | "unread" | `label:${string}`;
-
 // Gmail nests labels by name: "Clients/Acme" sits under "Clients".
 export type MailLabel = { id: string; name: string; unread: number };
 
@@ -34,43 +30,66 @@ export type MessageDetail = {
 
 export type ThreadDetail = { threadId: string; subject: string; messages: MessageDetail[] };
 
+export const INBOX = "INBOX";
+
+// One page of a label's threads. For the inbox, primaryOnly matches Gmail's
+// Primary tab. A query narrows within the label. Gmail leaves out spam and trash.
 export async function listThreads(
   user: User,
-  opts: { view?: MailView; query?: string; pageToken?: string } = {},
+  opts: { labelId: string; primaryOnly?: boolean; query?: string; pageToken?: string },
 ): Promise<{ threads: ThreadSummary[]; nextPageToken?: string }> {
-  const view = opts.view ?? "primary";
   const query = opts.query?.trim();
-  if (user.isDemo) return { threads: demoThreads(view, query) };
+  const primaryOnly = opts.labelId === INBOX && !!opts.primaryOnly;
+  if (user.isDemo) return { threads: demoThreads(opts.labelId, primaryOnly, query) };
 
-  // A search looks across all mail, like Gmail's search box. Spam and trash
-  // are excluded by Gmail unless includeSpamTrash is set.
-  const params: gmail_v1.Params$Resource$Users$Threads$List = { userId: "me", maxResults: 30, pageToken: opts.pageToken };
-  if (query) params.q = query;
-  else if (view.startsWith("label:")) params.labelIds = [view.slice("label:".length)];
-  else params.q = VIEW_QUERIES[view as keyof typeof VIEW_QUERIES];
-
+  const q = [primaryOnly ? "category:primary" : "", query ?? ""].filter(Boolean).join(" ");
   const gmail = gmailFor(user);
-  const res = await gmail.users.threads.list(params);
+  const res = await gmail.users.threads.list({
+    userId: "me",
+    labelIds: [opts.labelId],
+    q: q || undefined,
+    maxResults: 30,
+    pageToken: opts.pageToken,
+  });
   const ids = (res.data.threads ?? []).map((t) => t.id!).filter(Boolean);
-  const threads = await Promise.all(
-    ids.map(async (id) => {
-      const t = await gmail.users.threads.get({
-        userId: "me",
-        id,
-        format: "metadata",
-        metadataHeaders: ["Subject", "From", "Date"],
-      });
-      return summarize(t.data);
-    }),
-  );
-  return { threads, nextPageToken: res.data.nextPageToken ?? undefined };
+  return { threads: await summarizeThreads(user, ids), nextPageToken: res.data.nextPageToken ?? undefined };
 }
 
-const VIEW_QUERIES = {
-  primary: "in:inbox category:primary",
-  inbox: "in:inbox",
-  unread: "in:inbox is:unread",
-};
+// Current metadata for specific threads. Threads that no longer exist are left out.
+export async function summarizeThreads(user: User, threadIds: string[]): Promise<ThreadSummary[]> {
+  if (user.isDemo) return demoThreads().filter((t) => threadIds.includes(t.threadId));
+  const gmail = gmailFor(user);
+  const results = await Promise.all(
+    threadIds.map(async (id) => {
+      try {
+        const t = await gmail.users.threads.get({
+          userId: "me",
+          id,
+          format: "metadata",
+          metadataHeaders: ["Subject", "From", "Date"],
+        });
+        return summarize(t.data);
+      } catch (e) {
+        if ((e as { code?: number }).code === 404) return null;
+        throw e;
+      }
+    }),
+  );
+  return results.filter((t): t is ThreadSummary => t !== null);
+}
+
+// The label's display name, or null if the user has no such label.
+export async function getLabelName(user: User, labelId: string): Promise<string | null> {
+  if (labelId === INBOX) return "Inbox";
+  if (user.isDemo) return demoLabels().find((l) => l.id === labelId)?.name ?? null;
+  try {
+    const res = await gmailFor(user).users.labels.get({ userId: "me", id: labelId, fields: "name" });
+    return res.data.name ?? null;
+  } catch (e) {
+    if ((e as { code?: number }).code === 404) return null;
+    throw e;
+  }
+}
 
 // The user's own Gmail labels (not system ones like INBOX or CATEGORY_*),
 // with unread thread counts. labels.list has no counts, so each label is fetched.

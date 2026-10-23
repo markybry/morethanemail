@@ -1,4 +1,4 @@
-import type { MailLabel, MailView, ThreadDetail, ThreadSummary } from "./mail";
+import type { MailLabel, ThreadDetail, ThreadSummary } from "./mail";
 
 // Sample mailbox used when the app runs without Google credentials.
 const LABELS: MailLabel[] = [
@@ -47,18 +47,17 @@ const DEMO: DemoThread[] = [
 const BASE = Date.now();
 const at = (hoursAgo: number) => new Date(BASE - hoursAgo * 3_600_000).toISOString();
 
-function inView(d: DemoThread, view: MailView) {
-  const has = (l: string) => d.labels?.includes(l) ?? false;
-  if (view.startsWith("label:")) return has(view.slice("label:".length));
-  if (!has("INBOX")) return false;
-  if (view === "primary") return !["CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_UPDATES", "CATEGORY_FORUMS"].some(has);
-  if (view === "unread") return !!d.unread;
-  return true;
-}
+const OTHER_TABS = ["CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_UPDATES", "CATEGORY_FORUMS"];
 
-export function demoThreads(view: MailView, query?: string): ThreadSummary[] {
+// With no label, returns every demo thread (used to look threads up by id).
+export function demoThreads(labelId?: string, primaryOnly = false, query?: string): ThreadSummary[] {
   const q = query?.toLowerCase();
-  return DEMO.filter((d) => (q ? `${d.from} ${d.subject} ${d.body}`.toLowerCase().includes(q) : inView(d, view))).map((d) => ({
+  return DEMO.filter((d) => {
+    const has = (l: string) => d.labels?.includes(l) ?? false;
+    if (labelId && !has(labelId)) return false;
+    if (primaryOnly && OTHER_TABS.some(has)) return false;
+    return !q || `${d.from} ${d.subject} ${d.body}`.toLowerCase().includes(q);
+  }).map((d) => ({
     threadId: d.id,
     subject: d.subject,
     from: d.from,
