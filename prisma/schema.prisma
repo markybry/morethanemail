@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  picture      String?
+  isDemo       Boolean   @default(false)
+  accessToken  String?
+  refreshToken String?
+  tokenExpiry  DateTime?
+  createdAt    DateTime  @default(now())
+  projects     Project[]
+  cards        Card[]
+}
+
+// A project is a board, like a Trello board.
+model Project {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  color        String   @default("#6366f1")
+  position     Int      @default(0)
+  // The case this project grew from, if it was promoted from one.
+  originCardId String?
+  createdAt    DateTime @default(now())
+  lanes        Lane[]
+
+  @@index([userId])
+}
+
+// A swim lane is a column on a project board.
+model Lane {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  position  Int     @default(0)
+  cards     Card[]
+
+  @@index([projectId])
+}
+
+// A card is a "case": the unit of work. It usually starts from one email, can collect
+// more emails, notes and tasks, and can be promoted into its own project.
+model Card {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  laneId    String
+  lane      Lane        @relation(fields: [laneId], references: [id], onDelete: Cascade)
+  position  Int         @default(0)
+  title     String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  emails    CardEmail[]
+  notes     Note[]
+  tasks     Task[]
+
+  @@index([laneId])
+  @@index([userId])
+}
+
+// An email thread linked to a case. Each thread belongs to at most one case.
+model CardEmail {
+  id        String   @id @default(cuid())
+  userId    String
+  cardId    String
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  threadId  String
+  subject   String
+  from      String
+  snippet   String
+  emailDate DateTime
+  addedAt   DateTime @default(now())
+
+  @@unique([userId, threadId])
+  @@index([cardId])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  cardId    String
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([cardId])
+}
+
+model Task {
+  id        String    @id @default(cuid())
+  cardId    String
+  card      Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  title     String
+  done      Boolean   @default(false)
+  dueDate   DateTime?
+  position  Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  @@index([cardId])
+}
