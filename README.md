@@ -19,7 +19,7 @@ Stack: Next.js 15 (App Router, server actions) · Prisma + Postgres · Gmail API
      - `https://<your-app>.vercel.app/api/auth/google/callback`
      - `http://localhost:3000/api/auth/google/callback`
 2. **Vercel project.** Import this GitHub repo in Vercel. Pushes to `main` deploy to production; pull requests get preview deployments.
-3. **Database.** In the Vercel project, open **Storage** and add **Neon Postgres**. This sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
+3. **Database.** In the Vercel project, open **Storage** and add **Prisma Postgres**. This sets `DATABASE_URL`, which the app uses for queries and migrations. Tick the Development environment too if you want `vercel env pull` to work locally.
 4. **Environment variables.** Set `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `ALLOWED_EMAILS` (see `.env.example`).
 5. **Redeploy.** The `vercel-build` script runs `prisma migrate deploy` before building, so the database schema stays in step with each deploy.
 
@@ -27,7 +27,7 @@ GitHub Actions (`.github/workflows/ci.yml`) lints, typechecks, checks that migra
 
 > While the Google OAuth app is in "Testing" mode, Google expires refresh tokens after 7 days, so you'll need to sign in again weekly. Publishing the app (no verification is needed for a single user who accepts the warning) removes that limit.
 
-> Preview deployments share the production database unless you enable Neon's per-preview branching in the Neon integration settings. That is recommended before any PR changes the schema.
+> Preview deployments use the same database as production (the integration connects both). Any PR that changes the schema will migrate the shared database when its preview builds, so be careful with destructive migrations, or connect a separate database to Preview.
 
 ## Local development
 
