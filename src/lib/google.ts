@@ -3,12 +3,9 @@ import { google } from "googleapis";
 import type { User } from "@prisma/client";
 import { db } from "./db";
 
-export const GOOGLE_SCOPES = [
-  "openid",
-  "email",
-  "profile",
-  "https://www.googleapis.com/auth/gmail.readonly",
-];
+export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+
+export const GOOGLE_SCOPES = ["openid", "email", "profile", GMAIL_SCOPE];
 
 export function appUrl() {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");

@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { db } from "@/lib/db";
-import { appUrl, oauthClient } from "@/lib/google";
+import { appUrl, GMAIL_SCOPE, oauthClient } from "@/lib/google";
 import { isEmailAllowed, setSession } from "@/lib/session";
 
 export async function GET(req: NextRequest) {
@@ -17,6 +17,9 @@ export async function GET(req: NextRequest) {
 
   const client = oauthClient();
   const { tokens } = await client.getToken(code);
+  // Google's consent screen lets people untick individual scopes; without Gmail the app is useless.
+  if (!tokens.scope?.split(" ").includes(GMAIL_SCOPE))
+    return fail("Gmail access wasn't granted. Sign in again and tick “View your email messages and settings”.");
   client.setCredentials(tokens);
   const { data: profile } = await google.oauth2({ version: "v2", auth: client }).userinfo.get();
   if (!profile.email) return fail("Google did not return an email address.");

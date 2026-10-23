@@ -51,6 +51,11 @@ export function Workspace({ project, initialCaseId }: { project: ProjectDTO; ini
     setInboxState("loading");
     try {
       const res = await fetchInbox(q, pageToken);
+      if (res.error) {
+        setInboxError(res.error);
+        setInboxState("error");
+        return;
+      }
       setThreads((prev) => (pageToken ? [...prev, ...res.threads] : res.threads));
       setFiled((prev) => (pageToken ? { ...prev, ...res.filed } : res.filed));
       setNextPage(res.nextPageToken);
