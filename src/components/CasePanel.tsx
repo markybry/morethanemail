@@ -29,6 +29,7 @@ type Props = {
   project: ProjectDTO;
   lanes: LaneDTO[];
   inbox: ThreadSummary[];
+  onEmailSeen: (threadId: string) => void;
   onClose: () => void;
   onChange: (card: CardDTO) => void;
   onRemoved: (cardId: string) => void;
@@ -36,7 +37,7 @@ type Props = {
   onSplit: (from: CardDTO, created: CardDTO) => void;
 };
 
-export function CasePanel({ card, project, lanes, inbox, onClose, onChange, onRemoved, onMovedAway, onSplit }: Props) {
+export function CasePanel({ card, project, lanes, inbox, onEmailSeen, onClose, onChange, onRemoved, onMovedAway, onSplit }: Props) {
   const router = useRouter();
   const isRootCase = project.origin?.cardId === card.id;
   const [busy, setBusy] = useState("");
@@ -99,7 +100,7 @@ export function CasePanel({ card, project, lanes, inbox, onClose, onChange, onRe
 
       <Tasks card={card} onChange={onChange} />
       <Notes card={card} onChange={onChange} />
-      <Emails card={card} inbox={inbox} onChange={onChange} onSplit={onSplit} />
+      <Emails card={card} inbox={inbox} onChange={onChange} onSplit={onSplit} onEmailSeen={onEmailSeen} />
     </Drawer>
   );
 }
@@ -278,11 +279,13 @@ function Emails({
   inbox,
   onChange,
   onSplit,
+  onEmailSeen,
 }: {
   card: CardDTO;
   inbox: ThreadSummary[];
   onChange: (c: CardDTO) => void;
   onSplit: (from: CardDTO, created: CardDTO) => void;
+  onEmailSeen: (threadId: string) => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(card.emails[0]?.threadId ?? null);
   const [linking, setLinking] = useState(false);
@@ -362,7 +365,7 @@ function Emails({
             </div>
             {expanded === e.threadId && (
               <div className="border-t border-slate-100 p-3">
-                <ThreadView threadId={e.threadId} />
+                <ThreadView threadId={e.threadId} onLoaded={() => onEmailSeen(e.threadId)} />
               </div>
             )}
           </div>

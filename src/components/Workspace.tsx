@@ -17,8 +17,8 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { fetchInbox, fileEmail, moveCards } from "@/app/actions";
-import type { ThreadSummary } from "@/lib/mail";
+import { fetchInbox, fetchLabels, fileEmail, moveCards } from "@/app/actions";
+import type { MailLabel, MailView, ThreadSummary } from "@/lib/mail";
 import type { CardDTO, FiledInfo, LaneDTO, ProjectDTO } from "@/lib/types";
 import { Inbox, EmailRowPreview } from "./Inbox";
 import { Board } from "./Board";
@@ -29,6 +29,8 @@ import { ThreadPanel } from "./ThreadPanel";
 export type Selection = { kind: "card"; cardId: string } | { kind: "thread"; thread: ThreadSummary } | null;
 
 const EMAIL_PREFIX = "email:";
+const VIEW_KEY = "mte.inboxView";
+const HIDE_FILED_KEY = "mte.hideFiled";
 const LANE_PREFIX = "lane:";
 
 export function Workspace({ project, initialCaseId }: { project: ProjectDTO; initialCaseId?: string }) {
@@ -43,14 +45,18 @@ export function Workspace({ project, initialCaseId }: { project: ProjectDTO; ini
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [filed, setFiled] = useState<Record<string, FiledInfo>>({});
   const [query, setQuery] = useState("");
+  const [loadedQuery, setLoadedQuery] = useState("");
+  const [view, setView] = useState<MailView>("primary");
+  const [labels, setLabels] = useState<MailLabel[]>([]);
+  const [hideFiled, setHideFiled] = useState(true);
   const [nextPage, setNextPage] = useState<string | undefined>();
   const [inboxState, setInboxState] = useState<"idle" | "loading" | "error">("loading");
   const [inboxError, setInboxError] = useState("");
 
-  const loadInbox = useCallback(async (q: string, pageToken?: string) => {
+  const loadInbox = useCallback(async (v: MailView, q: string, pageToken?: string) => {
     setInboxState("loading");
     try {
-      const res = await fetchInbox(q, pageToken);
+      const res = await fetchInbox(v, q, pageToken);
       if (res.error) {
         setInboxError(res.error);
         setInboxState("error");
@@ -59,6 +65,7 @@ export function Workspace({ project, initialCaseId }: { project: ProjectDTO; ini
       setThreads((prev) => (pageToken ? [...prev, ...res.threads] : res.threads));
       setFiled((prev) => (pageToken ? { ...prev, ...res.filed } : res.filed));
       setNextPage(res.nextPageToken);
+      setLoadedQuery(q.trim());
       setInboxState("idle");
     } catch (e) {
       setInboxError(e instanceof Error ? e.message : "Could not load email");
@@ -66,16 +73,50 @@ export function Workspace({ project, initialCaseId }: { project: ProjectDTO; ini
     }
   }, []);
 
+  // The chosen view and "hide filed" are per-browser conveniences kept in localStorage.
   useEffect(() => {
-    void loadInbox("");
+    let v: MailView = "primary";
+    let hide = true;
+    try {
+      v = (localStorage.getItem(VIEW_KEY) as MailView | null) ?? "primary";
+      hide = localStorage.getItem(HIDE_FILED_KEY) !== "false";
+    } catch {}
+    setView(v);
+    setHideFiled(hide);
+    void loadInbox(v, "");
+    void fetchLabels().then((r) => setLabels(r.labels));
   }, [loadInbox]);
+
+  const changeView = (v: MailView) => {
+    setView(v);
+    setQuery("");
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {}
+    void loadInbox(v, "");
+  };
+
+  const changeHideFiled = (hide: boolean) => {
+    setHideFiled(hide);
+    try {
+      localStorage.setItem(HIDE_FILED_KEY, String(hide));
+    } catch {}
+  };
+
+  // Called when a thread is opened inside a case: the server has recorded it as seen.
+  const markSeen = useCallback((threadId: string) => {
+    setFiled((prev) => (prev[threadId]?.hasNewReply ? { ...prev, [threadId]: { ...prev[threadId], hasNewReply: false } } : prev));
+  }, []);
 
   const markFiled = useCallback(
     (card: CardDTO, laneName: string, projectId = project.id, projectName = project.name) => {
       setFiled((prev) => {
         const next = { ...prev };
-        for (const e of card.emails)
-          next[e.threadId] = { cardId: card.id, cardTitle: card.title, projectId, projectName, laneName };
+        for (const e of card.emails) {
+          // A thread re-filed into the same case keeps its "new reply" flag; anything else starts fresh.
+          const hasNewReply = prev[e.threadId]?.cardId === card.id ? prev[e.threadId].hasNewReply : false;
+          next[e.threadId] = { cardId: card.id, cardTitle: card.title, projectId, projectName, laneName, hasNewReply };
+        }
         return next;
       });
     },
@@ -112,6 +153,21 @@ export function Workspace({ project, initialCaseId }: { project: ProjectDTO; ini
     }
     return out;
   }, [filed, lanes, project.id]);
+
+  const newReplyCardIds = useMemo(
+    () => new Set(Object.values(filed).filter((f) => f.hasNewReply).map((f) => f.cardId)),
+    [filed],
+  );
+
+  // Untriaged mail only: filed threads drop out of the inbox until someone replies.
+  // A search shows everything, since the user is looking for something specific.
+  const visibleThreads = useMemo(
+    () =>
+      hideFiled && !loadedQuery
+        ? threads.filter((t) => !filed[t.threadId] || filed[t.threadId].hasNewReply)
+        : threads,
+    [threads, filed, hideFiled, loadedQuery],
+  );
 
   const dropCard = useCallback((cardId: string) => {
     setLanes((prev) => prev.map((l) => ({ ...l, cards: l.cards.filter((c) => c.id !== cardId) })));
@@ -243,16 +299,23 @@ export function Workspace({ project, initialCaseId }: { project: ProjectDTO; ini
     >
       <div className="flex h-full min-h-0">
         <Inbox
-          threads={threads}
+          threads={visibleThreads}
+          hiddenCount={threads.length - visibleThreads.length}
           filed={inboxFiled}
+          view={view}
+          labels={labels}
+          onViewChange={changeView}
+          hideFiled={hideFiled}
+          onHideFiledChange={changeHideFiled}
+          searching={!!loadedQuery}
           query={query}
           state={inboxState}
           error={inboxError}
           hasMore={!!nextPage}
           selectedThreadId={selection?.kind === "thread" ? selection.thread.threadId : undefined}
           onQueryChange={setQuery}
-          onSearch={() => loadInbox(query)}
-          onLoadMore={() => loadInbox(query, nextPage)}
+          onSearch={() => loadInbox(view, query)}
+          onLoadMore={() => loadInbox(view, loadedQuery, nextPage)}
           onOpen={(thread) => {
             const f = filed[thread.threadId];
             if (f && f.projectId === project.id) setSelection({ kind: "card", cardId: f.cardId });
@@ -263,12 +326,13 @@ export function Workspace({ project, initialCaseId }: { project: ProjectDTO; ini
           project={project}
           lanes={lanes}
           setLanes={setLanes}
+          newReplyCardIds={newReplyCardIds}
           onOpenCard={(cardId) => setSelection({ kind: "card", cardId })}
         />
       </div>
 
       <DragOverlay dropAnimation={null}>
-        {activeCard ? <CardFace card={activeCard} dragging /> : null}
+        {activeCard ? <CardFace card={activeCard} newReply={newReplyCardIds.has(activeCard.id)} dragging /> : null}
         {activeThread ? <EmailRowPreview thread={activeThread} /> : null}
       </DragOverlay>
 
@@ -279,6 +343,7 @@ export function Workspace({ project, initialCaseId }: { project: ProjectDTO; ini
           project={project}
           lanes={lanes}
           inbox={threads}
+          onEmailSeen={markSeen}
           onClose={() => setSelection(null)}
           onChange={(card) => {
             replaceCard(card);

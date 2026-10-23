@@ -8,6 +8,8 @@ An email client in the style of Sortd and Trello. The email is the root item:
 
 "My tasks" lists every task across all cases, grouped by due date.
 
+The inbox column is a triage queue. It shows Gmail's **Primary** tab by default; you can switch to the whole inbox, unread mail, or any of your Gmail labels. Emails already filed into a case are hidden until someone replies. A new reply brings the thread back marked "↩ New reply" and flags its case on the board. Search looks across all mail.
+
 Stack: Next.js 15 (App Router, server actions) · Prisma + Postgres · Gmail API (read-only) · dnd-kit · Tailwind.
 
 ## Deploy (GitHub → Vercel)

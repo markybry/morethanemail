@@ -14,10 +14,11 @@ type Props = {
   project: ProjectDTO;
   lanes: LaneDTO[];
   setLanes: Dispatch<SetStateAction<LaneDTO[]>>;
+  newReplyCardIds: Set<string>;
   onOpenCard: (cardId: string) => void;
 };
 
-export function Board({ project, lanes, setLanes, onOpenCard }: Props) {
+export function Board({ project, lanes, setLanes, newReplyCardIds, onOpenCard }: Props) {
   const router = useRouter();
   const [newLane, setNewLane] = useState("");
 
@@ -80,6 +81,7 @@ export function Board({ project, lanes, setLanes, onOpenCard }: Props) {
               setLanes((prev) => prev.map((l) => (l.id === lane.id ? { ...l, cards: [...l.cards, card] } : l)));
               onOpenCard(card.id);
             }}
+            newReplyCardIds={newReplyCardIds}
             onOpenCard={onOpenCard}
           />
         ))}
@@ -113,10 +115,11 @@ type LaneProps = {
   onRename: (name: string) => Promise<void>;
   onDelete: () => Promise<void>;
   onAddCase: (title: string) => Promise<void>;
+  newReplyCardIds: Set<string>;
   onOpenCard: (cardId: string) => void;
 };
 
-function Lane({ lane, isFirst, isLast, onMove, onRename, onDelete, onAddCase, onOpenCard }: LaneProps) {
+function Lane({ lane, isFirst, isLast, onMove, onRename, onDelete, onAddCase, newReplyCardIds, onOpenCard }: LaneProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `lane:${lane.id}` });
   const [adding, setAdding] = useState("");
 
@@ -141,7 +144,7 @@ function Lane({ lane, isFirst, isLast, onMove, onRename, onDelete, onAddCase, on
       >
         <SortableContext items={lane.cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
           {lane.cards.map((card) => (
-            <SortableCard key={card.id} card={card} onOpen={() => onOpenCard(card.id)} />
+            <SortableCard key={card.id} card={card} newReply={newReplyCardIds.has(card.id)} onOpen={() => onOpenCard(card.id)} />
           ))}
         </SortableContext>
       </div>
@@ -166,7 +169,7 @@ function Lane({ lane, isFirst, isLast, onMove, onRename, onDelete, onAddCase, on
   );
 }
 
-function SortableCard({ card, onOpen }: { card: CardDTO; onOpen: () => void }) {
+function SortableCard({ card, newReply, onOpen }: { card: CardDTO; newReply: boolean; onOpen: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id });
   return (
     <div
@@ -177,7 +180,7 @@ function SortableCard({ card, onOpen }: { card: CardDTO; onOpen: () => void }) {
       onClick={onOpen}
       className={isDragging ? "opacity-30" : ""}
     >
-      <CardFace card={card} />
+      <CardFace card={card} newReply={newReply} />
     </div>
   );
 }

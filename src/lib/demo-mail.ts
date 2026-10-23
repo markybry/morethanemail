@@ -1,41 +1,73 @@
-import type { ThreadDetail, ThreadSummary } from "./mail";
+import type { MailLabel, MailView, ThreadDetail, ThreadSummary } from "./mail";
 
-// Sample inbox used when the app runs without Google credentials.
-const DEMO: { id: string; from: string; subject: string; body: string; hoursAgo: number; unread?: boolean }[] = [
-  { id: "demo-1", from: "Sarah Chen <sarah@acme.co>", subject: "Q4 website redesign - kickoff", hoursAgo: 2, unread: true,
-    body: "Hi,\n\nThanks for the call earlier. Attached is the brief for the Q4 redesign. Could you send over a rough timeline and quote by Friday?\n\nKey asks:\n- New homepage\n- Pricing page refresh\n- Blog migration\n\nCheers,\nSarah" },
-  { id: "demo-2", from: "Accounts <billing@hostly.io>", subject: "Invoice #4821 is due in 7 days", hoursAgo: 5,
-    body: "Your invoice #4821 for £49.00 is due on the 30th. Pay online from your account dashboard." },
-  { id: "demo-3", from: "Tom Ellis <tom@ellisbuild.com>", subject: "Re: Kitchen extension - planning drawings", hoursAgo: 20, unread: true,
-    body: "Morning,\n\nThe architect has finished the revised drawings. Can you review and confirm by Wednesday so we can submit to the council?\n\nTom" },
-  { id: "demo-4", from: "Priya Patel <priya@studio9.design>", subject: "Logo concepts v2", hoursAgo: 30,
-    body: "Hey! Round two of logo concepts attached. I've pushed concept B further as discussed. Let me know your thoughts.\n\nPriya" },
-  { id: "demo-5", from: "GitHub <noreply@github.com>", subject: "[morethanemail] CI passed on main", hoursAgo: 40,
-    body: "All checks have passed on main." },
-  { id: "demo-6", from: "Jamie Ward <jamie@ward.family>", subject: "Weekend plans?", hoursAgo: 52,
-    body: "Are you free Saturday? Thinking of a walk then pub lunch." },
-  { id: "demo-7", from: "Recruiting <talent@bigcorp.com>", subject: "Interview scheduling - Senior Engineer", hoursAgo: 70, unread: true,
-    body: "We'd love to set up a second-round interview. Please reply with three slots that suit you next week." },
-  { id: "demo-8", from: "Insurance Direct <noreply@insdirect.co.uk>", subject: "Your car insurance renewal", hoursAgo: 96,
-    body: "Your policy renews on 14 November. Review your renewal quote before then to avoid auto-renewal." },
+// Sample mailbox used when the app runs without Google credentials.
+const LABELS: MailLabel[] = [
+  { id: "Label_clients", name: "Clients" },
+  { id: "Label_finance", name: "Finance" },
+  { id: "Label_home", name: "Home" },
 ];
 
-const at = (hoursAgo: number) => new Date(Date.now() - hoursAgo * 3_600_000).toISOString();
+type DemoThread = {
+  id: string;
+  from: string;
+  subject: string;
+  body: string;
+  hoursAgo: number;
+  unread?: boolean;
+  labels?: string[];
+};
 
-export function demoThreads(query?: string): ThreadSummary[] {
-  const q = query?.trim().toLowerCase();
-  return DEMO.filter((d) => !q || q === "in:inbox" || `${d.from} ${d.subject} ${d.body}`.toLowerCase().includes(q)).map(
-    (d) => ({
-      threadId: d.id,
-      subject: d.subject,
-      from: d.from,
-      snippet: d.body.replace(/\s+/g, " ").slice(0, 140),
-      date: at(d.hoursAgo),
-      unread: !!d.unread,
-      messageCount: 1,
-    }),
-  );
+const DEMO: DemoThread[] = [
+  { id: "demo-1", from: "Sarah Chen <sarah@acme.co>", subject: "Q4 website redesign - kickoff", hoursAgo: 2, unread: true, labels: ["INBOX", "CATEGORY_PERSONAL", "Label_clients"],
+    body: "Hi,\n\nThanks for the call earlier. Attached is the brief for the Q4 redesign. Could you send over a rough timeline and quote by Friday?\n\nKey asks:\n- New homepage\n- Pricing page refresh\n- Blog migration\n\nCheers,\nSarah" },
+  { id: "demo-2", from: "Accounts <billing@hostly.io>", subject: "Invoice #4821 is due in 7 days", hoursAgo: 5, labels: ["INBOX", "CATEGORY_UPDATES", "Label_finance"],
+    body: "Your invoice #4821 for £49.00 is due on the 30th. Pay online from your account dashboard." },
+  { id: "demo-3", from: "Tom Ellis <tom@ellisbuild.com>", subject: "Re: Kitchen extension - planning drawings", hoursAgo: 20, unread: true, labels: ["INBOX", "CATEGORY_PERSONAL", "Label_home"],
+    body: "Morning,\n\nThe architect has finished the revised drawings. Can you review and confirm by Wednesday so we can submit to the council?\n\nTom" },
+  { id: "demo-4", from: "Priya Patel <priya@studio9.design>", subject: "Logo concepts v2", hoursAgo: 30, labels: ["INBOX", "CATEGORY_PERSONAL", "Label_clients"],
+    body: "Hey! Round two of logo concepts attached. I've pushed concept B further as discussed. Let me know your thoughts.\n\nPriya" },
+  { id: "demo-5", from: "GitHub <noreply@github.com>", subject: "[morethanemail] CI passed on main", hoursAgo: 40, labels: ["INBOX", "CATEGORY_UPDATES"],
+    body: "All checks have passed on main." },
+  { id: "demo-6", from: "Jamie Ward <jamie@ward.family>", subject: "Weekend plans?", hoursAgo: 52, labels: ["INBOX", "CATEGORY_PERSONAL"],
+    body: "Are you free Saturday? Thinking of a walk then pub lunch." },
+  { id: "demo-7", from: "Recruiting <talent@bigcorp.com>", subject: "Interview scheduling - Senior Engineer", hoursAgo: 70, unread: true, labels: ["INBOX", "CATEGORY_PERSONAL"],
+    body: "We'd love to set up a second-round interview. Please reply with three slots that suit you next week." },
+  { id: "demo-8", from: "Insurance Direct <noreply@insdirect.co.uk>", subject: "Your car insurance renewal", hoursAgo: 96, labels: ["INBOX", "CATEGORY_UPDATES", "Label_finance"],
+    body: "Your policy renews on 14 November. Review your renewal quote before then to avoid auto-renewal." },
+  { id: "demo-9", from: "MegaStore <deals@megastore.com>", subject: "48 hours only: 30% off everything", hoursAgo: 3, unread: true, labels: ["INBOX", "CATEGORY_PROMOTIONS"],
+    body: "Our biggest sale of the season. Don't miss out!" },
+  { id: "demo-10", from: "Old Client <ops@oldclient.com>", subject: "Thanks for wrapping up the migration", hoursAgo: 400, labels: ["Label_clients"],
+    body: "All done on our side. Thanks again!" },
+];
+
+// Dates are fixed per server process, so a filed demo email doesn't look like it got a new reply.
+const BASE = Date.now();
+const at = (hoursAgo: number) => new Date(BASE - hoursAgo * 3_600_000).toISOString();
+
+function inView(d: DemoThread, view: MailView) {
+  const has = (l: string) => d.labels?.includes(l) ?? false;
+  if (view.startsWith("label:")) return has(view.slice("label:".length));
+  if (!has("INBOX")) return false;
+  if (view === "primary") return !["CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_UPDATES", "CATEGORY_FORUMS"].some(has);
+  if (view === "unread") return !!d.unread;
+  return true;
 }
+
+export function demoThreads(view: MailView, query?: string): ThreadSummary[] {
+  const q = query?.toLowerCase();
+  return DEMO.filter((d) => (q ? `${d.from} ${d.subject} ${d.body}`.toLowerCase().includes(q) : inView(d, view))).map((d) => ({
+    threadId: d.id,
+    subject: d.subject,
+    from: d.from,
+    snippet: d.body.replace(/\s+/g, " ").slice(0, 140),
+    date: at(d.hoursAgo),
+    unread: !!d.unread,
+    messageCount: 1,
+    labelIds: d.labels ?? [],
+  }));
+}
+
+export const demoLabels = () => LABELS;
 
 export function demoThreadDetail(threadId: string): ThreadDetail | null {
   const d = DEMO.find((x) => x.id === threadId);
