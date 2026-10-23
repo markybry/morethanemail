@@ -1,0 +1,40 @@
+name: CI
+
+# Vercel's GitHub integration deploys: main -> production, PRs -> preview.
+# This workflow makes sure every push and PR lints, typechecks, builds and migrates cleanly.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: morethanemail
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/morethanemail
+      DATABASE_URL_UNPOOLED: postgresql://postgres:postgres@localhost:5432/morethanemail
+      SESSION_SECRET: ci-only-secret-that-is-at-least-32-chars
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Migrations apply to an empty database
+        run: npx prisma migrate deploy
+      - name: Schema and migrations are in sync
+        run: npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
+      - run: npm run build
