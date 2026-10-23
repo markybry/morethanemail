@@ -18,7 +18,7 @@ type Props = {
   onFiled: (card: CardDTO, info: { projectId: string; projectName: string; laneName: string }) => void;
 };
 
-// Preview of an inbox email, with the two ways to file it: new case, or add to an existing case.
+// Preview of an inbox email, with the two ways to file it: new ticket, or add to an existing ticket.
 export function ThreadPanel({ thread, filed, project, lanes, onClose, onFiled }: Props) {
   const [laneId, setLaneId] = useState(lanes[0]?.id ?? "");
   const [cases, setCases] = useState<CaseOption[] | null>(null);
@@ -46,7 +46,7 @@ export function ThreadPanel({ thread, filed, project, lanes, onClose, onFiled }:
         </p>
         {filed && (
           <p className="mt-2 rounded-md bg-emerald-50 px-2 py-1 text-sm text-emerald-800">
-            Filed in case{" "}
+            Filed in ticket{" "}
             <Link href={`/p/${filed.projectId}?case=${filed.cardId}`} className="font-medium underline">
               {filed.cardTitle}
             </Link>{" "}
@@ -57,7 +57,7 @@ export function ThreadPanel({ thread, filed, project, lanes, onClose, onFiled }:
 
       <div className="grid gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:grid-cols-2">
         <div>
-          <p className="mb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase">Open a new case</p>
+          <p className="mb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase">Open a new ticket</p>
           <div className="flex gap-2">
             <select value={laneId} onChange={(e) => setLaneId(e.target.value)} className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm">
               {lanes.map((l) => (
@@ -76,21 +76,21 @@ export function ThreadPanel({ thread, filed, project, lanes, onClose, onFiled }:
               }}
               className="rounded-md bg-indigo-600 px-3 py-1 text-sm text-white hover:bg-indigo-700"
             >
-              {filed ? "Move case here" : "Create"}
+              {filed ? "Move ticket here" : "Create"}
             </button>
           </div>
         </div>
         <div>
-          <p className="mb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase">Add to an existing case</p>
+          <p className="mb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase">Add to an existing ticket</p>
           <input
             value={caseFilter}
             onChange={(e) => setCaseFilter(e.target.value)}
-            placeholder={cases ? `Search ${cases.length} cases…` : "Loading cases…"}
+            placeholder={cases ? `Search ${cases.length} tickets…` : "Loading tickets…"}
             className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
           />
           {caseFilter && (
             <div className="mt-1 rounded-md border border-slate-200 bg-white">
-              {matches.length === 0 && <p className="px-2 py-1 text-xs text-slate-500">No matching cases.</p>}
+              {matches.length === 0 && <p className="px-2 py-1 text-xs text-slate-500">No matching tickets.</p>}
               {matches.map((c) => (
                 <button
                   key={c.id}

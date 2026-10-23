@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/session";
 import { dueLabel, isOverdue } from "@/lib/format";
 import { TaskCheckbox } from "@/components/TaskCheckbox";
 
-// Every task across every case and project, grouped by when it is due.
+// Every task across every ticket and workspace, grouped by when it is due.
 export default async function TasksPage() {
   const user = await requireUser();
   const tasks = await db.task.findMany({
@@ -28,9 +28,9 @@ export default async function TasksPage() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl p-6">
         <h1 className="text-xl font-semibold">My tasks</h1>
-        <p className="mt-1 text-sm text-slate-500">{open.length} open across all cases and projects.</p>
+        <p className="mt-1 text-sm text-slate-500">{open.length} open across all tickets and workspaces.</p>
         {tasks.length === 0 && (
-          <p className="mt-8 text-slate-500">No tasks yet. Open a case on a board and add tasks to it.</p>
+          <p className="mt-8 text-slate-500">No tasks yet. Open a ticket on a board and add tasks to it.</p>
         )}
         {groups
           .filter((g) => g.items.length)

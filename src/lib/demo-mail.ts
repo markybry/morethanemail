@@ -2,9 +2,12 @@ import type { MailLabel, MailView, ThreadDetail, ThreadSummary } from "./mail";
 
 // Sample mailbox used when the app runs without Google credentials.
 const LABELS: MailLabel[] = [
-  { id: "Label_clients", name: "Clients" },
-  { id: "Label_finance", name: "Finance" },
-  { id: "Label_home", name: "Home" },
+  { id: "Label_clients", name: "Clients", unread: 1 },
+  { id: "Label_acme", name: "Clients/Acme", unread: 1 },
+  { id: "Label_studio9", name: "Clients/Studio 9", unread: 0 },
+  { id: "Label_finance", name: "Finance", unread: 0 },
+  { id: "Label_home", name: "Home", unread: 1 },
+  { id: "Label_kitchen", name: "Home/Kitchen extension", unread: 1 },
 ];
 
 type DemoThread = {
@@ -18,13 +21,13 @@ type DemoThread = {
 };
 
 const DEMO: DemoThread[] = [
-  { id: "demo-1", from: "Sarah Chen <sarah@acme.co>", subject: "Q4 website redesign - kickoff", hoursAgo: 2, unread: true, labels: ["INBOX", "CATEGORY_PERSONAL", "Label_clients"],
+  { id: "demo-1", from: "Sarah Chen <sarah@acme.co>", subject: "Q4 website redesign - kickoff", hoursAgo: 2, unread: true, labels: ["INBOX", "CATEGORY_PERSONAL", "Label_clients", "Label_acme"],
     body: "Hi,\n\nThanks for the call earlier. Attached is the brief for the Q4 redesign. Could you send over a rough timeline and quote by Friday?\n\nKey asks:\n- New homepage\n- Pricing page refresh\n- Blog migration\n\nCheers,\nSarah" },
   { id: "demo-2", from: "Accounts <billing@hostly.io>", subject: "Invoice #4821 is due in 7 days", hoursAgo: 5, labels: ["INBOX", "CATEGORY_UPDATES", "Label_finance"],
     body: "Your invoice #4821 for £49.00 is due on the 30th. Pay online from your account dashboard." },
-  { id: "demo-3", from: "Tom Ellis <tom@ellisbuild.com>", subject: "Re: Kitchen extension - planning drawings", hoursAgo: 20, unread: true, labels: ["INBOX", "CATEGORY_PERSONAL", "Label_home"],
+  { id: "demo-3", from: "Tom Ellis <tom@ellisbuild.com>", subject: "Re: Kitchen extension - planning drawings", hoursAgo: 20, unread: true, labels: ["INBOX", "CATEGORY_PERSONAL", "Label_home", "Label_kitchen"],
     body: "Morning,\n\nThe architect has finished the revised drawings. Can you review and confirm by Wednesday so we can submit to the council?\n\nTom" },
-  { id: "demo-4", from: "Priya Patel <priya@studio9.design>", subject: "Logo concepts v2", hoursAgo: 30, labels: ["INBOX", "CATEGORY_PERSONAL", "Label_clients"],
+  { id: "demo-4", from: "Priya Patel <priya@studio9.design>", subject: "Logo concepts v2", hoursAgo: 30, labels: ["INBOX", "CATEGORY_PERSONAL", "Label_clients", "Label_studio9"],
     body: "Hey! Round two of logo concepts attached. I've pushed concept B further as discussed. Let me know your thoughts.\n\nPriya" },
   { id: "demo-5", from: "GitHub <noreply@github.com>", subject: "[morethanemail] CI passed on main", hoursAgo: 40, labels: ["INBOX", "CATEGORY_UPDATES"],
     body: "All checks have passed on main." },

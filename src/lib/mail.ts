@@ -19,7 +19,8 @@ export type ThreadSummary = {
 // "primary" matches Gmail's Primary inbox tab; "label:<id>" is one Gmail label.
 export type MailView = "primary" | "inbox" | "unread" | `label:${string}`;
 
-export type MailLabel = { id: string; name: string };
+// Gmail nests labels by name: "Clients/Acme" sits under "Clients".
+export type MailLabel = { id: string; name: string; unread: number };
 
 export type MessageDetail = {
   id: string;
@@ -71,14 +72,20 @@ const VIEW_QUERIES = {
   unread: "in:inbox is:unread",
 };
 
-// The user's own Gmail labels (not system ones like INBOX or CATEGORY_*).
+// The user's own Gmail labels (not system ones like INBOX or CATEGORY_*),
+// with unread thread counts. labels.list has no counts, so each label is fetched.
 export async function listLabels(user: User): Promise<MailLabel[]> {
   if (user.isDemo) return demoLabels();
-  const res = await gmailFor(user).users.labels.list({ userId: "me" });
-  return (res.data.labels ?? [])
-    .filter((l) => l.type === "user" && l.id && l.name)
-    .map((l) => ({ id: l.id!, name: l.name! }))
-    .sort((x, y) => x.name.localeCompare(y.name));
+  const gmail = gmailFor(user);
+  const res = await gmail.users.labels.list({ userId: "me" });
+  const own = (res.data.labels ?? []).filter((l) => l.type === "user" && l.id && l.name);
+  const labels = await Promise.all(
+    own.map(async (l) => {
+      const full = await gmail.users.labels.get({ userId: "me", id: l.id!, fields: "threadsUnread" });
+      return { id: l.id!, name: l.name!, unread: full.data.threadsUnread ?? 0 };
+    }),
+  );
+  return labels.sort((x, y) => x.name.localeCompare(y.name));
 }
 
 export async function getThread(user: User, threadId: string): Promise<ThreadDetail | null> {

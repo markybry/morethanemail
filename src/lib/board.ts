@@ -65,7 +65,7 @@ export async function newProject(userId: string, name: string, originCardId?: st
   return db.project.create({
     data: {
       userId,
-      name: name.trim() || "Untitled project",
+      name: name.trim() || "Untitled workspace",
       color: PROJECT_COLORS[count % PROJECT_COLORS.length],
       position: count,
       originCardId,

@@ -21,7 +21,7 @@ import { cardInclude, newProject, toCardDTO } from "@/lib/board";
 async function ownProject(projectId: string) {
   const user = await requireUser();
   const project = await db.project.findFirst({ where: { id: projectId, userId: user.id } });
-  if (!project) throw new Error("Project not found");
+  if (!project) throw new Error("Workspace not found");
   return { user, project };
 }
 
@@ -35,7 +35,7 @@ async function ownLane(laneId: string) {
 async function ownCard(cardId: string) {
   const user = await requireUser();
   const card = await db.card.findFirst({ where: { id: cardId, userId: user.id } });
-  if (!card) throw new Error("Case not found");
+  if (!card) throw new Error("Ticket not found");
   return { user, card };
 }
 
@@ -154,7 +154,7 @@ export async function createProject(name: string) {
 
 export async function renameProject(projectId: string, name: string) {
   await ownProject(projectId);
-  await db.project.update({ where: { id: projectId }, data: { name: name.trim() || "Untitled project" } });
+  await db.project.update({ where: { id: projectId }, data: { name: name.trim() || "Untitled workspace" } });
   revalidatePath("/", "layout");
 }
 
@@ -236,14 +236,14 @@ export async function fileEmail(laneId: string, thread: ThreadSummary, orderedCa
 // Open an empty case by hand (no email yet).
 export async function createCase(laneId: string, title: string) {
   const { user } = await ownLane(laneId);
-  const card = await db.card.create({ data: { userId: user.id, laneId, title: title.trim() || "New case", position: 0 } });
+  const card = await db.card.create({ data: { userId: user.id, laneId, title: title.trim() || "New ticket", position: 0 } });
   await appendToLane(user.id, card.id, laneId);
   return loadCard(card.id);
 }
 
 export async function renameCase(cardId: string, title: string) {
   await ownCard(cardId);
-  await db.card.update({ where: { id: cardId }, data: { title: title.trim() || "Untitled case" } });
+  await db.card.update({ where: { id: cardId }, data: { title: title.trim() || "Untitled ticket" } });
   revalidatePath("/", "layout");
 }
 

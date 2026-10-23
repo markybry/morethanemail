@@ -2,13 +2,15 @@
 
 An email client in the style of Sortd and Trello. The email is the root item:
 
-1. **Email → Case.** Drag an email from the inbox onto a lane and it becomes a case (a ticket).
-2. **Case grows.** Link more email threads to it, add notes and tasks with due dates, rename it, move it between lanes and projects. Split an email out into its own case if it turns into something separate.
-3. **Case → Project.** "Promote to project" gives a case its own board. The case moves onto that board with everything attached, so nothing is copied or lost. A project is just a set of connected cases.
+1. **Email → Ticket.** Drag an email from the inbox onto a lane and it becomes a ticket.
+2. **Ticket grows.** Link more email threads to it, add notes and tasks with due dates, rename it, and move it between lanes and workspaces. Split an email out into its own ticket if it turns into something separate.
+3. **Ticket → Workspace.** "Promote to workspace" gives a ticket its own board. The ticket moves onto that board with everything attached, so nothing is copied or lost. A workspace is just a set of connected tickets, whether it's a project, a case or an investigation.
 
-"My tasks" lists every task across all cases, grouped by due date.
+"My tasks" lists every task across all tickets, grouped by due date.
 
-The inbox column is a triage queue. It shows Gmail's **Primary** tab by default; you can switch to the whole inbox, unread mail, or any of your Gmail labels. Emails already filed into a case are hidden until someone replies. A new reply brings the thread back marked "↩ New reply" and flags its case on the board. Search looks across all mail.
+The left sidebar shows your Gmail labels as a nested tree (`Parent/Child` names) with unread counts, with Inbox at the top. Clicking one opens it in the inbox column, which works as a triage queue. Inbox shows Gmail's **Primary** tab by default, with a switch to all tabs. Emails already filed into a ticket are hidden until someone replies. A new reply brings the thread back marked "↩ New reply" and flags its ticket on the board. Search looks across all mail.
+
+(In the code and database, workspaces are `Project` and tickets are `Card`.)
 
 Stack: Next.js 15 (App Router, server actions) · Prisma + Postgres · Gmail API (read-only) · dnd-kit · Tailwind.
 

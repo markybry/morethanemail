@@ -43,7 +43,7 @@ export function CasePanel({ card, project, lanes, inbox, onEmailSeen, onClose, o
   const [busy, setBusy] = useState("");
 
   async function promote() {
-    setBusy("Creating project…");
+    setBusy("Creating workspace…");
     const projectId = await promoteToProject(card.id);
     router.push(`/p/${projectId}?case=${card.id}`);
   }
@@ -51,7 +51,7 @@ export function CasePanel({ card, project, lanes, inbox, onEmailSeen, onClose, o
   return (
     <Drawer onClose={onClose}>
       <DrawerHeader onClose={onClose}>
-        <p className="mb-1 text-xs font-medium tracking-wide text-slate-400 uppercase">Case</p>
+        <p className="mb-1 text-xs font-medium tracking-wide text-slate-400 uppercase">Ticket</p>
         <InlineEdit
           value={card.title}
           onSave={async (title) => {
@@ -74,21 +74,21 @@ export function CasePanel({ card, project, lanes, inbox, onEmailSeen, onClose, o
           </select>
           <MoveElsewhere card={card} project={project} onMoved={(projectId) => onMovedAway(card.id, { projectId })} />
           {isRootCase ? (
-            <span className="rounded-md bg-indigo-50 px-2 py-1 text-xs text-indigo-700">This project grew from this case</span>
+            <span className="rounded-md bg-indigo-50 px-2 py-1 text-xs text-indigo-700">This workspace grew from this ticket</span>
           ) : (
             <button
               onClick={promote}
               disabled={!!busy}
               className="rounded-md bg-indigo-600 px-2.5 py-1 text-white hover:bg-indigo-700 disabled:opacity-50"
-              title="Give this case its own project board. The case moves there with all its emails, notes and tasks."
+              title="Give this ticket its own workspace board. The ticket moves there with all its emails, notes and tasks."
             >
-              {busy || "⇪ Promote to project"}
+              {busy || "⇪ Promote to workspace"}
             </button>
           )}
           <div className="ml-auto">
             <ConfirmButton
-              label="Delete case"
-              confirmLabel="Delete case, notes and tasks?"
+              label="Delete ticket"
+              confirmLabel="Delete ticket, notes and tasks?"
               onConfirm={async () => {
                 await removeCard(card.id);
                 onRemoved(card.id);
@@ -105,7 +105,7 @@ export function CasePanel({ card, project, lanes, inbox, onEmailSeen, onClose, o
   );
 }
 
-// ---------- move to another project ----------
+// ---------- move to another workspace ----------
 
 function MoveElsewhere({ card, project, onMoved }: { card: CardDTO; project: ProjectDTO; onMoved: (projectId: string) => void }) {
   const [options, setOptions] = useState<LaneOption[] | null>(null);
@@ -117,7 +117,7 @@ function MoveElsewhere({ card, project, onMoved }: { card: CardDTO; project: Pro
   if (!open)
     return (
       <button onClick={() => setOpen(true)} className="rounded-md border border-slate-300 px-2 py-1 text-slate-600 hover:bg-slate-50">
-        Move to project…
+        Move to workspace…
       </button>
     );
   return (
@@ -134,7 +134,7 @@ function MoveElsewhere({ card, project, onMoved }: { card: CardDTO; project: Pro
       className="rounded-md border border-indigo-400 bg-white px-2 py-1"
     >
       <option value="" disabled>
-        {options ? (options.length ? "Choose project › lane" : "No other projects") : "Loading…"}
+        {options ? (options.length ? "Choose workspace › lane" : "No other workspaces") : "Loading…"}
       </option>
       {options?.map((l) => (
         <option key={l.id} value={l.id}>
@@ -347,7 +347,7 @@ function Emails({
                     onSplit(res.from, res.created);
                   }}
                   className="text-xs text-slate-500 hover:text-indigo-600"
-                  title="Move this email into a new case of its own"
+                  title="Move this email into a new ticket of its own"
                 >
                   Split out
                 </button>
@@ -358,7 +358,7 @@ function Emails({
                   await detachEmail(e.id);
                 }}
                 className="text-xs text-slate-400 hover:text-red-600"
-                title="Unlink email from this case"
+                title="Unlink email from this ticket"
               >
                 ✕
               </button>
