@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { getThread, listThreads, type ThreadSummary } from "@/lib/mail";
+import { getThread, listThreads, mailErrorMessage, type ThreadDetail, type ThreadSummary } from "@/lib/mail";
 import { requireUser } from "@/lib/session";
 import type { CardDTO, CaseOption, FiledInfo, LaneOption } from "@/lib/types";
 import { cardInclude, newProject, toCardDTO } from "@/lib/board";
@@ -41,9 +41,22 @@ const emailData = (t: ThreadSummary) => ({
 
 // ---------- mail ----------
 
-export async function fetchInbox(query?: string, pageToken?: string) {
+type InboxResult = {
+  threads: ThreadSummary[];
+  nextPageToken?: string;
+  filed: Record<string, FiledInfo>;
+  error?: string;
+};
+
+export async function fetchInbox(query?: string, pageToken?: string): Promise<InboxResult> {
   const user = await requireUser();
-  const result = await listThreads(user, { query, pageToken });
+  let result: Awaited<ReturnType<typeof listThreads>>;
+  try {
+    result = await listThreads(user, { query, pageToken });
+  } catch (e) {
+    console.error("fetchInbox failed", e);
+    return { threads: [], filed: {}, error: mailErrorMessage(e) };
+  }
   const links = await db.cardEmail.findMany({
     where: { userId: user.id, threadId: { in: result.threads.map((t) => t.threadId) } },
     select: {
@@ -66,9 +79,14 @@ export async function fetchInbox(query?: string, pageToken?: string) {
   return { ...result, filed };
 }
 
-export async function fetchThread(threadId: string) {
+export async function fetchThread(threadId: string): Promise<{ thread: ThreadDetail | null; error?: string }> {
   const user = await requireUser();
-  return getThread(user, threadId);
+  try {
+    return { thread: await getThread(user, threadId) };
+  } catch (e) {
+    console.error("fetchThread failed", e);
+    return { thread: null, error: mailErrorMessage(e) };
+  }
 }
 
 // Everything the "move to" and "attach to" pickers need.

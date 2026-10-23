@@ -74,6 +74,20 @@ export async function getThread(user: User, threadId: string): Promise<ThreadDet
   return { threadId, subject: messages[0]?.subject || "(no subject)", messages };
 }
 
+// Production hides the text of errors thrown from server actions, so mail
+// failures are turned into messages the UI can show and act on.
+export function mailErrorMessage(e: unknown): string {
+  const err = e as { code?: unknown; status?: number; message?: string };
+  const msg = err.message ?? "";
+  if (/insufficient authentication scopes/i.test(msg))
+    return "Gmail access wasn't granted. Sign out, sign in again and tick “View your email messages and settings”.";
+  if (/invalid_grant/i.test(msg)) return "Your Google sign-in has expired. Sign out and sign in again.";
+  if (/has not been used|is disabled/i.test(msg))
+    return "The Gmail API isn't enabled for this Google Cloud project. Enable it in the Google Cloud Console.";
+  if (err.status === 429 || err.code === 429) return "Gmail is rate-limiting requests. Try again in a minute.";
+  return "Couldn't load email from Gmail. Try again, or sign out and back in.";
+}
+
 function summarize(thread: gmail_v1.Schema$Thread): ThreadSummary {
   const messages = thread.messages ?? [];
   const first = messages[0];

@@ -14,7 +14,11 @@ export function ThreadView({ threadId }: { threadId: string }) {
   useEffect(() => {
     let live = true;
     fetchThread(threadId)
-      .then((t) => live && setThread(t))
+      .then((res) => {
+        if (!live) return;
+        if (res.error) setError(res.error);
+        else setThread(res.thread);
+      })
       .catch((e) => live && setError(e instanceof Error ? e.message : "Could not load email"));
     return () => {
       live = false;
