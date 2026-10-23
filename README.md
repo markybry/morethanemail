@@ -1,16 +1,14 @@
 # More Than Email
 
-An email client in the style of Sortd and Trello. The email is the root item:
+An email client in the style of Sortd and Trello, run entirely off Gmail labels and emails.
 
-1. **Email → Ticket.** Drag an email from the inbox onto a lane and it becomes a ticket.
-2. **Ticket grows.** Link more email threads to it, add notes and tasks with due dates, rename it, and move it between lanes and workspaces. Split an email out into its own ticket if it turns into something separate.
-3. **Ticket → Workspace.** "Promote to workspace" gives a ticket its own board. The ticket moves onto that board with everything attached, so nothing is copied or lost. A workspace is just a set of connected tickets, whether it's a project, a case or an investigation.
+- **Every Gmail label is a workspace**, Inbox included. The sidebar shows your labels as a nested tree (`Parent/Child` names) with unread counts. Opening a label for the first time creates its workspace.
+- **A workspace starts with just the label's emails** in an unsorted column, read live from Gmail. There are no preset columns. Add lanes when you want them, then drag emails into them.
+- **The email is the ticket.** Notes and tasks belong to the email thread itself and follow it into every label it carries. One email can sit in a different lane in each of its labels' workspaces.
+- **New replies** show on the card ("↩ New reply") until you open the email.
+- In the Inbox, a **Primary / All tabs** switch keeps promotions out. Search looks within the current label.
 
-"My tasks" lists every task across all tickets, grouped by due date.
-
-The left sidebar shows your Gmail labels as a nested tree (`Parent/Child` names) with unread counts, with Inbox at the top. Clicking one opens it in the inbox column, which works as a triage queue. Inbox shows Gmail's **Primary** tab by default, with a switch to all tabs. Emails already filed into a ticket are hidden until someone replies. A new reply brings the thread back marked "↩ New reply" and flags its ticket on the board. Search looks across all mail.
-
-(In the code and database, workspaces are `Project` and tickets are `Card`.)
+"My tasks" lists every task across all your emails, grouped by due date.
 
 Stack: Next.js 15 (App Router, server actions) · Prisma + Postgres · Gmail API (read-only) · dnd-kit · Tailwind.
 

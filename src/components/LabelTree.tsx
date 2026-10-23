@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { MailLabel, MailView } from "@/lib/mail";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import type { MailLabel } from "@/lib/mail";
 import { useMail } from "./MailContext";
 
 const OPEN_KEY = "mte.labelsOpen";
@@ -9,7 +11,7 @@ const OPEN_KEY = "mte.labelsOpen";
 type Node = { segment: string; path: string; label?: MailLabel; children: Node[] };
 
 // Gmail nests labels by name ("Clients/Acme"), so the tree is built from the names.
-// A parent that isn't itself a label still shows, just not clickable.
+// A parent that isn't itself a label still shows, but only expands.
 function buildTree(labels: MailLabel[]): Node[] {
   const root: Node = { segment: "", path: "", children: [] };
   for (const l of labels) {
@@ -29,8 +31,12 @@ function buildTree(labels: MailLabel[]): Node[] {
   return root.children;
 }
 
+const hrefFor = (labelId: string) => `/l/${encodeURIComponent(labelId)}`;
+
+// Every label is a workspace: Inbox first, then the user's labels as a tree.
 export function MailNav() {
-  const { view, setView, labels } = useMail();
+  const { labels } = useMail();
+  const pathname = usePathname();
   const tree = useMemo(() => buildTree(labels), [labels]);
   const [open, setOpen] = useState<Set<string>>(new Set());
 
@@ -40,8 +46,9 @@ export function MailNav() {
     } catch {}
   }, []);
 
+  const activeId = pathname.startsWith("/l/") ? decodeURIComponent(pathname.slice(3)) : null;
   // Keep the branch holding the open label expanded.
-  const activePath = labels.find((l) => view === `label:${l.id}`)?.name;
+  const activePath = labels.find((l) => l.id === activeId)?.name;
   const isOpen = (path: string) => open.has(path) || (!!activePath && activePath.startsWith(`${path}/`));
 
   const toggle = (path: string) => {
@@ -56,16 +63,13 @@ export function MailNav() {
     });
   };
 
-  const inboxActive = view === "primary" || view === "inbox";
-
   return (
     <div>
-      <p className="px-5 pb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase">Mail</p>
-      <NavRow active={inboxActive} depth={0} onClick={() => setView("primary")}>
+      <NavRow href={hrefFor("INBOX")} active={activeId === "INBOX"} depth={0}>
         <span className="truncate">Inbox</span>
       </NavRow>
       {tree.map((n) => (
-        <TreeNode key={n.path} node={n} depth={0} view={view} isOpen={isOpen} onToggle={toggle} onSelect={setView} />
+        <TreeNode key={n.path} node={n} depth={0} activeId={activeId} isOpen={isOpen} onToggle={toggle} />
       ))}
     </div>
   );
@@ -74,79 +78,89 @@ export function MailNav() {
 function TreeNode({
   node,
   depth,
-  view,
+  activeId,
   isOpen,
   onToggle,
-  onSelect,
 }: {
   node: Node;
   depth: number;
-  view: MailView;
+  activeId: string | null;
   isOpen: (path: string) => boolean;
   onToggle: (path: string) => void;
-  onSelect: (v: MailView) => void;
 }) {
   const expanded = isOpen(node.path);
-  const hasChildren = node.children.length > 0;
-  const active = !!node.label && view === `label:${node.label.id}`;
+  const chevron =
+    node.children.length > 0 ? (
+      <span
+        role="button"
+        aria-label={expanded ? "Collapse" : "Expand"}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onToggle(node.path);
+        }}
+        className="w-3 shrink-0 text-center text-slate-500 hover:text-white"
+      >
+        {expanded ? "▾" : "▸"}
+      </span>
+    ) : undefined;
+  const content = (
+    <>
+      <span className={`truncate ${node.label?.unread ? "font-medium text-slate-100" : ""}`}>{node.segment}</span>
+      {!!node.label?.unread && <span className="ml-auto pl-2 text-xs text-slate-400">{node.label.unread}</span>}
+    </>
+  );
   return (
     <>
-      <NavRow
-        active={active}
-        depth={depth}
-        onClick={() => (node.label ? onSelect(`label:${node.label.id}`) : onToggle(node.path))}
-        chevron={
-          hasChildren ? (
-            <span
-              role="button"
-              aria-label={expanded ? "Collapse" : "Expand"}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggle(node.path);
-              }}
-              className="w-3 shrink-0 text-center text-slate-500 hover:text-white"
-            >
-              {expanded ? "▾" : "▸"}
-            </span>
-          ) : (
-            <span className="w-3 shrink-0" />
-          )
-        }
-      >
-        <span className={`truncate ${node.label?.unread ? "font-medium text-slate-100" : ""}`}>{node.segment}</span>
-        {!!node.label?.unread && <span className="ml-auto pl-2 text-xs text-slate-400">{node.label.unread}</span>}
-      </NavRow>
+      {node.label ? (
+        <NavRow href={hrefFor(node.label.id)} active={node.label.id === activeId} depth={depth} chevron={chevron}>
+          {content}
+        </NavRow>
+      ) : (
+        <NavRow onClick={() => onToggle(node.path)} active={false} depth={depth} chevron={chevron}>
+          {content}
+        </NavRow>
+      )}
       {expanded &&
         node.children.map((c) => (
-          <TreeNode key={c.path} node={c} depth={depth + 1} view={view} isOpen={isOpen} onToggle={onToggle} onSelect={onSelect} />
+          <TreeNode key={c.path} node={c} depth={depth + 1} activeId={activeId} isOpen={isOpen} onToggle={onToggle} />
         ))}
     </>
   );
 }
 
 function NavRow({
+  href,
+  onClick,
   active,
   depth,
   chevron,
-  onClick,
   children,
 }: {
+  href?: string;
+  onClick?: () => void;
   active: boolean;
   depth: number;
   chevron?: React.ReactNode;
-  onClick: () => void;
   children: React.ReactNode;
 }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{ paddingLeft: 12 + depth * 14 }}
-      className={`mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 rounded-md py-1 pr-3 text-left text-sm hover:bg-slate-800 ${
-        active ? "bg-slate-800 text-white" : ""
-      }`}
-    >
+  const className = `mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 rounded-md py-1 pr-3 text-left text-sm hover:bg-slate-800 ${
+    active ? "bg-slate-800 text-white" : ""
+  }`;
+  const style = { paddingLeft: 12 + depth * 14 };
+  const inner = (
+    <>
       {chevron ?? <span className="w-3 shrink-0" />}
       {children}
+    </>
+  );
+  return href ? (
+    <Link href={href} className={className} style={style}>
+      {inner}
+    </Link>
+  ) : (
+    <button onClick={onClick} className={className} style={style}>
+      {inner}
     </button>
   );
 }

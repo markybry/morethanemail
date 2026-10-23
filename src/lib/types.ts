@@ -2,40 +2,20 @@
 
 export type TaskDTO = { id: string; title: string; done: boolean; dueDate: string | null };
 export type NoteDTO = { id: string; body: string; createdAt: string };
-export type CaseEmailDTO = { id: string; threadId: string; subject: string; from: string; snippet: string; emailDate: string };
 
-// A case: the card on a board. Starts small (often one email) and grows.
-export type CardDTO = {
-  id: string;
-  laneId: string;
-  title: string;
-  emails: CaseEmailDTO[]; // newest first
+// Enough about a thread to show it and to create its Email record.
+export type ThreadSnapshot = { threadId: string; subject: string; from: string; snippet: string; date: string };
+
+// An email as the board shows it. The email is the ticket: notes and tasks
+// belong to it directly.
+export type BoardEmail = ThreadSnapshot & {
+  unread: boolean;
+  labelIds: string[];
   notes: NoteDTO[];
   tasks: TaskDTO[];
+  newReply: boolean; // has messages newer than the user last opened
 };
 
-export type LaneDTO = { id: string; name: string; cards: CardDTO[] };
+export type LaneDTO = { id: string; name: string; threadIds: string[] };
 
-export type ProjectDTO = {
-  id: string;
-  name: string;
-  color: string;
-  origin: { cardId: string; title: string } | null;
-  lanes: LaneDTO[];
-};
-
-export type ProjectListItem = { id: string; name: string; color: string };
-
-// Where an inbox thread has already been filed.
-export type FiledInfo = {
-  cardId: string;
-  cardTitle: string;
-  projectId: string;
-  projectName: string;
-  laneName: string;
-  hasNewReply?: boolean; // the thread has messages newer than the case has seen
-};
-
-// Every case, for "move to" / "attach to" pickers.
-export type CaseOption = { id: string; title: string; projectId: string; projectName: string; laneName: string };
-export type LaneOption = { id: string; name: string; projectId: string; projectName: string };
+export type WorkspaceDTO = { id: string; labelId: string; name: string; lanes: LaneDTO[] };

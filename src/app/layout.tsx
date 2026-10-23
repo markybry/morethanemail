@@ -9,7 +9,7 @@ const geistSans = Geist({
 
 export const metadata: Metadata = {
   title: "More Than Email",
-  description: "Turn emails into tickets, and tickets into workspaces.",
+  description: "Every Gmail label is a workspace; every email is a ticket.",
 };
 
 export default function RootLayout({

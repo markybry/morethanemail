@@ -1,76 +1,88 @@
-import type { Card, CardEmail, Note, Task } from "@prisma/client";
+import "server-only";
+import type { Email, Note, Task, User } from "@prisma/client";
 import { db } from "./db";
-import type { CardDTO, ProjectDTO } from "./types";
+import { getLabelName, type ThreadSummary } from "./mail";
+import type { BoardEmail, ThreadSnapshot, WorkspaceDTO } from "./types";
 
-const DEFAULT_LANES = ["To do", "In progress", "Waiting on others", "Done"];
-const PROJECT_COLORS = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#8b5cf6"];
-
-export const cardInclude = {
-  emails: { orderBy: { emailDate: "desc" } },
+export const emailInclude = {
   notes: { orderBy: { createdAt: "desc" } },
   tasks: { orderBy: { position: "asc" } },
 } as const;
 
-export function toCardDTO(card: Card & { emails: CardEmail[]; notes: Note[]; tasks: Task[] }): CardDTO {
+type EmailWithMeta = Email & { notes: Note[]; tasks: Task[] };
+
+// Combine what Gmail says now (if known) with what the app has stored.
+export function toBoardEmail(stored: EmailWithMeta | undefined, live?: ThreadSummary): BoardEmail {
+  const date = live?.date ?? stored!.date.toISOString();
+  const lastSeen = stored?.lastSeenAt?.getTime();
   return {
-    id: card.id,
-    laneId: card.laneId,
-    title: card.title,
-    emails: card.emails.map((e) => ({
-      id: e.id,
-      threadId: e.threadId,
-      subject: e.subject,
-      from: e.from,
-      snippet: e.snippet,
-      emailDate: e.emailDate.toISOString(),
-    })),
-    notes: card.notes.map((n) => ({ id: n.id, body: n.body, createdAt: n.createdAt.toISOString() })),
-    tasks: card.tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, dueDate: t.dueDate?.toISOString() ?? null })),
+    threadId: live?.threadId ?? stored!.threadId,
+    subject: live?.subject ?? stored!.subject,
+    from: live?.from ?? stored!.from,
+    snippet: live?.snippet ?? stored!.snippet,
+    date,
+    unread: live?.unread ?? false,
+    labelIds: live?.labelIds ?? [],
+    notes: stored?.notes.map((n) => ({ id: n.id, body: n.body, createdAt: n.createdAt.toISOString() })) ?? [],
+    tasks:
+      stored?.tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, dueDate: t.dueDate?.toISOString() ?? null })) ?? [],
+    newReply: lastSeen !== undefined && new Date(date).getTime() > lastSeen + 1000,
   };
 }
 
-export async function loadProject(userId: string, projectId: string): Promise<ProjectDTO | null> {
-  const project = await db.project.findFirst({
-    where: { id: projectId, userId },
+export const snapshotData = (t: ThreadSnapshot) => ({
+  subject: t.subject,
+  from: t.from,
+  snippet: t.snippet,
+  date: new Date(t.date),
+});
+
+// Find or create the Email record for a thread the user is acting on.
+export function upsertEmail(userId: string, t: ThreadSnapshot) {
+  return db.email.upsert({
+    where: { userId_threadId: { userId, threadId: t.threadId } },
+    create: { userId, threadId: t.threadId, ...snapshotData(t) },
+    update: snapshotData(t),
+  });
+}
+
+// A label's workspace, created the first time the label is opened.
+// Returns null if the user has no such Gmail label.
+export async function ensureWorkspace(user: User, labelId: string) {
+  const existing = await db.workspace.findUnique({ where: { userId_labelId: { userId: user.id, labelId } } });
+  if (existing) return existing;
+  const name = await getLabelName(user, labelId);
+  if (name === null) return null;
+  return db.workspace.upsert({
+    where: { userId_labelId: { userId: user.id, labelId } },
+    create: { userId: user.id, labelId, name },
+    update: {},
+  });
+}
+
+// The workspace's lanes plus the stored state of every email placed in them.
+export async function loadWorkspace(
+  userId: string,
+  workspaceId: string,
+): Promise<{ workspace: WorkspaceDTO; emails: Record<string, BoardEmail> }> {
+  const ws = await db.workspace.findFirstOrThrow({
+    where: { id: workspaceId, userId },
     include: {
       lanes: {
         orderBy: { position: "asc" },
-        include: { cards: { orderBy: { position: "asc" }, include: cardInclude } },
+        include: { placements: { orderBy: { position: "asc" }, include: { email: { include: emailInclude } } } },
       },
     },
   });
-  if (!project) return null;
-  const origin = project.originCardId
-    ? await db.card.findFirst({ where: { id: project.originCardId, userId }, select: { id: true, title: true } })
-    : null;
+  const emails: Record<string, BoardEmail> = {};
+  for (const l of ws.lanes) for (const p of l.placements) emails[p.email.threadId] = toBoardEmail(p.email);
   return {
-    id: project.id,
-    name: project.name,
-    color: project.color,
-    origin: origin ? { cardId: origin.id, title: origin.title } : null,
-    lanes: project.lanes.map((l) => ({ id: l.id, name: l.name, cards: l.cards.map(toCardDTO) })),
-  };
-}
-
-export async function listProjects(userId: string) {
-  return db.project.findMany({
-    where: { userId },
-    orderBy: { position: "asc" },
-    select: { id: true, name: true, color: true },
-  });
-}
-
-export async function newProject(userId: string, name: string, originCardId?: string) {
-  const count = await db.project.count({ where: { userId } });
-  return db.project.create({
-    data: {
-      userId,
-      name: name.trim() || "Untitled workspace",
-      color: PROJECT_COLORS[count % PROJECT_COLORS.length],
-      position: count,
-      originCardId,
-      lanes: { create: DEFAULT_LANES.map((n, i) => ({ name: n, position: i })) },
+    workspace: {
+      id: ws.id,
+      labelId: ws.labelId,
+      name: ws.name,
+      lanes: ws.lanes.map((l) => ({ id: l.id, name: l.name, threadIds: l.placements.map((p) => p.email.threadId) })),
     },
-    include: { lanes: { orderBy: { position: "asc" } } },
-  });
+    emails,
+  };
 }
