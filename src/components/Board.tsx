@@ -43,7 +43,7 @@ export function Board({ project, lanes, setLanes, newReplyCardIds, onOpenCard }:
           />
           {project.origin && (
             <p className="text-xs text-slate-500">
-              Grew from case{" "}
+              Grew from ticket{" "}
               <button className="text-indigo-600 hover:underline" onClick={() => onOpenCard(project.origin!.cardId)}>
                 {project.origin.title}
               </button>
@@ -51,8 +51,8 @@ export function Board({ project, lanes, setLanes, newReplyCardIds, onOpenCard }:
           )}
         </div>
         <ConfirmButton
-          label="Delete project"
-          confirmLabel="Delete project and all its cases?"
+          label="Delete workspace"
+          confirmLabel="Delete workspace and all its tickets?"
           onConfirm={async () => {
             await deleteProject(project.id);
             router.push("/");
@@ -161,7 +161,7 @@ function Lane({ lane, isFirst, isLast, onMove, onRename, onDelete, onAddCase, ne
         <input
           value={adding}
           onChange={(e) => setAdding(e.target.value)}
-          placeholder="+ New case"
+          placeholder="+ New ticket"
           className="w-full rounded-md bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-slate-500 focus:bg-white"
         />
       </form>

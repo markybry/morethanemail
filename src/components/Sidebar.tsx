@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createProject } from "@/app/actions";
 import type { ProjectListItem } from "@/lib/types";
+import { MailNav } from "./LabelTree";
 
 type Props = { projects: ProjectListItem[]; user: { name: string; email: string; isDemo: boolean } };
 
@@ -24,8 +25,10 @@ export function Sidebar({ projects, user }: Props) {
         ☑ My tasks
       </Link>
 
-      <p className="mt-5 px-5 pb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase">Projects</p>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto pb-4">
+        <MailNav />
+        <div>
+        <p className="px-5 pb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase">Workspaces</p>
         {projects.map((p) => (
           <Link
             key={p.id}
@@ -51,10 +54,11 @@ export function Sidebar({ projects, user }: Props) {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="+ New project"
+            placeholder="+ New workspace"
             className="w-full rounded-md bg-transparent px-3 py-1.5 text-sm outline-none placeholder:text-slate-500 focus:bg-slate-800"
           />
         </form>
+        </div>
       </div>
 
       <div className="border-t border-slate-800 px-4 py-3 text-xs">

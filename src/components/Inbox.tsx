@@ -11,6 +11,7 @@ type Props = {
   hiddenCount: number;
   filed: Record<string, FiledInfo>;
   view: MailView;
+  title: string;
   labels: MailLabel[];
   onViewChange: (v: MailView) => void;
   hideFiled: boolean;
@@ -33,25 +34,24 @@ export function Inbox(p: Props) {
   return (
     <aside className="flex w-80 shrink-0 flex-col border-r border-slate-200 bg-white">
       <div className="space-y-2 border-b border-slate-200 p-3">
-        <select
-          value={p.view}
-          onChange={(e) => p.onViewChange(e.target.value as MailView)}
-          className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm font-medium text-slate-800"
-          aria-label="Mailbox view"
-        >
-          <option value="primary">Inbox · Primary</option>
-          <option value="inbox">Inbox · all tabs</option>
-          <option value="unread">Inbox · unread</option>
-          {p.labels.length > 0 && (
-            <optgroup label="Labels">
-              {p.labels.map((l) => (
-                <option key={l.id} value={`label:${l.id}`}>
-                  {l.name}
-                </option>
+        <div className="flex items-center gap-2">
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900" title={p.title}>
+            {p.title}
+          </h2>
+          {(p.view === "primary" || p.view === "inbox") && (
+            <div className="flex shrink-0 rounded-md border border-slate-300 text-xs">
+              {(["primary", "inbox"] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => p.onViewChange(v)}
+                  className={`px-2 py-0.5 ${p.view === v ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-50"}`}
+                >
+                  {v === "primary" ? "Primary" : "All tabs"}
+                </button>
               ))}
-            </optgroup>
+            </div>
           )}
-        </select>
+        </div>
         <form
           className="flex gap-2"
           onSubmit={(e) => {
@@ -81,7 +81,7 @@ export function Inbox(p: Props) {
         </label>
       </div>
       <p className="border-b border-slate-100 px-3 py-1.5 text-xs text-slate-500">
-        {p.searching ? "Search results · all mail" : "Drag an email onto a lane to open a case"}
+        {p.searching ? "Search results · all mail" : "Drag an email onto a lane to open a ticket"}
       </p>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {p.state === "error" && <p className="p-3 text-sm text-red-600">{p.error}</p>}
@@ -123,7 +123,11 @@ function EmailRow({
   onOpen: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `email:${thread.threadId}` });
-  const userLabels = thread.labelIds.map((id) => labelNames.get(id)).filter((n): n is string => !!n);
+  // Show only the most specific labels: "Clients/Acme" already implies "Clients".
+  const names = thread.labelIds.map((id) => labelNames.get(id)).filter((n): n is string => !!n);
+  const userLabels = names
+    .filter((n) => !names.some((other) => other.startsWith(`${n}/`)))
+    .map((n) => n.split("/").join(" › "));
   return (
     <div
       ref={setNodeRef}

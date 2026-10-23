@@ -17,19 +17,19 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { fetchInbox, fetchLabels, fileEmail, moveCards } from "@/app/actions";
-import type { MailLabel, MailView, ThreadSummary } from "@/lib/mail";
+import { fetchInbox, fileEmail, moveCards } from "@/app/actions";
+import type { MailView, ThreadSummary } from "@/lib/mail";
 import type { CardDTO, FiledInfo, LaneDTO, ProjectDTO } from "@/lib/types";
 import { Inbox, EmailRowPreview } from "./Inbox";
 import { Board } from "./Board";
 import { CardFace } from "./CardFace";
 import { CasePanel } from "./CasePanel";
 import { ThreadPanel } from "./ThreadPanel";
+import { useMail, viewTitle } from "./MailContext";
 
 export type Selection = { kind: "card"; cardId: string } | { kind: "thread"; thread: ThreadSummary } | null;
 
 const EMAIL_PREFIX = "email:";
-const VIEW_KEY = "mte.inboxView";
 const HIDE_FILED_KEY = "mte.hideFiled";
 const LANE_PREFIX = "lane:";
 
@@ -46,8 +46,7 @@ export function Workspace({ project, initialCaseId }: { project: ProjectDTO; ini
   const [filed, setFiled] = useState<Record<string, FiledInfo>>({});
   const [query, setQuery] = useState("");
   const [loadedQuery, setLoadedQuery] = useState("");
-  const [view, setView] = useState<MailView>("primary");
-  const [labels, setLabels] = useState<MailLabel[]>([]);
+  const { view, setView, labels, reloadLabels, ready } = useMail();
   const [hideFiled, setHideFiled] = useState(true);
   const [nextPage, setNextPage] = useState<string | undefined>();
   const [inboxState, setInboxState] = useState<"idle" | "loading" | "error">("loading");
@@ -73,28 +72,19 @@ export function Workspace({ project, initialCaseId }: { project: ProjectDTO; ini
     }
   }, []);
 
-  // The chosen view and "hide filed" are per-browser conveniences kept in localStorage.
+  // The open view comes from the sidebar's label tree; reload whenever it changes.
   useEffect(() => {
-    let v: MailView = "primary";
-    let hide = true;
-    try {
-      v = (localStorage.getItem(VIEW_KEY) as MailView | null) ?? "primary";
-      hide = localStorage.getItem(HIDE_FILED_KEY) !== "false";
-    } catch {}
-    setView(v);
-    setHideFiled(hide);
-    void loadInbox(v, "");
-    void fetchLabels().then((r) => setLabels(r.labels));
-  }, [loadInbox]);
-
-  const changeView = (v: MailView) => {
-    setView(v);
+    if (!ready) return;
     setQuery("");
+    void loadInbox(view, "");
+  }, [ready, view, loadInbox]);
+
+  // "Hide filed" is a per-browser convenience kept in localStorage.
+  useEffect(() => {
     try {
-      localStorage.setItem(VIEW_KEY, v);
+      setHideFiled(localStorage.getItem(HIDE_FILED_KEY) !== "false");
     } catch {}
-    void loadInbox(v, "");
-  };
+  }, []);
 
   const changeHideFiled = (hide: boolean) => {
     setHideFiled(hide);
@@ -303,8 +293,9 @@ export function Workspace({ project, initialCaseId }: { project: ProjectDTO; ini
           hiddenCount={threads.length - visibleThreads.length}
           filed={inboxFiled}
           view={view}
+          title={viewTitle(view, labels)}
           labels={labels}
-          onViewChange={changeView}
+          onViewChange={setView}
           hideFiled={hideFiled}
           onHideFiledChange={changeHideFiled}
           searching={!!loadedQuery}
@@ -314,7 +305,10 @@ export function Workspace({ project, initialCaseId }: { project: ProjectDTO; ini
           hasMore={!!nextPage}
           selectedThreadId={selection?.kind === "thread" ? selection.thread.threadId : undefined}
           onQueryChange={setQuery}
-          onSearch={() => loadInbox(view, query)}
+          onSearch={() => {
+            void loadInbox(view, query);
+            reloadLabels();
+          }}
           onLoadMore={() => loadInbox(view, loadedQuery, nextPage)}
           onOpen={(thread) => {
             const f = filed[thread.threadId];
