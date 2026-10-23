@@ -2,7 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { getThread, listThreads, mailErrorMessage, type ThreadDetail, type ThreadSummary } from "@/lib/mail";
+import {
+  getThread,
+  listLabels,
+  listThreads,
+  mailErrorMessage,
+  type MailLabel,
+  type MailView,
+  type ThreadDetail,
+  type ThreadSummary,
+} from "@/lib/mail";
 import { requireUser } from "@/lib/session";
 import type { CardDTO, CaseOption, FiledInfo, LaneOption } from "@/lib/types";
 import { cardInclude, newProject, toCardDTO } from "@/lib/board";
@@ -48,11 +57,11 @@ type InboxResult = {
   error?: string;
 };
 
-export async function fetchInbox(query?: string, pageToken?: string): Promise<InboxResult> {
+export async function fetchInbox(view: MailView, query?: string, pageToken?: string): Promise<InboxResult> {
   const user = await requireUser();
   let result: Awaited<ReturnType<typeof listThreads>>;
   try {
-    result = await listThreads(user, { query, pageToken });
+    result = await listThreads(user, { view, query, pageToken });
   } catch (e) {
     console.error("fetchInbox failed", e);
     return { threads: [], filed: {}, error: mailErrorMessage(e) };
@@ -61,9 +70,11 @@ export async function fetchInbox(query?: string, pageToken?: string): Promise<In
     where: { userId: user.id, threadId: { in: result.threads.map((t) => t.threadId) } },
     select: {
       threadId: true,
+      emailDate: true,
       card: { select: { id: true, title: true, lane: { select: { name: true, project: { select: { id: true, name: true } } } } } },
     },
   });
+  const latest = new Map(result.threads.map((t) => [t.threadId, t.date]));
   const filed: Record<string, FiledInfo> = Object.fromEntries(
     links.map((l) => [
       l.threadId,
@@ -73,16 +84,36 @@ export async function fetchInbox(query?: string, pageToken?: string): Promise<In
         projectId: l.card.lane.project.id,
         projectName: l.card.lane.project.name,
         laneName: l.card.lane.name,
+        hasNewReply: new Date(latest.get(l.threadId)!).getTime() > l.emailDate.getTime() + 1000,
       },
     ]),
   );
   return { ...result, filed };
 }
 
+export async function fetchLabels(): Promise<{ labels: MailLabel[]; error?: string }> {
+  const user = await requireUser();
+  try {
+    return { labels: await listLabels(user) };
+  } catch (e) {
+    console.error("fetchLabels failed", e);
+    return { labels: [], error: mailErrorMessage(e) };
+  }
+}
+
+// Loading a thread also marks it as seen on its case: the stored latest-message
+// date moves forward, which clears the "new reply" flag.
 export async function fetchThread(threadId: string): Promise<{ thread: ThreadDetail | null; error?: string }> {
   const user = await requireUser();
   try {
-    return { thread: await getThread(user, threadId) };
+    const thread = await getThread(user, threadId);
+    const last = thread?.messages[thread.messages.length - 1];
+    if (last)
+      await db.cardEmail.updateMany({
+        where: { userId: user.id, threadId },
+        data: { emailDate: new Date(last.date), from: last.from },
+      });
+    return { thread };
   } catch (e) {
     console.error("fetchThread failed", e);
     return { thread: null, error: mailErrorMessage(e) };

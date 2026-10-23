@@ -27,7 +27,14 @@ export type ProjectDTO = {
 export type ProjectListItem = { id: string; name: string; color: string };
 
 // Where an inbox thread has already been filed.
-export type FiledInfo = { cardId: string; cardTitle: string; projectId: string; projectName: string; laneName: string };
+export type FiledInfo = {
+  cardId: string;
+  cardTitle: string;
+  projectId: string;
+  projectName: string;
+  laneName: string;
+  hasNewReply?: boolean; // the thread has messages newer than the case has seen
+};
 
 // Every case, for "move to" / "attach to" pickers.
 export type CaseOption = { id: string; title: string; projectId: string; projectName: string; laneName: string };

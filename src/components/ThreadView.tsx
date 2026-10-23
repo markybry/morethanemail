@@ -7,9 +7,13 @@ import { senderName } from "@/lib/format";
 
 // Loads and renders every message in a thread. HTML bodies go into a sandboxed
 // iframe with scripts disabled, so email content can't run code in the app.
-export function ThreadView({ threadId }: { threadId: string }) {
+export function ThreadView({ threadId, onLoaded }: { threadId: string; onLoaded?: () => void }) {
   const [thread, setThread] = useState<ThreadDetail | null | undefined>(undefined);
   const [error, setError] = useState("");
+  const onLoadedRef = useRef(onLoaded);
+  useEffect(() => {
+    onLoadedRef.current = onLoaded;
+  });
 
   useEffect(() => {
     let live = true;
@@ -17,7 +21,10 @@ export function ThreadView({ threadId }: { threadId: string }) {
       .then((res) => {
         if (!live) return;
         if (res.error) setError(res.error);
-        else setThread(res.thread);
+        else {
+          setThread(res.thread);
+          onLoadedRef.current?.();
+        }
       })
       .catch((e) => live && setError(e instanceof Error ? e.message : "Could not load email"));
     return () => {

@@ -2,7 +2,7 @@ import type { CardDTO } from "@/lib/types";
 import { dueLabel, isOverdue, senderName, shortDate } from "@/lib/format";
 
 // The visual card on a lane. Shared by the board and the drag overlay.
-export function CardFace({ card, dragging }: { card: CardDTO; dragging?: boolean }) {
+export function CardFace({ card, newReply, dragging }: { card: CardDTO; newReply?: boolean; dragging?: boolean }) {
   const latest = card.emails[0];
   const open = card.tasks.filter((t) => !t.done);
   const nextDue = open
@@ -24,8 +24,9 @@ export function CardFace({ card, dragging }: { card: CardDTO; dragging?: boolean
           <span className="shrink-0">{shortDate(latest.emailDate)}</span>
         </div>
       )}
-      {(card.emails.length > 1 || card.tasks.length > 0 || card.notes.length > 0 || nextDue) && (
+      {(newReply || card.emails.length > 1 || card.tasks.length > 0 || card.notes.length > 0 || nextDue) && (
         <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+          {newReply && <Badge tone="blue">↩ New reply</Badge>}
           {card.emails.length > 1 && <Badge>✉ {card.emails.length}</Badge>}
           {card.tasks.length > 0 && (
             <Badge tone={done === card.tasks.length ? "green" : undefined}>
@@ -40,7 +41,7 @@ export function CardFace({ card, dragging }: { card: CardDTO; dragging?: boolean
   );
 }
 
-function Badge({ children, tone }: { children: React.ReactNode; tone?: "green" | "red" | "amber" }) {
+function Badge({ children, tone }: { children: React.ReactNode; tone?: "green" | "red" | "amber" | "blue" }) {
   const cls =
     tone === "green"
       ? "bg-emerald-100 text-emerald-800"
@@ -48,6 +49,8 @@ function Badge({ children, tone }: { children: React.ReactNode; tone?: "green" |
         ? "bg-red-100 text-red-700"
         : tone === "amber"
           ? "bg-amber-100 text-amber-800"
-          : "bg-slate-100 text-slate-600";
+          : tone === "blue"
+            ? "bg-indigo-100 font-medium text-indigo-700"
+            : "bg-slate-100 text-slate-600";
   return <span className={`rounded px-1.5 py-0.5 ${cls}`}>{children}</span>;
 }
