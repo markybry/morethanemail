@@ -84,7 +84,7 @@ export function ResizeHandle({
       onDoubleClick={onReset}
       className={`group absolute top-0 z-20 h-full w-2 cursor-col-resize ${edge === "right" ? "-right-1" : "-left-1"}`}
     >
-      <div className="mx-auto h-full w-0.5 bg-transparent transition-colors group-hover:bg-indigo-400 group-active:bg-indigo-500" />
+      <div className="mx-auto h-full w-0.5 bg-transparent transition-colors group-hover:bg-terracotta group-active:bg-[#f7e2c4]0" />
     </div>
   );
 }

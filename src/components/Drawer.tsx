@@ -13,9 +13,9 @@ export function Drawer({ onClose, children }: { onClose: () => void; children: R
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="animate-fade-in absolute inset-0 bg-violet-950/25 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="animate-fade-in absolute inset-0 bg-[#2b221b]/30 backdrop-blur-[2px]" onClick={onClose} />
       <div
-        className="animate-slide-in relative h-full max-w-[calc(100vw-3rem)] bg-white shadow-2xl shadow-violet-900/30"
+        className="paper animate-slide-in relative h-full max-w-[calc(100vw-3rem)] shadow-2xl shadow-[#2b221b]/40"
         style={{ width: w.width }}
       >
         <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} edge="left" label="Resize panel" />
@@ -27,11 +27,11 @@ export function Drawer({ onClose, children }: { onClose: () => void; children: R
 
 export function DrawerHeader({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="sticky top-0 z-10 flex items-start gap-3 border-b border-violet-100 bg-gradient-to-r from-violet-50 via-white to-pink-50 px-5 py-4">
+    <div className="sticky top-0 z-10 flex items-start gap-3 border-b border-dashed border-[#d9c9ad] bg-cream px-5 py-4">
       <div className="min-w-0 flex-1">{children}</div>
       <button
         onClick={onClose}
-        className="rounded-full px-2 text-xl leading-none text-violet-400 transition hover:rotate-90 hover:bg-violet-100 hover:text-fuchsia-600"
+        className="rounded-full px-2 text-xl leading-none text-[#a8957a] transition hover:rotate-90 hover:bg-oat hover:text-terracotta"
         title="Close (Esc)"
       >
         ×

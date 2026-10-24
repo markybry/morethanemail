@@ -29,15 +29,15 @@ import { ResizeHandle, useStoredWidth } from "./Resizable";
 
 const PRIMARY_KEY = "mte.inboxPrimaryOnly";
 
-// Each lane gets its own colour, cycling through these. Literal class names so
-// Tailwind keeps them.
+// Each lane gets its own earthy colour and a woodland animal, cycling through
+// these. Literal class names so Tailwind keeps them.
 const LANE_THEMES = [
-  { box: "bg-sky-100/70 ring-sky-200", bar: "from-sky-400 to-cyan-400", text: "text-sky-900", count: "bg-sky-500" },
-  { box: "bg-pink-100/70 ring-pink-200", bar: "from-pink-400 to-rose-400", text: "text-pink-900", count: "bg-pink-500" },
-  { box: "bg-amber-100/70 ring-amber-200", bar: "from-amber-400 to-orange-400", text: "text-amber-900", count: "bg-amber-500" },
-  { box: "bg-emerald-100/70 ring-emerald-200", bar: "from-emerald-400 to-teal-400", text: "text-emerald-900", count: "bg-emerald-500" },
-  { box: "bg-violet-100/70 ring-violet-200", bar: "from-violet-400 to-fuchsia-400", text: "text-violet-900", count: "bg-violet-500" },
-  { box: "bg-lime-100/70 ring-lime-200", bar: "from-lime-400 to-green-400", text: "text-lime-900", count: "bg-lime-600" },
+  { animal: "🦔", box: "bg-[#e6ead8] ring-[#cfd8b4]", bar: "bg-[#8aa05f]", text: "text-[#4a5a2c]", count: "bg-[#7d9455]" },
+  { animal: "🦊", box: "bg-[#f3e0d3] ring-[#e7c6b0]", bar: "bg-[#cf7a4b]", text: "text-[#7a3e1f]", count: "bg-[#c4693f]" },
+  { animal: "🐝", box: "bg-[#f4e8c6] ring-[#e8d49a]", bar: "bg-[#d9ab3f]", text: "text-[#6e531a]", count: "bg-[#c99a2e]" },
+  { animal: "🦉", box: "bg-[#e0e6ea] ring-[#c6d1d9]", bar: "bg-[#6f8b9c]", text: "text-[#34495a]", count: "bg-[#5f7a8c]" },
+  { animal: "🐻", box: "bg-[#ecdcd5] ring-[#dcc0b4]", bar: "bg-[#9a6b55]", text: "text-[#5a3627]", count: "bg-[#8a5c47]" },
+  { animal: "🐢", box: "bg-[#e3e5d4] ring-[#cdd0b0]", bar: "bg-[#8f9466]", text: "text-[#4b4e2c]", count: "bg-[#80855a]" },
 ];
 const T = "t:"; // draggable email ids
 const LANE = "lane:"; // droppable column ids
@@ -348,12 +348,13 @@ export function LabelBoard({
               <input
                 value={newLane}
                 onChange={(e) => setNewLane(e.target.value)}
-                placeholder="✨ Add lane"
-                className="w-full rounded-xl border-2 border-dashed border-violet-300 bg-white/40 px-3 py-2 text-sm font-medium outline-none backdrop-blur transition placeholder:text-violet-500 hover:border-violet-400 hover:bg-white/70 focus:border-fuchsia-400 focus:bg-white"
+                placeholder="🌱 Add lane"
+                className="w-full rounded-2xl border-2 border-dashed border-[#cdb999] bg-cream/50 px-3 py-2 text-sm font-semibold text-bark outline-none transition placeholder:text-[#9a8466] hover:border-terracotta/60 hover:bg-cream focus:border-terracotta focus:bg-cream"
               />
             </form>
             {lanes.length === 0 && (
-              <p className="animate-rise rounded-xl bg-white/60 px-3 py-2 text-xs leading-relaxed text-violet-900 shadow-sm backdrop-blur">
+              <p className="card-tactile animate-rise rounded-2xl px-3 py-2 text-xs leading-relaxed text-bark">
+                <span className="mr-1">🐿️</span>
                 Add lanes to sort this label&apos;s emails, for example To do, Waiting and Done, then drag emails into them.
               </p>
             )}
@@ -418,24 +419,21 @@ function UnsortedColumn(p: {
   const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${UNSORTED}` });
   const w = useStoredWidth("mte.w.unsorted", 320, 220, 720);
   return (
-    <aside className="relative flex shrink-0 flex-col border-r border-violet-100 bg-white/90" style={{ width: w.width }}>
+    <aside className="paper relative flex shrink-0 flex-col border-r border-[#e3d5bf]" style={{ width: w.width }}>
       <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} label="Resize email column" />
-      <div className="space-y-2 border-b border-violet-100 bg-gradient-to-br from-violet-50 via-white to-pink-50 p-3">
+      <div className="space-y-2 border-b border-dashed border-[#d9c9ad] p-3">
         <div className="flex items-center gap-2">
-          <h1
-            className="min-w-0 flex-1 truncate bg-gradient-to-r from-violet-700 via-fuchsia-600 to-pink-500 bg-clip-text text-lg font-bold text-transparent"
-            title={p.title}
-          >
+          <h1 className="min-w-0 flex-1 truncate text-xl font-semibold text-walnut" title={p.title}>
             {p.title.split("/").join(" › ")}
           </h1>
           {p.isInbox && (
-            <div className="flex shrink-0 overflow-hidden rounded-full border border-violet-200 bg-white text-xs">
+            <div className="flex shrink-0 overflow-hidden rounded-full border border-[#d9c9ad] bg-cream text-xs font-semibold">
               {[true, false].map((v) => (
                 <button
                   key={String(v)}
                   onClick={() => p.onPrimaryOnlyChange(v)}
                   className={`px-2.5 py-0.5 transition ${
-                    p.primaryOnly === v ? "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white" : "text-violet-700 hover:bg-violet-50"
+                    p.primaryOnly === v ? "bg-moss text-cream" : "text-bark hover:bg-oat"
                   }`}
                 >
                   {v ? "Primary" : "All tabs"}
@@ -454,19 +452,19 @@ function UnsortedColumn(p: {
           <input
             value={p.query}
             onChange={(e) => p.onQueryChange(e.target.value)}
-            placeholder="Search this label"
-            className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-indigo-500"
+            placeholder="🔎 Search this label"
+            className="field min-w-0 flex-1 rounded-xl px-2.5 py-1.5 text-sm"
           />
-          <button className="rounded-md border border-slate-300 px-2 text-sm text-slate-600 hover:bg-slate-50" title="Search / refresh">
+          <button className="btn-press rounded-xl bg-oat px-2.5 text-sm text-bark" title="Search / refresh">
             ↻
           </button>
         </form>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs font-semibold text-[#9a8466]">
           {p.searching ? "Search results" : "Unsorted"}
           {p.sortedCount > 0 && ` · ${p.sortedCount} sorted into lanes`}
         </p>
       </div>
-      <div ref={setNodeRef} className={`min-h-0 flex-1 space-y-2 overflow-y-auto p-2 transition-colors ${isOver ? "bg-violet-50" : ""}`}>
+      <div ref={setNodeRef} className={`min-h-0 flex-1 space-y-2.5 overflow-y-auto p-2.5 transition-colors ${isOver ? "bg-oat/60" : ""}`}>
         {p.state === "error" && <p className="p-2 text-sm text-red-600">{p.error}</p>}
         {p.threadIds.map((id) =>
           p.emails[id] ? (
@@ -476,17 +474,21 @@ function UnsortedColumn(p: {
         {p.state === "loading" && (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="h-20 animate-pulse rounded-xl bg-gradient-to-r from-violet-100 via-pink-100 to-sky-100" />
+              <div key={i} className="h-20 animate-pulse rounded-2xl bg-oat" />
             ))}
+            <p className="text-center text-xs text-[#9a8466]">
+              <span className="animate-bob inline-block">🐢</span> Fetching your mail…
+            </p>
           </div>
         )}
         {p.state === "idle" && p.threadIds.length === 0 && (
-          <p className="animate-rise p-4 text-center text-sm text-violet-600">
-            {p.sortedCount > 0 ? "🎉 All sorted!" : "📭 No emails with this label."}
+          <p className="animate-rise p-4 text-center text-sm text-bark">
+            <span className="animate-bob mb-1 block text-3xl">{p.sortedCount > 0 ? "🦉" : "🦔"}</span>
+            {p.sortedCount > 0 ? "All sorted. Time for a cuppa." : "Nothing with this label yet."}
           </p>
         )}
         {p.state === "idle" && p.hasMore && (
-          <button onClick={p.onLoadMore} className="w-full rounded-xl p-2 text-sm font-medium text-violet-600 transition hover:bg-violet-50">
+          <button onClick={p.onLoadMore} className="btn-press w-full rounded-xl bg-oat p-2 text-sm font-semibold text-bark">
             Load more
           </button>
         )}
@@ -503,7 +505,7 @@ function DraggableEmail({ email, labelId, selected, onOpen }: { email: BoardEmai
       {...attributes}
       {...listeners}
       onClick={onOpen}
-      className={`${isDragging ? "opacity-30" : ""} ${selected ? "rounded-xl ring-2 ring-fuchsia-400 ring-offset-1" : ""}`}
+      className={`${isDragging ? "opacity-30" : ""} ${selected ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper" : ""}`}
     >
       <CardFace email={email} hideLabelId={labelId} />
     </div>
@@ -538,29 +540,32 @@ function Lane({
   const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${lane.id}` });
   return (
     <div
-      className={`animate-rise relative flex max-h-full shrink-0 flex-col overflow-visible rounded-2xl shadow-sm ring-1 backdrop-blur-sm transition ${theme.box} ${
+      className={`animate-rise relative flex max-h-full shrink-0 flex-col overflow-visible rounded-3xl shadow-[inset_0_2px_6px_rgb(80_55_25/0.08)] ring-1 transition ${theme.box} ${
         isOver ? "scale-[1.01] shadow-lg" : ""
       }`}
       style={{ width: width.width }}
     >
-      <div className={`h-1.5 rounded-t-2xl bg-gradient-to-r ${theme.bar}`} />
+      <div className={`mx-6 mt-0 h-1.5 rounded-b-full ${theme.bar}`} />
       <ResizeHandle width={width.width} onResize={width.setWidth} onDone={width.save} onReset={width.reset} label="Resize lanes" />
       <div className="group flex items-center gap-1 px-3 pt-2.5 pb-1">
-        <InlineEdit value={lane.name} onSave={onRename} className={`text-sm font-bold ${theme.text}`} />
-        <span key={lane.threadIds.length} className={`animate-pop rounded-full px-1.5 text-[11px] font-semibold text-white ${theme.count}`}>
+        <span className="cursor-default text-lg hover:animate-wiggle" aria-hidden>
+          {theme.animal}
+        </span>
+        <InlineEdit value={lane.name} onSave={onRename} className={`font-display text-base font-semibold ${theme.text}`} />
+        <span key={lane.threadIds.length} className={`animate-pop rounded-full px-2 text-[11px] font-bold text-cream ${theme.count}`}>
           {lane.threadIds.length}
         </span>
         <div className="ml-auto flex items-center opacity-0 transition group-hover:opacity-100">
-          <button disabled={isFirst} onClick={() => onMove(-1)} className="px-1 text-slate-500 disabled:opacity-30" title="Move left">
+          <button disabled={isFirst} onClick={() => onMove(-1)} className="px-1 text-[#a8957a] disabled:opacity-30" title="Move left">
             ‹
           </button>
-          <button disabled={isLast} onClick={() => onMove(1)} className="px-1 text-slate-500 disabled:opacity-30" title="Move right">
+          <button disabled={isLast} onClick={() => onMove(1)} className="px-1 text-[#a8957a] disabled:opacity-30" title="Move right">
             ›
           </button>
           <ConfirmButton label="✕" confirmLabel="Delete lane?" onConfirm={onDelete} small />
         </div>
       </div>
-      <div ref={setNodeRef} className={`flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 ${isOver ? "rounded-xl bg-white/50" : ""}`}>
+      <div ref={setNodeRef} className={`flex min-h-24 flex-1 flex-col gap-2.5 overflow-y-auto px-2.5 pb-2.5 ${isOver ? "rounded-2xl bg-cream/50" : ""}`}>
         <SortableContext items={lane.threadIds.map((t) => `${T}${t}`)} strategy={verticalListSortingStrategy}>
           {lane.threadIds.map((t) =>
             emails[t] ? <SortableEmail key={t} email={emails[t]} labelId={labelId} onOpen={() => onOpen(t)} /> : null,

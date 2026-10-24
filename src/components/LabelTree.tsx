@@ -109,7 +109,7 @@ export function MailNav() {
       ) : (
         <button
           onClick={() => setCreatingUnder("")}
-          className="mx-2 mt-2 w-[calc(100%-1rem)] rounded-lg border border-dashed border-violet-400/40 px-3 py-1 text-left text-sm text-violet-300 transition hover:border-pink-300/60 hover:bg-white/5 hover:text-pink-200"
+          className="mx-2 mt-2 w-[calc(100%-1rem)] rounded-xl border-2 border-dashed border-[#f6e9d2]/25 px-3 py-1 text-left text-sm font-semibold text-[#c9b08a] transition hover:border-[#f2b38a]/60 hover:bg-white/5 hover:text-[#f2b38a]"
         >
           + New label
         </button>
@@ -138,7 +138,7 @@ function TreeNode({
   creatingUnder: string | null;
   onCreate: (name: string) => void;
 }) {
-  const { colorOfPath } = useMail();
+  const { colorOfPath, animalOfPath } = useMail();
   const color = colorOfPath(node.path);
   const expanded = isOpen(node.path);
   const active = !!node.label && node.label.id === activeId;
@@ -152,18 +152,24 @@ function TreeNode({
           e.stopPropagation();
           onToggle(node.path);
         }}
-        className="w-3 shrink-0 text-center text-slate-500 hover:text-white"
+        className="w-3 shrink-0 text-center text-[#a8957a] hover:text-white"
       >
         {expanded ? "▾" : "▸"}
       </span>
     ) : undefined;
   const content = (
     <>
-      <span className="h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_8px_currentColor]" style={{ background: color, color }} />
-      <span className={`truncate ${node.label?.unread || depth === 0 ? "font-semibold text-white" : ""}`}>{node.segment}</span>
+      {depth === 0 ? (
+        <span className="w-5 shrink-0 text-center text-base leading-none group-hover:animate-wiggle" aria-hidden>
+          {animalOfPath(node.path)}
+        </span>
+      ) : (
+        <span className="h-2 w-2 shrink-0 rounded-full ring-2 ring-black/20" style={{ background: color }} />
+      )}
+      <span className={`truncate ${node.label?.unread || depth === 0 ? "font-bold text-[#fff6e6]" : ""}`}>{node.segment}</span>
       <span className="ml-auto flex items-center gap-1 pl-2">
         {!!node.label?.unread && (
-          <span className="rounded-full px-1.5 text-[11px] font-bold text-white" style={{ background: color }}>
+          <span className="rounded-full px-1.5 text-[11px] font-extrabold text-[#2b221b]" style={{ background: color }}>
             {node.label.unread}
           </span>
         )}
@@ -176,7 +182,7 @@ function TreeNode({
             e.stopPropagation();
             onAddChild(node.path);
           }}
-          className="hidden w-4 text-center text-slate-500 group-hover:inline hover:text-white"
+          className="hidden w-4 text-center text-[#a8957a] group-hover:inline hover:text-white"
         >
           +
         </span>
@@ -198,7 +204,8 @@ function TreeNode({
         // Children sit beside a guide line in the branch colour, so it's clear
         // which parent they belong to even with several branches open.
         <div className="relative ml-[22px]">
-          <span className="absolute top-0 bottom-1 left-2 w-0.5 rounded-full" style={{ background: color, opacity: 0.7, boxShadow: `0 0 6px ${color}` }} />
+          {/* A stitched thread in the branch colour links children to their parent. */}
+          <span className="absolute top-0 bottom-1 left-2 border-l-2 border-dashed" style={{ borderColor: color, opacity: 0.75 }} />
           <div className="pl-2">
             {expanded &&
               node.children.map((c) => (
@@ -239,8 +246,8 @@ function NavRow({
   chevron?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const className = `group mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 rounded-lg py-1 pr-3 text-left text-sm transition hover:translate-x-0.5 hover:bg-white/10 ${
-    active ? "text-white" : ""
+  const className = `group mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 rounded-xl py-1 pr-3 text-left text-sm transition hover:translate-x-0.5 hover:bg-white/10 ${
+    active ? "text-[#fff6e6]" : ""
   }`;
   // Nesting is shown by the guide-line containers, so rows only need a little padding.
   const style = {
@@ -282,7 +289,7 @@ function NewLabelInput({ placeholder, onSubmit }: { placeholder: string; onSubmi
         onBlur={() => onSubmit("")}
         onKeyDown={(e) => e.key === "Escape" && onSubmit("")}
         placeholder={placeholder}
-        className="w-full rounded-lg bg-white/10 px-3 py-1 text-sm text-white outline-none ring-1 ring-fuchsia-400/50 placeholder:text-violet-300/60"
+        className="w-full rounded-xl bg-black/20 px-3 py-1 text-sm text-[#fff6e6] shadow-[inset_0_2px_4px_rgb(0_0_0/0.3)] outline-none ring-1 ring-[#f2b38a]/50 placeholder:text-[#c9b08a]/70"
       />
     </form>
   );
