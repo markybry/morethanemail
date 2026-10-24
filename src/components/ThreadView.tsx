@@ -34,14 +34,14 @@ export function ThreadView({ threadId, onLoaded }: { threadId: string; onLoaded?
   }, [threadId]);
 
   if (error) return <p className="text-sm text-red-600">{error}</p>;
-  if (thread === undefined) return <p className="text-sm text-[#a8957a]">Loading email…</p>;
-  if (thread === null) return <p className="text-sm text-[#a8957a]">This email is no longer available.</p>;
+  if (thread === undefined) return <p className="text-sm text-muted">Loading email…</p>;
+  if (thread === null) return <p className="text-sm text-muted">This email is no longer available.</p>;
 
   return (
     <div className="space-y-3">
       {thread.messages.map((m) => (
-        <article key={m.id} className="rounded-lg border border-[#e3d5bf]">
-          <header className="flex gap-2 border-b border-[#e3d5bf] px-3 py-2 text-xs text-[#a8957a]">
+        <article key={m.id} className="rounded-lg border border-line">
+          <header className="flex gap-2 border-b border-line px-3 py-2 text-xs text-muted">
             <span className="min-w-0 flex-1 truncate font-medium text-bark" title={m.from}>
               {senderName(m.from)}
             </span>
@@ -85,13 +85,13 @@ function Attachments({ items }: { items: Attachment[] }) {
   const images = items.filter((a) => a.isImage);
   const files = items.filter((a) => !a.isImage);
   return (
-    <div className="space-y-2 border-t border-[#e3d5bf] px-3 py-2">
+    <div className="space-y-2 border-t border-line px-3 py-2">
       {images.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {images.map((a) => (
             <a key={a.url} href={a.url} target="_blank" rel="noreferrer" title={a.filename} className="block">
               {/* eslint-disable-next-line @next/next/no-img-element -- authenticated attachment URL, not optimisable */}
-              <img src={a.url} alt={a.filename} className="h-28 max-w-[14rem] rounded border border-[#e3d5bf] object-cover" />
+              <img src={a.url} alt={a.filename} className="h-28 max-w-[14rem] rounded border border-line object-cover" />
             </a>
           ))}
         </div>
@@ -104,7 +104,7 @@ function Attachments({ items }: { items: Attachment[] }) {
         >
           <span aria-hidden>📎</span>
           <span className="min-w-0 flex-1 truncate">{a.filename}</span>
-          <span className="shrink-0 text-xs text-[#a8957a]">{formatSize(a.size)}</span>
+          <span className="shrink-0 text-xs text-muted">{formatSize(a.size)}</span>
         </a>
       ))}
     </div>

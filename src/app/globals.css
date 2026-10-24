@@ -1,22 +1,51 @@
 @import "tailwindcss";
 
+/* Fonts come from the active theme (set on <html data-theme=...>). */
 @theme inline {
-  --font-sans: var(--font-nunito);
-  --font-display: var(--font-fraunces);
+  --font-sans: var(--theme-sans);
+  --font-display: var(--theme-display);
 }
 
-/* Cozy woodland palette: paper, walnut, moss, terracotta, mustard. */
+/*
+  Theme tokens. Components only use these names (bg-paper, text-muted,
+  border-line, ...), so a theme is just a different set of values.
+  Defaults are the Woodland theme.
+*/
 @theme {
-  --color-paper: #f6efe3;
-  --color-cream: #fffaf1;
-  --color-oat: #ebdfcc;
-  --color-walnut: #3b2f26;
-  --color-bark: #5a4636;
-  --color-moss: #6f8a4a;
+  --color-paper: #f6efe3; /* page and board background */
+  --color-cream: #fffaf1; /* card faces, header bars */
+  --color-oat: #ebdfcc; /* subtle fills, secondary buttons */
+  --color-walnut: #3b2f26; /* strongest text, dark surfaces */
+  --color-bark: #5a4636; /* secondary text */
+  --color-ink: #3a2f27; /* body text */
+  --color-muted: #a8957a; /* quiet text: dates, snippets */
+  --color-faint: #cdb999; /* very quiet text, scrollbars */
+  --color-line: #e3d5bf; /* hairlines and borders */
+  --color-line-strong: #d9c9ad;
+  --color-moss: #6f8a4a; /* accents */
   --color-terracotta: #c4693f;
   --color-mustard: #d4a53a;
   --color-dusk: #5f7a8c;
-  --color-ink: #3a2f27;
+  --color-accent-soft: #f7e2c4;
+  --color-accent-ink: #7a3e1f;
+  --color-shadow: #2b221b;
+  --color-side-text: #e9dcc7; /* sidebar */
+  --color-side-muted: #c9b08a;
+  --color-side-strong: #fff6e6;
+  --color-side-accent: #f2b38a;
+  --color-ok-bg: #e3ead2; /* badges */
+  --color-ok-ink: #4a5a2c;
+  --color-bad-bg: #f3d6cc;
+  --color-bad-ink: #8a3a1f;
+  --color-warn-bg: #f4e5bd;
+  --color-warn-ink: #6e531a;
+  --color-info-bg: #e0e6ea;
+  --color-info-ink: #34495a;
+  --color-note: #fbf0c9; /* sticky notes */
+  --color-note-line: #ead9a8;
+  --color-note-edge: #e6d39b;
+  --color-card-edge: #e2d4bd; /* the thick bottom edge of cards */
+  --color-card-line: #eadfcb;
 
   --animate-rise: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
   --animate-slide-in: slide-in 0.34s cubic-bezier(0.2, 0.9, 0.25, 1) backwards;
@@ -103,36 +132,70 @@
   }
 }
 
+/* ---------- Woodland (default) ---------- */
+:root {
+  --theme-sans: var(--font-nunito);
+  --theme-display: var(--font-fraunces);
+
+  /* Lanes: moss, terracotta, mustard, dusk, clay, lichen */
+  --lane-1-bg: #e6ead8;
+  --lane-1-ring: #cfd8b4;
+  --lane-1-bar: #8aa05f;
+  --lane-1-text: #4a5a2c;
+  --lane-2-bg: #f3e0d3;
+  --lane-2-ring: #e7c6b0;
+  --lane-2-bar: #cf7a4b;
+  --lane-2-text: #7a3e1f;
+  --lane-3-bg: #f4e8c6;
+  --lane-3-ring: #e8d49a;
+  --lane-3-bar: #d9ab3f;
+  --lane-3-text: #6e531a;
+  --lane-4-bg: #e0e6ea;
+  --lane-4-ring: #c6d1d9;
+  --lane-4-bar: #6f8b9c;
+  --lane-4-text: #34495a;
+  --lane-5-bg: #ecdcd5;
+  --lane-5-ring: #dcc0b4;
+  --lane-5-bar: #9a6b55;
+  --lane-5-text: #5a3627;
+  --lane-6-bg: #e3e5d4;
+  --lane-6-ring: #cdd0b0;
+  --lane-6-bar: #8f9466;
+  --lane-6-text: #4b4e2c;
+
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.27 0 0 0 0 0.18 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --felt-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.9 0 0 0 0 0.75 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
 body {
   background: var(--color-paper);
   color: var(--color-ink);
+  font-family: var(--theme-sans), ui-sans-serif, system-ui, sans-serif;
 }
-
 h1,
 h2,
-h3 {
-  font-family: var(--font-display);
+h3,
+.font-display {
+  font-family: var(--theme-display), ui-serif, Georgia, serif;
 }
 
-/* Fine paper grain, drawn with SVG noise so there's no image to load. */
+/* Paper surfaces (columns, panels). */
 .paper {
   background-color: var(--color-paper);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.27 0 0 0 0 0.18 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-image: var(--grain);
 }
 
-/* Felt: a warmer, coarser grain on the walnut sidebar. */
+/* The sidebar surface. */
 .felt {
   background-color: var(--color-walnut);
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.9 0 0 0 0 0.75 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
-    linear-gradient(180deg, #3b2f26 0%, #33291f 100%);
+  background-image: var(--felt-grain), linear-gradient(180deg, #3b2f26 0%, #33291f 100%);
 }
 
-/* The board: paper with soft warm light pooling in the corners. */
+/* The board behind the lanes. */
 .board-bg {
   background-color: var(--color-paper);
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.35 0 0 0 0 0.27 0 0 0 0 0.18 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    var(--grain),
     radial-gradient(40rem 30rem at 0% 0%, #f9e7c9 0%, transparent 60%),
     radial-gradient(40rem 30rem at 100% 100%, #e3ead2 0%, transparent 60%);
 }
@@ -140,16 +203,16 @@ h3 {
 /* An index card resting on the board: cream face, thick bottom edge, soft shadow. */
 .card-tactile {
   background: var(--color-cream);
-  border: 1px solid #eadfcb;
+  border: 1px solid var(--color-card-line);
   box-shadow:
     inset 0 1px 0 #fff,
-    0 2px 0 #e2d4bd,
+    0 2px 0 var(--color-card-edge),
     0 6px 14px -6px rgb(80 55 25 / 0.25);
 }
 .card-tactile:hover {
   box-shadow:
     inset 0 1px 0 #fff,
-    0 3px 0 #dccbb0,
+    0 3px 0 var(--color-card-edge),
     0 12px 22px -8px rgb(80 55 25 / 0.3);
 }
 
@@ -171,8 +234,8 @@ h3 {
 
 /* Inputs pressed into the paper. */
 .field {
-  background: #fffdf8;
-  border: 1px solid #e3d5bf;
+  background: color-mix(in srgb, var(--color-cream) 70%, white);
+  border: 1px solid var(--color-line);
   box-shadow: inset 0 2px 3px rgb(80 55 25 / 0.08);
 }
 .field:focus {
@@ -180,9 +243,245 @@ h3 {
   outline: none;
 }
 
+/* ---------- Georgian writing desk ---------- */
+/* Mahogany, green leather with gold tooling, parchment, brass and wax red. */
+html[data-theme="georgian"] {
+  font-size: 17px;
+  --theme-sans: var(--font-garamond);
+  --theme-display: var(--font-cormorant);
+
+  --color-paper: #efe3c8;
+  --color-cream: #fbf4e2;
+  --color-oat: #e6d6b4;
+  --color-walnut: #3a1810;
+  --color-bark: #6b3a26;
+  --color-ink: #2a1a12;
+  --color-muted: #8f7656;
+  --color-faint: #c2a77c;
+  --color-line: #dcc89f;
+  --color-line-strong: #cdb47f;
+  --color-moss: #2f5d46;
+  --color-terracotta: #8b2e2e;
+  --color-mustard: #b08d57;
+  --color-dusk: #2c3e58;
+  --color-accent-soft: #f1dfc0;
+  --color-accent-ink: #6a1f1f;
+  --color-shadow: #1c0d08;
+  --color-side-text: #ead7b5;
+  --color-side-muted: #c4a170;
+  --color-side-strong: #fbefd6;
+  --color-side-accent: #e0b86a;
+  --color-ok-bg: #dfe6d3;
+  --color-ok-ink: #2f5d46;
+  --color-bad-bg: #f0d6cf;
+  --color-bad-ink: #7a1f1f;
+  --color-warn-bg: #f1e2bd;
+  --color-warn-ink: #6b4f1d;
+  --color-info-bg: #dde3ea;
+  --color-info-ink: #2c3e58;
+  --color-note: #f6ebcc;
+  --color-note-line: #dfcb94;
+  --color-note-edge: #cfb87c;
+  --color-card-edge: #d8c290;
+  --color-card-line: #e2d0a6;
+
+  /* Lanes: parchment shades edged in leather, brass and ink. */
+  --lane-1-bg: #f3e8cf;
+  --lane-1-ring: #b08d57;
+  --lane-1-bar: #2f5d46;
+  --lane-1-text: #2f5d46;
+  --lane-2-bg: #f1e0cc;
+  --lane-2-ring: #b08d57;
+  --lane-2-bar: #8b2e2e;
+  --lane-2-text: #6a1f1f;
+  --lane-3-bg: #f2e6c4;
+  --lane-3-ring: #b08d57;
+  --lane-3-bar: #b08d57;
+  --lane-3-text: #6b4f1d;
+  --lane-4-bg: #e7e4da;
+  --lane-4-ring: #b08d57;
+  --lane-4-bar: #2c3e58;
+  --lane-4-text: #2c3e58;
+  --lane-5-bg: #eedccb;
+  --lane-5-ring: #b08d57;
+  --lane-5-bar: #6b3a26;
+  --lane-5-text: #4a2414;
+  --lane-6-bg: #ebe4cc;
+  --lane-6-ring: #b08d57;
+  --lane-6-bar: #5c6b3a;
+  --lane-6-text: #3f4a26;
+}
+/* Mahogany: dark wood with fine grain lines. */
+html[data-theme="georgian"] .felt {
+  background-color: #3a1810;
+  background-image:
+    var(--felt-grain),
+    repeating-linear-gradient(92deg, rgb(255 220 180 / 0.035) 0 2px, transparent 2px 9px, rgb(0 0 0 / 0.08) 9px 10px, transparent 10px 23px),
+    linear-gradient(180deg, #4a1f14 0%, #2e130c 100%);
+}
+/* The writing surface: green leather with a gold-tooled border. */
+html[data-theme="georgian"] .board-bg {
+  background-color: #2f4a3a;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0.05 0 0 0 0 0.02 0 0 0 0.25 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(60rem 40rem at 50% 40%, #365744 0%, #263d30 100%);
+  box-shadow:
+    inset 0 0 0 10px #263d30,
+    inset 0 0 0 11px #b08d57,
+    inset 0 0 0 14px #263d30,
+    inset 0 0 0 15px rgb(176 141 87 / 0.6),
+    inset 0 0 60px rgb(0 0 0 / 0.35);
+}
+html[data-theme="georgian"] .card-tactile {
+  background:
+    repeating-linear-gradient(0deg, transparent 0 23px, rgb(120 90 40 / 0.06) 23px 24px),
+    var(--color-cream);
+  box-shadow:
+    0 1px 0 var(--color-card-edge),
+    0 8px 16px -8px rgb(30 12 5 / 0.45);
+}
+html[data-theme="georgian"] .btn-press {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.25),
+    0 2px 0 rgb(0 0 0 / 0.35);
+}
+html[data-theme="georgian"] h3 {
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Pixel office ---------- */
+/* Chunky pixels: square corners, 2px outlines, hard drop shadows, pixel fonts. */
+html[data-theme="pixel"] {
+  font-size: 19px;
+  --theme-sans: var(--font-vt323);
+  --theme-display: var(--font-press);
+
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+
+  --color-paper: #e8e4d8;
+  --color-cream: #fffdf5;
+  --color-oat: #d8d2c0;
+  --color-walnut: #22223b;
+  --color-bark: #4a4e69;
+  --color-ink: #1b1b2f;
+  --color-muted: #6b6b80;
+  --color-faint: #9a9aa8;
+  --color-line: #1b1b2f;
+  --color-line-strong: #1b1b2f;
+  --color-moss: #2f9e44;
+  --color-terracotta: #e04f5f;
+  --color-mustard: #f2c14e;
+  --color-dusk: #3a86ff;
+  --color-accent-soft: #ffe6a7;
+  --color-accent-ink: #1b1b2f;
+  --color-shadow: #1b1b2f;
+  --color-side-text: #c9d1ff;
+  --color-side-muted: #8b93c9;
+  --color-side-strong: #ffffff;
+  --color-side-accent: #f2c14e;
+  --color-ok-bg: #b8f0c0;
+  --color-ok-ink: #145c22;
+  --color-bad-bg: #ffc2c8;
+  --color-bad-ink: #8a1020;
+  --color-warn-bg: #ffe6a7;
+  --color-warn-ink: #6b4a00;
+  --color-info-bg: #c2dcff;
+  --color-info-ink: #0b3d91;
+  --color-note: #fff3a3;
+  --color-note-line: #1b1b2f;
+  --color-note-edge: #1b1b2f;
+  --color-card-edge: #1b1b2f;
+  --color-card-line: #1b1b2f;
+
+  /* Lanes: bright 8-bit blocks. */
+  --lane-1-bg: #c2dcff;
+  --lane-1-ring: #1b1b2f;
+  --lane-1-bar: #3a86ff;
+  --lane-1-text: #0b3d91;
+  --lane-2-bg: #ffc2c8;
+  --lane-2-ring: #1b1b2f;
+  --lane-2-bar: #e04f5f;
+  --lane-2-text: #8a1020;
+  --lane-3-bg: #ffe6a7;
+  --lane-3-ring: #1b1b2f;
+  --lane-3-bar: #f2c14e;
+  --lane-3-text: #6b4a00;
+  --lane-4-bg: #b8f0c0;
+  --lane-4-ring: #1b1b2f;
+  --lane-4-bar: #2f9e44;
+  --lane-4-text: #145c22;
+  --lane-5-bg: #e2c9ff;
+  --lane-5-ring: #1b1b2f;
+  --lane-5-bar: #8f5cf7;
+  --lane-5-text: #4b1f9e;
+  --lane-6-bg: #ffd8b0;
+  --lane-6-ring: #1b1b2f;
+  --lane-6-bar: #e8833a;
+  --lane-6-text: #7a3a00;
+}
+html[data-theme="pixel"] h1,
+html[data-theme="pixel"] h2,
+html[data-theme="pixel"] h3,
+html[data-theme="pixel"] .font-display {
+  font-size: 0.7rem;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+html[data-theme="pixel"] .paper {
+  background-image: none;
+}
+/* Sidebar: a dark monitor with scanlines. */
+html[data-theme="pixel"] .felt {
+  background-color: #22223b;
+  background-image: repeating-linear-gradient(0deg, rgb(255 255 255 / 0.04) 0 2px, transparent 2px 4px);
+}
+/* Office carpet: a crisp two-tone dither. */
+html[data-theme="pixel"] .board-bg {
+  background-color: #b9c3d6;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' shape-rendering='crispEdges'%3E%3Crect width='8' height='8' fill='%23b9c3d6'/%3E%3Crect width='2' height='2' fill='%23a9b4ca'/%3E%3Crect x='4' y='4' width='2' height='2' fill='%23a9b4ca'/%3E%3C/svg%3E");
+  background-size: 16px 16px;
+  image-rendering: pixelated;
+}
+html[data-theme="pixel"] .card-tactile {
+  border: 2px solid var(--color-ink);
+  box-shadow: 4px 4px 0 var(--color-ink);
+}
+html[data-theme="pixel"] .card-tactile:hover {
+  box-shadow: 6px 6px 0 var(--color-ink);
+}
+html[data-theme="pixel"] .btn-press {
+  border: 2px solid var(--color-ink);
+  box-shadow: 3px 3px 0 var(--color-ink);
+}
+html[data-theme="pixel"] .btn-press:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--color-ink);
+}
+html[data-theme="pixel"] .field {
+  border: 2px solid var(--color-ink);
+  box-shadow: none;
+}
+html[data-theme="pixel"] .field:focus {
+  border-color: var(--color-dusk);
+}
+html[data-theme="pixel"] .rounded-full {
+  border-radius: 0;
+}
+html[data-theme="pixel"] svg[shape-rendering="crispEdges"] {
+  image-rendering: pixelated;
+}
+
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cdb999 transparent;
+  scrollbar-color: var(--color-faint) transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {

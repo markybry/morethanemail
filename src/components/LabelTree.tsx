@@ -6,6 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { createWorkspace } from "@/app/actions";
 import type { MailLabel } from "@/lib/mail";
 import { useMail } from "./MailContext";
+import { ThemeIcon, useTheme } from "./ThemeContext";
+import { makeLabelIcon } from "@/lib/labelColors";
 
 const OPEN_KEY = "mte.labelsOpen";
 
@@ -109,7 +111,7 @@ export function MailNav() {
       ) : (
         <button
           onClick={() => setCreatingUnder("")}
-          className="mx-2 mt-2 w-[calc(100%-1rem)] rounded-xl border-2 border-dashed border-[#f6e9d2]/25 px-3 py-1 text-left text-sm font-semibold text-[#c9b08a] transition hover:border-[#f2b38a]/60 hover:bg-white/5 hover:text-[#f2b38a]"
+          className="mx-2 mt-2 w-[calc(100%-1rem)] rounded-xl border-2 border-dashed border-side-strong/25 px-3 py-1 text-left text-sm font-semibold text-side-muted transition hover:border-side-accent/60 hover:bg-white/5 hover:text-side-accent"
         >
           + New label
         </button>
@@ -138,7 +140,9 @@ function TreeNode({
   creatingUnder: string | null;
   onCreate: (name: string) => void;
 }) {
-  const { colorOfPath, animalOfPath } = useMail();
+  const { colorOfPath, labels } = useMail();
+  const { theme } = useTheme();
+  const iconOf = useMemo(() => makeLabelIcon(labels, theme.icons.labels), [labels, theme]);
   const color = colorOfPath(node.path);
   const expanded = isOpen(node.path);
   const active = !!node.label && node.label.id === activeId;
@@ -152,7 +156,7 @@ function TreeNode({
           e.stopPropagation();
           onToggle(node.path);
         }}
-        className="w-3 shrink-0 text-center text-[#a8957a] hover:text-white"
+        className="w-3 shrink-0 text-center text-muted hover:text-white"
       >
         {expanded ? "▾" : "▸"}
       </span>
@@ -161,15 +165,15 @@ function TreeNode({
     <>
       {depth === 0 ? (
         <span className="w-5 shrink-0 text-center text-base leading-none group-hover:animate-wiggle" aria-hidden>
-          {animalOfPath(node.path)}
+          <ThemeIcon icon={iconOf(node.path)} size={16} />
         </span>
       ) : (
         <span className="h-2 w-2 shrink-0 rounded-full ring-2 ring-black/20" style={{ background: color }} />
       )}
-      <span className={`truncate ${node.label?.unread || depth === 0 ? "font-bold text-[#fff6e6]" : ""}`}>{node.segment}</span>
+      <span className={`truncate ${node.label?.unread || depth === 0 ? "font-bold text-side-strong" : ""}`}>{node.segment}</span>
       <span className="ml-auto flex items-center gap-1 pl-2">
         {!!node.label?.unread && (
-          <span className="rounded-full px-1.5 text-[11px] font-extrabold text-[#2b221b]" style={{ background: color }}>
+          <span className="rounded-full px-1.5 text-[11px] font-extrabold text-shadow" style={{ background: color }}>
             {node.label.unread}
           </span>
         )}
@@ -182,7 +186,7 @@ function TreeNode({
             e.stopPropagation();
             onAddChild(node.path);
           }}
-          className="hidden w-4 text-center text-[#a8957a] group-hover:inline hover:text-white"
+          className="hidden w-4 text-center text-muted group-hover:inline hover:text-white max-md:inline"
         >
           +
         </span>
@@ -247,7 +251,7 @@ function NavRow({
   children: React.ReactNode;
 }) {
   const className = `group mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 rounded-xl py-1 pr-3 text-left text-sm transition hover:translate-x-0.5 hover:bg-white/10 ${
-    active ? "text-[#fff6e6]" : ""
+    active ? "text-side-strong" : ""
   }`;
   // Nesting is shown by the guide-line containers, so rows only need a little padding.
   const style = {
@@ -289,7 +293,7 @@ function NewLabelInput({ placeholder, onSubmit }: { placeholder: string; onSubmi
         onBlur={() => onSubmit("")}
         onKeyDown={(e) => e.key === "Escape" && onSubmit("")}
         placeholder={placeholder}
-        className="w-full rounded-xl bg-black/20 px-3 py-1 text-sm text-[#fff6e6] shadow-[inset_0_2px_4px_rgb(0_0_0/0.3)] outline-none ring-1 ring-[#f2b38a]/50 placeholder:text-[#c9b08a]/70"
+        className="w-full rounded-xl bg-black/20 px-3 py-1 text-sm text-side-strong shadow-[inset_0_2px_4px_rgb(0_0_0/0.3)] outline-none ring-1 ring-side-accent/50 placeholder:text-side-muted/70"
       />
     </form>
   );

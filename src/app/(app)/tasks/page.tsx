@@ -36,18 +36,18 @@ export default async function TasksPage() {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl p-6">
         <h1 className="text-xl font-semibold">My tasks</h1>
-        <p className="mt-1 text-sm text-[#a8957a]">{open.length} open across all your emails.</p>
+        <p className="mt-1 text-sm text-muted">{open.length} open across all your emails.</p>
         {tasks.length === 0 && (
-          <p className="mt-8 text-[#a8957a]">No tasks yet. Open an email and add tasks to it.</p>
+          <p className="mt-8 text-muted">No tasks yet. Open an email and add tasks to it.</p>
         )}
         {groups
           .filter((g) => g.items.length)
           .map((g) => (
             <section key={g.title} className="mt-6">
-              <h2 className={`mb-2 text-xs font-semibold tracking-wide uppercase ${g.title === "Overdue" ? "text-red-600" : "text-[#a8957a]"}`}>
+              <h2 className={`mb-2 text-xs font-semibold tracking-wide uppercase ${g.title === "Overdue" ? "text-red-600" : "text-muted"}`}>
                 {g.title} · {g.items.length}
               </h2>
-              <ul className="divide-y divide-[#efe4d2] rounded-lg border border-[#e3d5bf] bg-white">
+              <ul className="divide-y divide-line rounded-lg border border-line bg-white">
                 {g.items.map((t) => {
                   // Open the email in the workspace where it's sorted, or the inbox.
                   const where = t.email.placements[0];
@@ -55,17 +55,17 @@ export default async function TasksPage() {
                   <li key={t.id} className="flex items-center gap-3 px-3 py-2">
                     <TaskCheckbox taskId={t.id} done={t.done} />
                     <div className="min-w-0 flex-1">
-                      <div className={`text-sm ${t.done ? "text-[#a8957a] line-through" : "text-walnut"}`}>{t.title}</div>
+                      <div className={`text-sm ${t.done ? "text-muted line-through" : "text-walnut"}`}>{t.title}</div>
                       <Link
                         href={`/l/${encodeURIComponent(where?.workspace.labelId ?? "INBOX")}?thread=${t.email.threadId}`}
-                        className="block truncate text-xs text-[#a8957a] hover:text-terracotta"
+                        className="block truncate text-xs text-muted hover:text-terracotta"
                       >
                         {where ? `${where.workspace.name} › ${where.lane.name} › ` : ""}
                         {t.email.subject}
                       </Link>
                     </div>
                     {t.dueDate && (
-                      <span className={`shrink-0 text-xs ${!t.done && isOverdue(t.dueDate.toISOString()) ? "text-red-600" : "text-[#a8957a]"}`}>
+                      <span className={`shrink-0 text-xs ${!t.done && isOverdue(t.dueDate.toISOString()) ? "text-red-600" : "text-muted"}`}>
                         {dueLabel(t.dueDate.toISOString())}
                       </span>
                     )}

@@ -8,7 +8,7 @@ import { useMail } from "./MailContext";
 // lanes, because the email is the ticket.
 export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; hideLabelId?: string; dragging?: boolean }) {
   const { labelNames, colorOf } = useMail();
-  const accent = (hideLabelId && colorOf(hideLabelId)) || "#d98a5a";
+  const accent = (hideLabelId && colorOf(hideLabelId)) || "var(--color-terracotta)";
   const open = email.tasks.filter((t) => !t.done);
   const nextDue = open
     .map((t) => t.dueDate)
@@ -37,12 +37,12 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
         <span className={`min-w-0 flex-1 truncate ${email.unread ? "font-bold text-walnut" : "text-bark"}`}>
           {senderName(email.from)}
         </span>
-        <span className="shrink-0 text-[#a8957a]">{shortDate(email.date)}</span>
+        <span className="shrink-0 text-muted">{shortDate(email.date)}</span>
       </div>
       <div className={`mt-0.5 text-sm leading-snug ${email.unread ? "font-extrabold text-walnut" : "font-semibold text-ink"}`}>
         {email.subject}
       </div>
-      <div className="mt-0.5 truncate text-xs text-[#a8957a]">{email.snippet}</div>
+      <div className="mt-0.5 truncate text-xs text-muted">{email.snippet}</div>
       {(email.newReply || chips.length > 0 || email.tasks.length > 0 || email.notes.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
           {email.newReply && (
@@ -75,11 +75,11 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
 
 function Badge({ children, tone }: { children: React.ReactNode; tone?: "green" | "red" | "amber" | "blue" | "label" }) {
   const cls = {
-    green: "bg-[#e3ead2] text-[#4a5a2c]",
-    red: "bg-[#f3d6cc] text-[#8a3a1f]",
-    amber: "bg-[#f4e5bd] text-[#6e531a]",
-    blue: "bg-[#f7e2c4] font-bold text-[#8a4a1f]",
-    label: "border border-[#e3d5bf] bg-paper text-bark",
+    green: "bg-ok-bg text-ok-ink",
+    red: "bg-bad-bg text-bad-ink",
+    amber: "bg-warn-bg text-warn-ink",
+    blue: "bg-accent-soft font-bold text-accent-ink",
+    label: "border border-line bg-paper text-bark",
   }[tone ?? "label"];
-  return <span className={`rounded-full px-2 py-0.5 font-semibold ${tone ? cls : "bg-[#e0e6ea] text-[#34495a]"}`}>{children}</span>;
+  return <span className={`rounded-full px-2 py-0.5 font-semibold ${tone ? cls : "bg-info-bg text-info-ink"}`}>{children}</span>;
 }

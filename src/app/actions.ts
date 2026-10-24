@@ -15,6 +15,7 @@ import {
   type ThreadDetail,
 } from "@/lib/mail";
 import { requireUser } from "@/lib/session";
+import { isThemeId } from "@/lib/themes";
 import type { BoardEmail, LaneDTO, NoteDTO, TaskDTO, ThreadSnapshot } from "@/lib/types";
 import { emailInclude, snapshotData, toBoardEmail, upsertEmail } from "@/lib/board";
 
@@ -285,4 +286,12 @@ export async function deleteTask(taskId: string) {
   const user = await requireUser();
   await db.task.deleteMany({ where: { id: taskId, email: { userId: user.id } } });
   revalidatePath("/tasks");
+}
+
+// ---------- preferences ----------
+
+export async function saveTheme(theme: string) {
+  const user = await requireUser();
+  if (!isThemeId(theme)) return;
+  await db.user.update({ where: { id: user.id }, data: { theme } });
 }
