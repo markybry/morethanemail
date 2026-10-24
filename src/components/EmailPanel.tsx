@@ -39,7 +39,7 @@ export function EmailPanel({ email, workspaceLabelId, onLabelsChange, lanes, lan
     <Drawer onClose={onClose}>
       <DrawerHeader onClose={onClose}>
         <h2 className="text-xl font-semibold text-walnut">{email.subject}</h2>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[#a8957a]">
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
           <span>{senderName(email.from)}</span>
           <a href={gmailLink(email.threadId)} target="_blank" rel="noreferrer" className="hover:text-terracotta">
             Open in Gmail ↗
@@ -117,7 +117,7 @@ function Workspaces({
           <span
             key={id}
             className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-sm ${
-              id === here ? "border-terracotta/50 bg-[#f7e2c4] text-[#7a3e1f]" : "border-[#e3d5bf] bg-cream text-bark"
+              id === here ? "border-terracotta/50 bg-accent-soft text-accent-ink" : "border-line bg-cream text-bark"
             }`}
           >
             <Link href={`/l/${encodeURIComponent(id)}?thread=${email.threadId}`} className="hover:underline">
@@ -126,14 +126,14 @@ function Workspaces({
             <button
               disabled={busy}
               onClick={() => run(() => setEmailLabels(email.threadId, [], [id]))}
-              className="text-[#a8957a] hover:text-red-600 disabled:opacity-40"
+              className="text-muted hover:text-red-600 disabled:opacity-40"
               title={id === "INBOX" ? "Archive (remove from Inbox)" : "Remove this label in Gmail"}
             >
               ✕
             </button>
           </span>
         ))}
-        {current.length === 0 && <span className="text-sm text-[#a8957a]">Not in any workspace.</span>}
+        {current.length === 0 && <span className="text-sm text-muted">Not in any workspace.</span>}
       </div>
       <div className="relative mt-2">
         <input
@@ -144,7 +144,7 @@ function Workspaces({
           className="w-full field rounded-xl px-2.5 py-1.5 text-sm"
         />
         {q && (
-          <div className="absolute z-10 mt-1 w-full rounded-md border border-[#e3d5bf] bg-white py-1 shadow-lg">
+          <div className="absolute z-10 mt-1 w-full rounded-md border border-line bg-white py-1 shadow-lg">
             {options.map((l) => (
               <button
                 key={l.id}
@@ -189,7 +189,7 @@ function Workspaces({
             router.push(`/l/${encodeURIComponent(res.label.id)}?thread=${email.threadId}`);
           }}
         >
-          <span className="shrink-0 text-sm text-[#a8957a]">{parent ? `${parent.split("/").join(" › ")} ›` : "New label:"}</span>
+          <span className="shrink-0 text-sm text-muted">{parent ? `${parent.split("/").join(" › ")} ›` : "New label:"}</span>
           <input
             autoFocus
             value={ownName}
@@ -201,7 +201,7 @@ function Workspaces({
           <button disabled={busy || !ownName.trim()} className="btn-press rounded-xl bg-moss px-3 py-1 text-sm font-bold text-cream disabled:opacity-50">
             Create
           </button>
-          <button type="button" onClick={() => setOwnName(null)} className="text-sm text-[#a8957a]">
+          <button type="button" onClick={() => setOwnName(null)} className="text-sm text-muted">
             Cancel
           </button>
         </form>
@@ -228,9 +228,9 @@ function Tasks({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
                 setTasks(email.tasks.map((x) => (x.id === t.id ? { ...x, done: !x.done } : x)));
                 await updateTask(t.id, { done: !t.done });
               }}
-              className="h-4 w-4 accent-[#6f8a4a] transition active:scale-125"
+              className="h-4 w-4 accent-moss transition active:scale-125"
             />
-            <span className={`flex-1 text-sm ${t.done ? "text-[#a8957a] line-through" : "text-walnut"}`}>{t.title}</span>
+            <span className={`flex-1 text-sm ${t.done ? "text-muted line-through" : "text-walnut"}`}>{t.title}</span>
             <input
               type="date"
               value={toDateInput(t.dueDate)}
@@ -240,7 +240,7 @@ function Tasks({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
                 await updateTask(t.id, { dueDate });
               }}
               className={`rounded border-0 bg-transparent text-xs ${
-                t.dueDate && !t.done && isOverdue(t.dueDate) ? "text-red-600" : "text-[#a8957a]"
+                t.dueDate && !t.done && isOverdue(t.dueDate) ? "text-red-600" : "text-muted"
               } ${t.dueDate ? "" : "opacity-0 group-hover:opacity-100"}`}
               title={t.dueDate ? dueLabel(t.dueDate) : "Set due date"}
             />
@@ -249,7 +249,7 @@ function Tasks({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
                 setTasks(email.tasks.filter((x) => x.id !== t.id));
                 await deleteTask(t.id);
               }}
-              className="text-[#cdb999] opacity-0 group-hover:opacity-100 hover:text-red-600"
+              className="text-faint opacity-0 group-hover:opacity-100 hover:text-red-600"
               title="Delete task"
             >
               ✕
@@ -313,9 +313,9 @@ function Notes({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
       </form>
       <ul className="mt-2 space-y-2">
         {email.notes.map((n) => (
-          <li key={n.id} className="group animate-rise -rotate-[0.4deg] rounded-xl border border-[#ead9a8] bg-[#fbf0c9] px-3 py-2 shadow-[0_2px_0_#e6d39b,0_6px_12px_-6px_rgb(80_55_25/0.3)] even:rotate-[0.4deg]">
+          <li key={n.id} className="group animate-rise -rotate-[0.4deg] rounded-xl border border-note-line bg-note px-3 py-2 shadow-[0_2px_0_var(--color-note-edge),0_6px_12px_-6px_rgb(80_55_25/0.3)] even:rotate-[0.4deg]">
             <p className="text-sm whitespace-pre-wrap text-walnut">{n.body}</p>
-            <div className="mt-1 flex text-xs text-[#a8957a]">
+            <div className="mt-1 flex text-xs text-muted">
               <span>{new Date(n.createdAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
               <button
                 onClick={async () => {

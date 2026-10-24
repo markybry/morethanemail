@@ -82,9 +82,13 @@ export function ResizeHandle({
       onPointerUp={end}
       onPointerCancel={end}
       onDoubleClick={onReset}
-      className={`group absolute top-0 z-20 h-full w-2 cursor-col-resize ${edge === "right" ? "-right-1" : "-left-1"}`}
+      className={`group absolute top-0 z-20 h-full w-2 cursor-col-resize max-md:hidden ${edge === "right" ? "-right-1" : "-left-1"}`}
     >
-      <div className="mx-auto h-full w-0.5 bg-transparent transition-colors group-hover:bg-terracotta group-active:bg-[#f7e2c4]0" />
+      <div className="mx-auto h-full w-0.5 bg-transparent transition-colors group-hover:bg-terracotta group-active:bg-accent-soft0" />
     </div>
   );
 }
+
+// Pass a stored width to CSS as --w, so a class can use it on larger screens
+// only (md:w-[var(--w)]) while phones get a full-width layout.
+export const widthVar = (px: number) => ({ "--w": `${px}px` }) as React.CSSProperties;

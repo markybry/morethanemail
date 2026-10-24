@@ -13,7 +13,7 @@ export function TaskCheckbox({ taskId, done }: { taskId: string; done: boolean }
         setChecked(!checked);
         await updateTask(taskId, { done: !checked });
       }}
-      className="h-4 w-4 accent-[#6f8a4a]"
+      className="h-4 w-4 accent-moss"
     />
   );
 }

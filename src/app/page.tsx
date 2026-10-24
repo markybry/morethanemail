@@ -17,7 +17,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
       <span className="animate-float pointer-events-none absolute right-[12%] bottom-[14%] text-6xl opacity-80 [animation-delay:-6s]">🦉</span>
       <span className="animate-float pointer-events-none absolute right-[22%] top-[18%] text-4xl opacity-70 [animation-delay:-10s]">🍂</span>
       <span className="animate-float pointer-events-none absolute bottom-[20%] left-[18%] text-4xl opacity-70 [animation-delay:-3s]">🌿</span>
-      <div className="paper animate-rise relative w-full max-w-md rounded-3xl border border-[#e3d5bf] p-8 shadow-[0_4px_0_#d9c6a6,0_30px_60px_-20px_rgb(0_0_0/0.5)]">
+      <div className="paper animate-rise relative w-full max-w-md rounded-3xl border border-line p-8 shadow-[0_4px_0_var(--color-card-edge),0_30px_60px_-20px_rgb(0_0_0/0.5)]">
         <div className="animate-pop mb-2 text-5xl hover:animate-wiggle">🦊</div>
         <h1 className="text-3xl font-semibold tracking-tight text-walnut">More Than Email</h1>
         <p className="mt-2 text-bark">

@@ -5,7 +5,8 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCorners,
   pointerWithin,
   useDraggable,
@@ -25,19 +26,20 @@ import { CardFace } from "./CardFace";
 import { EmailPanel, UNSORTED } from "./EmailPanel";
 import { useMail } from "./MailContext";
 import { ConfirmButton, InlineEdit } from "./ui";
-import { ResizeHandle, useStoredWidth } from "./Resizable";
+import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
+import { ThemeIcon, useTheme } from "./ThemeContext";
 
 const PRIMARY_KEY = "mte.inboxPrimaryOnly";
 
-// Each lane gets its own earthy colour and a woodland animal, cycling through
-// these. Literal class names so Tailwind keeps them.
+// Each lane gets its own colour (defined per theme in globals.css) and an
+// icon from the theme, cycling through these. Literal class names so Tailwind keeps them.
 const LANE_THEMES = [
-  { animal: "🦔", box: "bg-[#e6ead8] ring-[#cfd8b4]", bar: "bg-[#8aa05f]", text: "text-[#4a5a2c]", count: "bg-[#7d9455]" },
-  { animal: "🦊", box: "bg-[#f3e0d3] ring-[#e7c6b0]", bar: "bg-[#cf7a4b]", text: "text-[#7a3e1f]", count: "bg-[#c4693f]" },
-  { animal: "🐝", box: "bg-[#f4e8c6] ring-[#e8d49a]", bar: "bg-[#d9ab3f]", text: "text-[#6e531a]", count: "bg-[#c99a2e]" },
-  { animal: "🦉", box: "bg-[#e0e6ea] ring-[#c6d1d9]", bar: "bg-[#6f8b9c]", text: "text-[#34495a]", count: "bg-[#5f7a8c]" },
-  { animal: "🐻", box: "bg-[#ecdcd5] ring-[#dcc0b4]", bar: "bg-[#9a6b55]", text: "text-[#5a3627]", count: "bg-[#8a5c47]" },
-  { animal: "🐢", box: "bg-[#e3e5d4] ring-[#cdd0b0]", bar: "bg-[#8f9466]", text: "text-[#4b4e2c]", count: "bg-[#80855a]" },
+  { box: "bg-[var(--lane-1-bg)] ring-[var(--lane-1-ring)]", bar: "bg-[var(--lane-1-bar)]", text: "text-[var(--lane-1-text)]", count: "bg-[var(--lane-1-bar)]" },
+  { box: "bg-[var(--lane-2-bg)] ring-[var(--lane-2-ring)]", bar: "bg-[var(--lane-2-bar)]", text: "text-[var(--lane-2-text)]", count: "bg-[var(--lane-2-bar)]" },
+  { box: "bg-[var(--lane-3-bg)] ring-[var(--lane-3-ring)]", bar: "bg-[var(--lane-3-bar)]", text: "text-[var(--lane-3-text)]", count: "bg-[var(--lane-3-bar)]" },
+  { box: "bg-[var(--lane-4-bg)] ring-[var(--lane-4-ring)]", bar: "bg-[var(--lane-4-bar)]", text: "text-[var(--lane-4-text)]", count: "bg-[var(--lane-4-bar)]" },
+  { box: "bg-[var(--lane-5-bg)] ring-[var(--lane-5-ring)]", bar: "bg-[var(--lane-5-bar)]", text: "text-[var(--lane-5-text)]", count: "bg-[var(--lane-5-bar)]" },
+  { box: "bg-[var(--lane-6-bg)] ring-[var(--lane-6-ring)]", bar: "bg-[var(--lane-6-bar)]", text: "text-[var(--lane-6-text)]", count: "bg-[var(--lane-6-bar)]" },
 ];
 const T = "t:"; // draggable email ids
 const LANE = "lane:"; // droppable column ids
@@ -65,6 +67,7 @@ export function LabelBoard({
   initialThreadId?: string;
 }) {
   const { reloadLabels } = useMail();
+  const { theme: look } = useTheme();
   const isInbox = workspace.labelId === "INBOX";
   const [lanes, setLanes] = useState<LaneDTO[]>(workspace.lanes);
   const [emails, setEmails] = useState<Record<string, BoardEmail>>(initialEmails);
@@ -195,7 +198,9 @@ export function LabelBoard({
 
   // ----- drag and drop -----
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    // On touch screens, press and hold to pick a card up; a quick swipe scrolls.
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -290,7 +295,16 @@ export function LabelBoard({
         setActiveId(null);
       }}
     >
-      <div className="flex h-full min-h-0">
+      <div className="flex h-full min-h-0 flex-col md:flex-row">
+        <ColumnTabs
+          columns={[
+            { id: "unsorted", name: "Unsorted", count: unsorted.length },
+            ...lanes.map((l) => ({ id: l.id, name: l.name, count: l.threadIds.length })),
+            { id: "add", name: "+ Lane", count: null },
+          ]}
+        />
+        {/* On phones this row scrolls sideways, one column per screen; on desktop it dissolves. */}
+        <div className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] md:contents">
         <UnsortedColumn
           title={workspace.name}
           labelId={workspace.labelId}
@@ -313,9 +327,10 @@ export function LabelBoard({
           }}
           onLoadMore={() => load(loadedQuery, nextPage)}
           onOpen={setSelected}
+          look={look}
         />
 
-        <section className="board-bg flex min-w-0 flex-1 gap-4 overflow-x-auto p-4">
+        <section className="board-bg flex min-w-0 flex-1 gap-4 overflow-x-auto p-4 max-md:flex-none max-md:gap-3 max-md:overflow-visible max-md:p-3">
           {lanes.map((lane, i) => (
             <Lane
               key={lane.id}
@@ -332,10 +347,11 @@ export function LabelBoard({
               onDelete={() => removeLane(lane)}
               onOpen={setSelected}
               width={laneWidth}
-              theme={LANE_THEMES[i % LANE_THEMES.length]}
+              colors={LANE_THEMES[i % LANE_THEMES.length]}
+              icon={look.icons.lanes[i % look.icons.lanes.length]}
             />
           ))}
-          <div className="w-64 shrink-0 space-y-2">
+          <div id="col-add" className="w-64 shrink-0 snap-start space-y-2 max-md:w-[80vw]">
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
@@ -344,22 +360,25 @@ export function LabelBoard({
                 setLanes((prev) => [...prev, lane]);
                 setNewLane("");
               }}
+              className="relative"
             >
+              <ThemeIcon icon={look.icons.addLane} size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2" />
               <input
                 value={newLane}
                 onChange={(e) => setNewLane(e.target.value)}
-                placeholder="🌱 Add lane"
-                className="w-full rounded-2xl border-2 border-dashed border-[#cdb999] bg-cream/50 px-3 py-2 text-sm font-semibold text-bark outline-none transition placeholder:text-[#9a8466] hover:border-terracotta/60 hover:bg-cream focus:border-terracotta focus:bg-cream"
+                placeholder="Add lane"
+                className="w-full rounded-2xl border-2 border-dashed border-faint bg-cream/85 py-2 pr-3 pl-9 text-sm font-semibold text-bark outline-none transition placeholder:text-muted hover:border-terracotta/60 hover:bg-cream focus:border-terracotta focus:bg-cream"
               />
             </form>
             {lanes.length === 0 && (
               <p className="card-tactile animate-rise rounded-2xl px-3 py-2 text-xs leading-relaxed text-bark">
-                <span className="mr-1">🐿️</span>
+                <ThemeIcon icon={look.icons.hint} size={16} className="mr-1" />
                 Add lanes to sort this label&apos;s emails, for example To do, Waiting and Done, then drag emails into them.
               </p>
             )}
           </div>
         </section>
+        </div>
       </div>
 
       <DragOverlay dropAnimation={null}>
@@ -415,19 +434,24 @@ function UnsortedColumn(p: {
   onSearch: () => void;
   onLoadMore: () => void;
   onOpen: (threadId: string) => void;
+  look: ReturnType<typeof useTheme>["theme"];
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${UNSORTED}` });
   const w = useStoredWidth("mte.w.unsorted", 320, 220, 720);
   return (
-    <aside className="paper relative flex shrink-0 flex-col border-r border-[#e3d5bf]" style={{ width: w.width }}>
+    <aside
+      id="col-unsorted"
+      className="paper relative flex shrink-0 snap-start flex-col border-r border-line max-md:w-screen md:w-[var(--w)]"
+      style={widthVar(w.width)}
+    >
       <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} label="Resize email column" />
-      <div className="space-y-2 border-b border-dashed border-[#d9c9ad] p-3">
+      <div className="space-y-2 border-b border-dashed border-line-strong p-3">
         <div className="flex items-center gap-2">
           <h1 className="min-w-0 flex-1 truncate text-xl font-semibold text-walnut" title={p.title}>
             {p.title.split("/").join(" › ")}
           </h1>
           {p.isInbox && (
-            <div className="flex shrink-0 overflow-hidden rounded-full border border-[#d9c9ad] bg-cream text-xs font-semibold">
+            <div className="flex shrink-0 overflow-hidden rounded-full border border-line-strong bg-cream text-xs font-semibold">
               {[true, false].map((v) => (
                 <button
                   key={String(v)}
@@ -459,7 +483,7 @@ function UnsortedColumn(p: {
             ↻
           </button>
         </form>
-        <p className="text-xs font-semibold text-[#9a8466]">
+        <p className="text-xs font-semibold text-muted">
           {p.searching ? "Search results" : "Unsorted"}
           {p.sortedCount > 0 && ` · ${p.sortedCount} sorted into lanes`}
         </p>
@@ -476,15 +500,19 @@ function UnsortedColumn(p: {
             {[0, 1, 2].map((i) => (
               <div key={i} className="h-20 animate-pulse rounded-2xl bg-oat" />
             ))}
-            <p className="text-center text-xs text-[#9a8466]">
-              <span className="animate-bob inline-block">🐢</span> Fetching your mail…
+            <p className="text-center text-xs text-muted">
+              <ThemeIcon icon={p.look.icons.loading} size={16} className="animate-bob inline-block" /> {p.look.text.loading}
             </p>
           </div>
         )}
         {p.state === "idle" && p.threadIds.length === 0 && (
           <p className="animate-rise p-4 text-center text-sm text-bark">
-            <span className="animate-bob mb-1 block text-3xl">{p.sortedCount > 0 ? "🦉" : "🦔"}</span>
-            {p.sortedCount > 0 ? "All sorted. Time for a cuppa." : "Nothing with this label yet."}
+            <ThemeIcon
+              icon={p.sortedCount > 0 ? p.look.icons.sorted : p.look.icons.empty}
+              size={36}
+              className="animate-bob mx-auto mb-2 block text-3xl"
+            />
+            {p.sortedCount > 0 ? p.look.text.sorted : p.look.text.empty}
           </p>
         )}
         {p.state === "idle" && p.hasMore && (
@@ -505,7 +533,7 @@ function DraggableEmail({ email, labelId, selected, onOpen }: { email: BoardEmai
       {...attributes}
       {...listeners}
       onClick={onOpen}
-      className={`${isDragging ? "opacity-30" : ""} ${selected ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper" : ""}`}
+      className={`touch-manipulation ${isDragging ? "opacity-30" : ""} ${selected ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper" : ""}`}
     >
       <CardFace email={email} hideLabelId={labelId} />
     </div>
@@ -523,7 +551,8 @@ function Lane({
   onDelete,
   onOpen,
   width,
-  theme,
+  colors,
+  icon,
 }: {
   lane: LaneDTO;
   emails: Record<string, BoardEmail>;
@@ -535,31 +564,31 @@ function Lane({
   onDelete: () => Promise<void>;
   onOpen: (threadId: string) => void;
   width: ReturnType<typeof useStoredWidth>;
-  theme: (typeof LANE_THEMES)[number];
+  colors: (typeof LANE_THEMES)[number];
+  icon: string;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${lane.id}` });
   return (
     <div
-      className={`animate-rise relative flex max-h-full shrink-0 flex-col overflow-visible rounded-3xl shadow-[inset_0_2px_6px_rgb(80_55_25/0.08)] ring-1 transition ${theme.box} ${
+      id={`col-${lane.id}`}
+      className={`animate-rise relative flex max-h-full shrink-0 snap-start flex-col overflow-visible rounded-3xl shadow-[inset_0_2px_6px_rgb(80_55_25/0.08)] ring-1 transition max-md:w-[calc(100vw-1.5rem)] md:w-[var(--w)] ${colors.box} ${
         isOver ? "scale-[1.01] shadow-lg" : ""
       }`}
-      style={{ width: width.width }}
+      style={widthVar(width.width)}
     >
-      <div className={`mx-6 mt-0 h-1.5 rounded-b-full ${theme.bar}`} />
+      <div className={`mx-6 mt-0 h-1.5 rounded-b-full ${colors.bar}`} />
       <ResizeHandle width={width.width} onResize={width.setWidth} onDone={width.save} onReset={width.reset} label="Resize lanes" />
       <div className="group flex items-center gap-1 px-3 pt-2.5 pb-1">
-        <span className="cursor-default text-lg hover:animate-wiggle" aria-hidden>
-          {theme.animal}
-        </span>
-        <InlineEdit value={lane.name} onSave={onRename} className={`font-display text-base font-semibold ${theme.text}`} />
-        <span key={lane.threadIds.length} className={`animate-pop rounded-full px-2 text-[11px] font-bold text-cream ${theme.count}`}>
+        <ThemeIcon icon={icon} size={20} className="cursor-default text-lg hover:animate-wiggle" />
+        <InlineEdit value={lane.name} onSave={onRename} className={`font-display text-base font-semibold ${colors.text}`} />
+        <span key={lane.threadIds.length} className={`animate-pop rounded-full px-2 text-[11px] font-bold text-cream ${colors.count}`}>
           {lane.threadIds.length}
         </span>
-        <div className="ml-auto flex items-center opacity-0 transition group-hover:opacity-100">
-          <button disabled={isFirst} onClick={() => onMove(-1)} className="px-1 text-[#a8957a] disabled:opacity-30" title="Move left">
+        <div className="ml-auto flex items-center opacity-0 transition group-hover:opacity-100 max-md:opacity-100">
+          <button disabled={isFirst} onClick={() => onMove(-1)} className="px-1 text-muted disabled:opacity-30" title="Move left">
             ‹
           </button>
-          <button disabled={isLast} onClick={() => onMove(1)} className="px-1 text-[#a8957a] disabled:opacity-30" title="Move right">
+          <button disabled={isLast} onClick={() => onMove(1)} className="px-1 text-muted disabled:opacity-30" title="Move right">
             ›
           </button>
           <ConfirmButton label="✕" confirmLabel="Delete lane?" onConfirm={onDelete} small />
@@ -585,9 +614,27 @@ function SortableEmail({ email, labelId, onOpen }: { email: BoardEmail; labelId:
       {...attributes}
       {...listeners}
       onClick={onOpen}
-      className={isDragging ? "opacity-30" : ""}
+      className={`touch-manipulation ${isDragging ? "opacity-30" : ""}`}
     >
       <CardFace email={email} hideLabelId={labelId} />
     </div>
+  );
+}
+
+// Phones show one column at a time; these tabs jump between them.
+function ColumnTabs({ columns }: { columns: { id: string; name: string; count: number | null }[] }) {
+  return (
+    <nav className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-line bg-cream px-2 py-1.5 [scrollbar-width:none] md:hidden" aria-label="Columns">
+      {columns.map((c) => (
+        <button
+          key={c.id}
+          onClick={() => document.getElementById(`col-${c.id}`)?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" })}
+          className="btn-press shrink-0 rounded-full bg-oat px-3 py-0.5 text-sm font-semibold whitespace-nowrap text-bark"
+        >
+          {c.name}
+          {c.count !== null && <span className="ml-1 text-muted">{c.count}</span>}
+        </button>
+      ))}
+    </nav>
   );
 }

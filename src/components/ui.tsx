@@ -61,7 +61,7 @@ export function ConfirmButton({
     <button
       onClick={() => (armed ? (setArmed(false), void onConfirm()) : setArmed(true))}
       className={`rounded ${small ? "px-1 text-xs" : "px-2 py-1 text-sm"} ${
-        armed ? "bg-red-600 text-white" : "text-[#a8957a] hover:bg-oat hover:text-red-600"
+        armed ? "bg-red-600 text-white" : "text-muted hover:bg-oat hover:text-red-600"
       }`}
     >
       {armed ? confirmLabel : label}
@@ -71,7 +71,7 @@ export function ConfirmButton({
 
 export function Section({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <section className="animate-rise border-t border-dashed border-[#e3d5bf] px-5 py-4">
+    <section className="animate-rise border-t border-dashed border-line px-5 py-4">
       <div className="mb-2 flex items-center">
         <h3 className="text-sm font-semibold text-terracotta">{title}</h3>
         <div className="ml-auto">{action}</div>
