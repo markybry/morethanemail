@@ -4,7 +4,107 @@
   --font-sans: var(--font-geist-sans);
 }
 
+/* Motion used across the app: cards rise in, the email panel slides in, badges pop. */
+@theme {
+  --animate-rise: rise 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  --animate-slide-in: slide-in 0.32s cubic-bezier(0.2, 0.9, 0.25, 1) backwards;
+  --animate-fade-in: fade-in 0.2s ease-out backwards;
+  --animate-pop: pop 0.3s cubic-bezier(0.2, 1.6, 0.4, 1) backwards;
+  --animate-float: float 14s ease-in-out infinite alternate;
+  --animate-ping-soft: ping-soft 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes slide-in {
+    from {
+      transform: translateX(40px);
+      opacity: 0;
+    }
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes pop {
+    from {
+      transform: scale(0.6);
+      opacity: 0;
+    }
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  @keyframes float {
+    from {
+      transform: translate(0, 0) scale(1);
+    }
+    to {
+      transform: translate(40px, -30px) scale(1.15);
+    }
+  }
+  @keyframes ping-soft {
+    75%,
+    100% {
+      transform: scale(2.2);
+      opacity: 0;
+    }
+  }
+}
+
 body {
-  background: #f8fafc;
-  color: #0f172a;
+  background: #faf7ff;
+  color: #1e1b4b;
+}
+
+/* The board: soft pastel colour that slowly drifts behind the lanes. */
+.board-bg {
+  background:
+    radial-gradient(40rem 30rem at 10% 0%, #e0e7ff 0%, transparent 60%),
+    radial-gradient(36rem 28rem at 90% 10%, #fce7f3 0%, transparent 60%),
+    radial-gradient(40rem 30rem at 60% 100%, #dcfce7 0%, transparent 60%),
+    radial-gradient(30rem 24rem at 0% 100%, #fef3c7 0%, transparent 60%),
+    #faf7ff;
+  background-size: 140% 140%;
+  animation: board-drift 30s ease-in-out infinite alternate;
+}
+@keyframes board-drift {
+  from {
+    background-position: 0% 0%;
+  }
+  to {
+    background-position: 100% 100%;
+  }
+}
+
+/* Thin, colourful scrollbars instead of grey slabs. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c4b5fd transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

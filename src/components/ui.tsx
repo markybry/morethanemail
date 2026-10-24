@@ -71,9 +71,11 @@ export function ConfirmButton({
 
 export function Section({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <section className="border-t border-slate-200 px-5 py-4">
+    <section className="animate-rise border-t border-violet-50 px-5 py-4">
       <div className="mb-2 flex items-center">
-        <h3 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{title}</h3>
+        <h3 className="bg-gradient-to-r from-violet-600 to-fuchsia-500 bg-clip-text text-xs font-bold tracking-widest text-transparent uppercase">
+          {title}
+        </h3>
         <div className="ml-auto">{action}</div>
       </div>
       {children}
