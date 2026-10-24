@@ -28,6 +28,17 @@ import { ConfirmButton, InlineEdit } from "./ui";
 import { ResizeHandle, useStoredWidth } from "./Resizable";
 
 const PRIMARY_KEY = "mte.inboxPrimaryOnly";
+
+// Each lane gets its own colour, cycling through these. Literal class names so
+// Tailwind keeps them.
+const LANE_THEMES = [
+  { box: "bg-sky-100/70 ring-sky-200", bar: "from-sky-400 to-cyan-400", text: "text-sky-900", count: "bg-sky-500" },
+  { box: "bg-pink-100/70 ring-pink-200", bar: "from-pink-400 to-rose-400", text: "text-pink-900", count: "bg-pink-500" },
+  { box: "bg-amber-100/70 ring-amber-200", bar: "from-amber-400 to-orange-400", text: "text-amber-900", count: "bg-amber-500" },
+  { box: "bg-emerald-100/70 ring-emerald-200", bar: "from-emerald-400 to-teal-400", text: "text-emerald-900", count: "bg-emerald-500" },
+  { box: "bg-violet-100/70 ring-violet-200", bar: "from-violet-400 to-fuchsia-400", text: "text-violet-900", count: "bg-violet-500" },
+  { box: "bg-lime-100/70 ring-lime-200", bar: "from-lime-400 to-green-400", text: "text-lime-900", count: "bg-lime-600" },
+];
 const T = "t:"; // draggable email ids
 const LANE = "lane:"; // droppable column ids
 const fromId = (id: string) => id.slice(T.length);
@@ -304,7 +315,7 @@ export function LabelBoard({
           onOpen={setSelected}
         />
 
-        <section className="flex min-w-0 flex-1 gap-3 overflow-x-auto bg-slate-100 p-4">
+        <section className="board-bg flex min-w-0 flex-1 gap-4 overflow-x-auto p-4">
           {lanes.map((lane, i) => (
             <Lane
               key={lane.id}
@@ -321,6 +332,7 @@ export function LabelBoard({
               onDelete={() => removeLane(lane)}
               onOpen={setSelected}
               width={laneWidth}
+              theme={LANE_THEMES[i % LANE_THEMES.length]}
             />
           ))}
           <div className="w-64 shrink-0 space-y-2">
@@ -336,12 +348,12 @@ export function LabelBoard({
               <input
                 value={newLane}
                 onChange={(e) => setNewLane(e.target.value)}
-                placeholder="+ Add lane"
-                className="w-full rounded-lg border border-dashed border-slate-300 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-slate-500 focus:border-indigo-500 focus:bg-white"
+                placeholder="✨ Add lane"
+                className="w-full rounded-xl border-2 border-dashed border-violet-300 bg-white/40 px-3 py-2 text-sm font-medium outline-none backdrop-blur transition placeholder:text-violet-500 hover:border-violet-400 hover:bg-white/70 focus:border-fuchsia-400 focus:bg-white"
               />
             </form>
             {lanes.length === 0 && (
-              <p className="px-1 text-xs leading-relaxed text-slate-500">
+              <p className="animate-rise rounded-xl bg-white/60 px-3 py-2 text-xs leading-relaxed text-violet-900 shadow-sm backdrop-blur">
                 Add lanes to sort this label&apos;s emails, for example To do, Waiting and Done, then drag emails into them.
               </p>
             )}
@@ -406,20 +418,25 @@ function UnsortedColumn(p: {
   const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${UNSORTED}` });
   const w = useStoredWidth("mte.w.unsorted", 320, 220, 720);
   return (
-    <aside className="relative flex shrink-0 flex-col border-r border-slate-200 bg-white" style={{ width: w.width }}>
+    <aside className="relative flex shrink-0 flex-col border-r border-violet-100 bg-white/90" style={{ width: w.width }}>
       <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} label="Resize email column" />
-      <div className="space-y-2 border-b border-slate-200 p-3">
+      <div className="space-y-2 border-b border-violet-100 bg-gradient-to-br from-violet-50 via-white to-pink-50 p-3">
         <div className="flex items-center gap-2">
-          <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900" title={p.title}>
+          <h1
+            className="min-w-0 flex-1 truncate bg-gradient-to-r from-violet-700 via-fuchsia-600 to-pink-500 bg-clip-text text-lg font-bold text-transparent"
+            title={p.title}
+          >
             {p.title.split("/").join(" › ")}
           </h1>
           {p.isInbox && (
-            <div className="flex shrink-0 rounded-md border border-slate-300 text-xs">
+            <div className="flex shrink-0 overflow-hidden rounded-full border border-violet-200 bg-white text-xs">
               {[true, false].map((v) => (
                 <button
                   key={String(v)}
                   onClick={() => p.onPrimaryOnlyChange(v)}
-                  className={`px-2 py-0.5 ${p.primaryOnly === v ? "bg-slate-800 text-white" : "text-slate-600 hover:bg-slate-50"}`}
+                  className={`px-2.5 py-0.5 transition ${
+                    p.primaryOnly === v ? "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white" : "text-violet-700 hover:bg-violet-50"
+                  }`}
                 >
                   {v ? "Primary" : "All tabs"}
                 </button>
@@ -449,19 +466,27 @@ function UnsortedColumn(p: {
           {p.sortedCount > 0 && ` · ${p.sortedCount} sorted into lanes`}
         </p>
       </div>
-      <div ref={setNodeRef} className={`min-h-0 flex-1 space-y-2 overflow-y-auto p-2 ${isOver ? "bg-indigo-50" : ""}`}>
+      <div ref={setNodeRef} className={`min-h-0 flex-1 space-y-2 overflow-y-auto p-2 transition-colors ${isOver ? "bg-violet-50" : ""}`}>
         {p.state === "error" && <p className="p-2 text-sm text-red-600">{p.error}</p>}
         {p.threadIds.map((id) =>
           p.emails[id] ? (
             <DraggableEmail key={id} email={p.emails[id]} labelId={p.labelId} selected={p.selected === id} onOpen={() => p.onOpen(id)} />
           ) : null,
         )}
-        {p.state === "loading" && <p className="p-2 text-sm text-slate-500">Loading…</p>}
+        {p.state === "loading" && (
+          <div className="space-y-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-20 animate-pulse rounded-xl bg-gradient-to-r from-violet-100 via-pink-100 to-sky-100" />
+            ))}
+          </div>
+        )}
         {p.state === "idle" && p.threadIds.length === 0 && (
-          <p className="p-2 text-sm text-slate-500">{p.sortedCount > 0 ? "All sorted." : "No emails with this label."}</p>
+          <p className="animate-rise p-4 text-center text-sm text-violet-600">
+            {p.sortedCount > 0 ? "🎉 All sorted!" : "📭 No emails with this label."}
+          </p>
         )}
         {p.state === "idle" && p.hasMore && (
-          <button onClick={p.onLoadMore} className="w-full p-2 text-sm text-indigo-600 hover:bg-slate-50">
+          <button onClick={p.onLoadMore} className="w-full rounded-xl p-2 text-sm font-medium text-violet-600 transition hover:bg-violet-50">
             Load more
           </button>
         )}
@@ -478,7 +503,7 @@ function DraggableEmail({ email, labelId, selected, onOpen }: { email: BoardEmai
       {...attributes}
       {...listeners}
       onClick={onOpen}
-      className={`${isDragging ? "opacity-30" : ""} ${selected ? "rounded-lg ring-2 ring-indigo-400" : ""}`}
+      className={`${isDragging ? "opacity-30" : ""} ${selected ? "rounded-xl ring-2 ring-fuchsia-400 ring-offset-1" : ""}`}
     >
       <CardFace email={email} hideLabelId={labelId} />
     </div>
@@ -496,6 +521,7 @@ function Lane({
   onDelete,
   onOpen,
   width,
+  theme,
 }: {
   lane: LaneDTO;
   emails: Record<string, BoardEmail>;
@@ -507,14 +533,23 @@ function Lane({
   onDelete: () => Promise<void>;
   onOpen: (threadId: string) => void;
   width: ReturnType<typeof useStoredWidth>;
+  theme: (typeof LANE_THEMES)[number];
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${lane.id}` });
   return (
-    <div className="relative flex max-h-full shrink-0 flex-col rounded-xl bg-slate-200/70" style={{ width: width.width }}>
+    <div
+      className={`animate-rise relative flex max-h-full shrink-0 flex-col overflow-visible rounded-2xl shadow-sm ring-1 backdrop-blur-sm transition ${theme.box} ${
+        isOver ? "scale-[1.01] shadow-lg" : ""
+      }`}
+      style={{ width: width.width }}
+    >
+      <div className={`h-1.5 rounded-t-2xl bg-gradient-to-r ${theme.bar}`} />
       <ResizeHandle width={width.width} onResize={width.setWidth} onDone={width.save} onReset={width.reset} label="Resize lanes" />
       <div className="group flex items-center gap-1 px-3 pt-2.5 pb-1">
-        <InlineEdit value={lane.name} onSave={onRename} className="text-sm font-semibold text-slate-700" />
-        <span className="text-xs text-slate-500">{lane.threadIds.length}</span>
+        <InlineEdit value={lane.name} onSave={onRename} className={`text-sm font-bold ${theme.text}`} />
+        <span key={lane.threadIds.length} className={`animate-pop rounded-full px-1.5 text-[11px] font-semibold text-white ${theme.count}`}>
+          {lane.threadIds.length}
+        </span>
         <div className="ml-auto flex items-center opacity-0 transition group-hover:opacity-100">
           <button disabled={isFirst} onClick={() => onMove(-1)} className="px-1 text-slate-500 disabled:opacity-30" title="Move left">
             ‹
@@ -525,7 +560,7 @@ function Lane({
           <ConfirmButton label="✕" confirmLabel="Delete lane?" onConfirm={onDelete} small />
         </div>
       </div>
-      <div ref={setNodeRef} className={`flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 ${isOver ? "rounded-lg bg-indigo-100/60" : ""}`}>
+      <div ref={setNodeRef} className={`flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 ${isOver ? "rounded-xl bg-white/50" : ""}`}>
         <SortableContext items={lane.threadIds.map((t) => `${T}${t}`)} strategy={verticalListSortingStrategy}>
           {lane.threadIds.map((t) =>
             emails[t] ? <SortableEmail key={t} email={emails[t]} labelId={labelId} onOpen={() => onOpen(t)} /> : null,

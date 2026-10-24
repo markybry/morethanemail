@@ -8,6 +8,7 @@ import { useMail } from "./MailContext";
 // lanes, because the email is the ticket.
 export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; hideLabelId?: string; dragging?: boolean }) {
   const { labelNames, colorOf } = useMail();
+  const accent = (hideLabelId && colorOf(hideLabelId)) || "#a78bfa";
   const open = email.tasks.filter((t) => !t.done);
   const nextDue = open
     .map((t) => t.dueDate)
@@ -27,10 +28,11 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
 
   return (
     <div
-      className={`cursor-grab rounded-lg border bg-white p-2.5 shadow-sm hover:border-slate-300 ${
-        email.newReply ? "border-indigo-300" : "border-slate-200"
-      } ${dragging ? "w-68 rotate-2 cursor-grabbing shadow-xl" : ""}`}
+      className={`group/card animate-rise relative cursor-grab overflow-hidden rounded-xl border bg-white p-2.5 pl-3.5 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-violet-200/60 ${
+        email.newReply ? "border-fuchsia-300" : "border-white"
+      } ${dragging ? "w-68 rotate-3 scale-105 cursor-grabbing shadow-2xl shadow-violet-300/60" : ""}`}
     >
+      <span className="absolute inset-y-0 left-0 w-1.5 transition-all group-hover/card:w-2" style={{ background: accent }} />
       <div className="flex items-baseline gap-2 text-xs">
         <span className={`min-w-0 flex-1 truncate ${email.unread ? "font-semibold text-slate-900" : "text-slate-600"}`}>
           {senderName(email.from)}
@@ -43,7 +45,15 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
       <div className="mt-0.5 truncate text-xs text-slate-400">{email.snippet}</div>
       {(email.newReply || chips.length > 0 || email.tasks.length > 0 || email.notes.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-          {email.newReply && <Badge tone="blue">↩ New reply</Badge>}
+          {email.newReply && (
+            <Badge tone="blue">
+              <span className="relative mr-1 inline-flex h-1.5 w-1.5 align-middle">
+                <span className="animate-ping-soft absolute inline-flex h-full w-full rounded-full bg-fuchsia-500" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-fuchsia-500" />
+              </span>
+              New reply
+            </Badge>
+          )}
           {email.tasks.length > 0 && (
             <Badge tone={done === email.tasks.length ? "green" : undefined}>
               ☑ {done}/{email.tasks.length}
@@ -65,11 +75,11 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
 
 function Badge({ children, tone }: { children: React.ReactNode; tone?: "green" | "red" | "amber" | "blue" | "label" }) {
   const cls = {
-    green: "bg-emerald-100 text-emerald-800",
-    red: "bg-red-100 text-red-700",
-    amber: "bg-amber-100 text-amber-800",
-    blue: "bg-indigo-100 font-medium text-indigo-700",
-    label: "border border-slate-200 text-slate-500",
+    green: "bg-emerald-100 text-emerald-700",
+    red: "bg-rose-100 text-rose-700",
+    amber: "bg-amber-100 text-amber-700",
+    blue: "bg-fuchsia-100 font-medium text-fuchsia-700",
+    label: "border border-violet-100 bg-violet-50/60 text-violet-700",
   }[tone ?? "label"];
-  return <span className={`rounded px-1.5 py-0.5 ${tone ? cls : "bg-slate-100 text-slate-600"}`}>{children}</span>;
+  return <span className={`rounded-full px-2 py-0.5 ${tone ? cls : "bg-sky-100 text-sky-700"}`}>{children}</span>;
 }

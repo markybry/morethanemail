@@ -109,7 +109,7 @@ export function MailNav() {
       ) : (
         <button
           onClick={() => setCreatingUnder("")}
-          className="mx-2 mt-1 w-[calc(100%-1rem)] rounded-md px-3 py-1 text-left text-sm text-slate-500 hover:bg-slate-800 hover:text-slate-300"
+          className="mx-2 mt-2 w-[calc(100%-1rem)] rounded-lg border border-dashed border-violet-400/40 px-3 py-1 text-left text-sm text-violet-300 transition hover:border-pink-300/60 hover:bg-white/5 hover:text-pink-200"
         >
           + New label
         </button>
@@ -159,10 +159,14 @@ function TreeNode({
     ) : undefined;
   const content = (
     <>
-      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
-      <span className={`truncate ${node.label?.unread || depth === 0 ? "font-medium text-slate-100" : ""}`}>{node.segment}</span>
+      <span className="h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_8px_currentColor]" style={{ background: color, color }} />
+      <span className={`truncate ${node.label?.unread || depth === 0 ? "font-semibold text-white" : ""}`}>{node.segment}</span>
       <span className="ml-auto flex items-center gap-1 pl-2">
-        {!!node.label?.unread && <span className="text-xs text-slate-400">{node.label.unread}</span>}
+        {!!node.label?.unread && (
+          <span className="rounded-full px-1.5 text-[11px] font-bold text-white" style={{ background: color }}>
+            {node.label.unread}
+          </span>
+        )}
         <span
           role="button"
           aria-label={`New label under ${node.path}`}
@@ -194,7 +198,7 @@ function TreeNode({
         // Children sit beside a guide line in the branch colour, so it's clear
         // which parent they belong to even with several branches open.
         <div className="relative ml-[22px]">
-          <span className="absolute top-0 bottom-1 left-2 w-0.5 rounded-full" style={{ background: color, opacity: 0.55 }} />
+          <span className="absolute top-0 bottom-1 left-2 w-0.5 rounded-full" style={{ background: color, opacity: 0.7, boxShadow: `0 0 6px ${color}` }} />
           <div className="pl-2">
             {expanded &&
               node.children.map((c) => (
@@ -235,8 +239,8 @@ function NavRow({
   chevron?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const className = `group mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 rounded-md py-1 pr-3 text-left text-sm hover:bg-slate-800 ${
-    active ? "bg-slate-800 text-white" : ""
+  const className = `group mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 rounded-lg py-1 pr-3 text-left text-sm transition hover:translate-x-0.5 hover:bg-white/10 ${
+    active ? "text-white" : ""
   }`;
   // Nesting is shown by the guide-line containers, so rows only need a little padding.
   const style = {
@@ -278,7 +282,7 @@ function NewLabelInput({ placeholder, onSubmit }: { placeholder: string; onSubmi
         onBlur={() => onSubmit("")}
         onKeyDown={(e) => e.key === "Escape" && onSubmit("")}
         placeholder={placeholder}
-        className="w-full rounded-md bg-slate-800 px-3 py-1 text-sm text-white outline-none placeholder:text-slate-500"
+        className="w-full rounded-lg bg-white/10 px-3 py-1 text-sm text-white outline-none ring-1 ring-fuchsia-400/50 placeholder:text-violet-300/60"
       />
     </form>
   );

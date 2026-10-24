@@ -198,7 +198,7 @@ function Workspaces({
             onKeyDown={(e) => e.key === "Escape" && setOwnName(null)}
             className="min-w-0 flex-1 rounded-md border border-indigo-400 px-2 py-1 text-sm outline-none"
           />
-          <button disabled={busy || !ownName.trim()} className="rounded-md bg-indigo-600 px-3 py-1 text-sm text-white disabled:opacity-50">
+          <button disabled={busy || !ownName.trim()} className="rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3 py-1 text-sm font-medium text-white transition active:scale-95 disabled:opacity-50">
             Create
           </button>
           <button type="button" onClick={() => setOwnName(null)} className="text-sm text-slate-500">
@@ -228,7 +228,7 @@ function Tasks({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
                 setTasks(email.tasks.map((x) => (x.id === t.id ? { ...x, done: !x.done } : x)));
                 await updateTask(t.id, { done: !t.done });
               }}
-              className="h-4 w-4 accent-indigo-600"
+              className="h-4 w-4 accent-fuchsia-500 transition active:scale-125"
             />
             <span className={`flex-1 text-sm ${t.done ? "text-slate-400 line-through" : "text-slate-800"}`}>{t.title}</span>
             <input
@@ -280,7 +280,7 @@ function Tasks({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
           onChange={(e) => setDue(e.target.value)}
           className="rounded-md border border-slate-300 px-2 text-sm text-slate-600"
         />
-        <button className="rounded-md bg-slate-800 px-3 text-sm text-white hover:bg-slate-700">Add</button>
+        <button className="rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3 text-sm font-medium text-white shadow-sm transition hover:shadow-md hover:shadow-fuchsia-200 active:scale-95">Add</button>
       </form>
     </Section>
   );
@@ -309,11 +309,11 @@ function Notes({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
           placeholder="Add a note… (Ctrl+Enter to save)"
           className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-indigo-500"
         />
-        {body.trim() && <button className="mt-1 rounded-md bg-slate-800 px-3 py-1 text-sm text-white hover:bg-slate-700">Save note</button>}
+        {body.trim() && <button className="animate-pop mt-1 rounded-lg bg-gradient-to-r from-amber-400 to-pink-400 px-3 py-1 text-sm font-medium text-white shadow-sm transition active:scale-95">Save note</button>}
       </form>
       <ul className="mt-2 space-y-2">
         {email.notes.map((n) => (
-          <li key={n.id} className="group rounded-md bg-amber-50 px-3 py-2">
+          <li key={n.id} className="group animate-rise rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50 to-yellow-50 px-3 py-2 shadow-sm">
             <p className="text-sm whitespace-pre-wrap text-slate-800">{n.body}</p>
             <div className="mt-1 flex text-xs text-slate-400">
               <span>{new Date(n.createdAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
