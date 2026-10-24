@@ -25,6 +25,7 @@ import { CardFace } from "./CardFace";
 import { EmailPanel, UNSORTED } from "./EmailPanel";
 import { useMail } from "./MailContext";
 import { ConfirmButton, InlineEdit } from "./ui";
+import { ResizeHandle, useStoredWidth } from "./Resizable";
 
 const PRIMARY_KEY = "mte.inboxPrimaryOnly";
 const T = "t:"; // draggable email ids
@@ -243,6 +244,7 @@ export function LabelBoard({
 
   // ----- lanes -----
   const [newLane, setNewLane] = useState("");
+  const laneWidth = useStoredWidth("mte.w.lane", 288, 200, 640);
 
   async function moveLane(index: number, dir: -1 | 1) {
     const target = index + dir;
@@ -318,6 +320,7 @@ export function LabelBoard({
               }}
               onDelete={() => removeLane(lane)}
               onOpen={setSelected}
+              width={laneWidth}
             />
           ))}
           <div className="w-64 shrink-0 space-y-2">
@@ -354,6 +357,18 @@ export function LabelBoard({
         <EmailPanel
           key={selectedEmail.threadId}
           email={selectedEmail}
+          workspaceLabelId={workspace.labelId}
+          onLabelsChange={(labelIds) => {
+            mergeEmails([{ ...selectedEmail, labelIds }]);
+            // Took it out of this label: it leaves this workspace's columns.
+            if (!labelIds.includes(workspace.labelId)) {
+              setUnsorted((prev) => prev.filter((t) => t !== selectedEmail.threadId));
+              setLanes((prev) => prev.map((l) => ({ ...l, threadIds: l.threadIds.filter((t) => t !== selectedEmail.threadId) })));
+            } else if (!containerOf(selectedEmail.threadId, { lanes, unsorted })) {
+              // Added to this label: it joins the unsorted column.
+              setUnsorted((prev) => byDate([...prev, selectedEmail.threadId]));
+            }
+          }}
           lanes={lanes}
           laneId={containerOf(selectedEmail.threadId, { lanes, unsorted }) ?? UNSORTED}
           onPlace={(laneId) => place(selectedEmail.threadId, laneId)}
@@ -389,8 +404,10 @@ function UnsortedColumn(p: {
   onOpen: (threadId: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${UNSORTED}` });
+  const w = useStoredWidth("mte.w.unsorted", 320, 220, 720);
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-r border-slate-200 bg-white">
+    <aside className="relative flex shrink-0 flex-col border-r border-slate-200 bg-white" style={{ width: w.width }}>
+      <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} label="Resize email column" />
       <div className="space-y-2 border-b border-slate-200 p-3">
         <div className="flex items-center gap-2">
           <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900" title={p.title}>
@@ -478,6 +495,7 @@ function Lane({
   onRename,
   onDelete,
   onOpen,
+  width,
 }: {
   lane: LaneDTO;
   emails: Record<string, BoardEmail>;
@@ -488,10 +506,12 @@ function Lane({
   onRename: (name: string) => Promise<void>;
   onDelete: () => Promise<void>;
   onOpen: (threadId: string) => void;
+  width: ReturnType<typeof useStoredWidth>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${lane.id}` });
   return (
-    <div className="flex max-h-full w-72 shrink-0 flex-col rounded-xl bg-slate-200/70">
+    <div className="relative flex max-h-full shrink-0 flex-col rounded-xl bg-slate-200/70" style={{ width: width.width }}>
+      <ResizeHandle width={width.width} onResize={width.setWidth} onDone={width.save} onReset={width.reset} label="Resize lanes" />
       <div className="group flex items-center gap-1 px-3 pt-2.5 pb-1">
         <InlineEdit value={lane.name} onSave={onRename} className="text-sm font-semibold text-slate-700" />
         <span className="text-xs text-slate-500">{lane.threadIds.length}</span>

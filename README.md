@@ -5,18 +5,23 @@ An email client in the style of Sortd and Trello, run entirely off Gmail labels 
 - **Every Gmail label is a workspace**, Inbox included. The sidebar shows your labels as a nested tree (`Parent/Child` names) with unread counts. Opening a label for the first time creates its workspace.
 - **A workspace starts with just the label's emails** in an unsorted column, read live from Gmail. There are no preset columns. Add lanes when you want them, then drag emails into them.
 - **The email is the ticket.** Notes and tasks belong to the email thread itself and follow it into every label it carries. One email can sit in a different lane in each of its labels' workspaces.
+- **Assigning an email to a workspace applies the Gmail label.** In the email panel, add or remove workspaces; the change is made in Gmail. Inbox is just a label, so removing it archives the email.
+- **New labels are new workspaces.** Use "+ New label" or the "+" on any label in the sidebar (nested names such as `Clients/JR` work). Any email can be made into **its own workspace**: a new label nested under the current one, applied to the email.
+- The label tree is **colour-coded by branch** (or by the label's Gmail colour), with guide lines showing which labels sit under which parent.
+- **Embedded images and attachments** show in the email: inline images in place, image attachments as thumbnails, other files as downloads.
 - **New replies** show on the card ("↩ New reply") until you open the email.
 - In the Inbox, a **Primary / All tabs** switch keeps promotions out. Search looks within the current label.
+- **Resizable layout**: drag the edges of the sidebar, the email column, the lanes and the email panel. Double-click an edge to reset it.
 
 "My tasks" lists every task across all your emails, grouped by due date.
 
-Stack: Next.js 15 (App Router, server actions) · Prisma + Postgres · Gmail API (read-only) · dnd-kit · Tailwind.
+Stack: Next.js 15 (App Router, server actions) · Prisma + Postgres · Gmail API (`gmail.modify`: read mail and change labels; never sends or deletes) · dnd-kit · Tailwind.
 
 ## Deploy (GitHub → Vercel)
 
 1. **Google OAuth client.** In the [Google Cloud Console](https://console.cloud.google.com/):
    - Create a project, then enable the **Gmail API**.
-   - On the **OAuth consent screen**, choose External and add yourself as a test user. Add the `gmail.readonly` scope.
+   - On the **OAuth consent screen**, choose External and add yourself as a test user. Add the `gmail.modify` scope (the app reads mail and applies or removes labels; it never sends or deletes mail).
    - Under **Credentials → Create OAuth client ID**, choose Web application. Add these as authorised redirect URIs:
      - `https://<your-app>.vercel.app/api/auth/google/callback`
      - `http://localhost:3000/api/auth/google/callback`

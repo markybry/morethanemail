@@ -3,7 +3,9 @@ import { google } from "googleapis";
 import type { User } from "@prisma/client";
 import { db } from "./db";
 
-export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+// gmail.modify reads mail and changes labels (and archiving, which is removing INBOX).
+// It can't delete mail permanently.
+export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
 
 export const GOOGLE_SCOPES = ["openid", "email", "profile", GMAIL_SCOPE];
 
