@@ -10,7 +10,7 @@ export function InlineEdit({ value, onSave, className = "" }: { value: string; o
 
   if (!editing)
     return (
-      <button onClick={() => setEditing(true)} className={`min-w-0 truncate text-left hover:text-indigo-700 ${className}`} title="Click to rename">
+      <button onClick={() => setEditing(true)} className={`min-w-0 truncate text-left hover:text-terracotta ${className}`} title="Click to rename">
         {value}
       </button>
     );
@@ -34,7 +34,7 @@ export function InlineEdit({ value, onSave, className = "" }: { value: string; o
           setEditing(false);
         }
       }}
-      className={`min-w-0 flex-1 rounded border border-indigo-400 bg-white px-1 outline-none ${className}`}
+      className={`min-w-0 flex-1 rounded border border-terracotta bg-white px-1 outline-none ${className}`}
     />
   );
 }
@@ -61,7 +61,7 @@ export function ConfirmButton({
     <button
       onClick={() => (armed ? (setArmed(false), void onConfirm()) : setArmed(true))}
       className={`rounded ${small ? "px-1 text-xs" : "px-2 py-1 text-sm"} ${
-        armed ? "bg-red-600 text-white" : "text-slate-500 hover:bg-slate-100 hover:text-red-600"
+        armed ? "bg-red-600 text-white" : "text-[#a8957a] hover:bg-oat hover:text-red-600"
       }`}
     >
       {armed ? confirmLabel : label}
@@ -71,11 +71,9 @@ export function ConfirmButton({
 
 export function Section({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <section className="animate-rise border-t border-violet-50 px-5 py-4">
+    <section className="animate-rise border-t border-dashed border-[#e3d5bf] px-5 py-4">
       <div className="mb-2 flex items-center">
-        <h3 className="bg-gradient-to-r from-violet-600 to-fuchsia-500 bg-clip-text text-xs font-bold tracking-widest text-transparent uppercase">
-          {title}
-        </h3>
+        <h3 className="text-sm font-semibold text-terracotta">{title}</h3>
         <div className="ml-auto">{action}</div>
       </div>
       {children}

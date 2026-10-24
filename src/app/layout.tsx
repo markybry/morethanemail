@@ -1,9 +1,15 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Fraunces, Nunito } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Rounded, friendly body text and a soft serif for headings.
+const nunito = Nunito({
+  variable: "--font-nunito",
+  subsets: ["latin"],
+});
+
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
 });
 
@@ -19,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full">
-      <body className={`${geistSans.variable} h-full antialiased`}>{children}</body>
+      <body className={`${nunito.variable} ${fraunces.variable} h-full antialiased`}>{children}</body>
     </html>
   );
 }

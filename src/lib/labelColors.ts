@@ -1,7 +1,16 @@
 import type { MailLabel } from "./mail";
 
-// Bright enough to read on the dark sidebar and as dots on white cards.
-const PALETTE = ["#60a5fa", "#f472b6", "#34d399", "#fbbf24", "#a78bfa", "#f87171", "#22d3ee", "#fb923c", "#a3e635", "#e879f9"];
+// Earthy woodland colours that read on the walnut sidebar and as dots on cream cards.
+const PALETTE = ["#d98a5a", "#9cb36b", "#e3b64f", "#7fa2b8", "#c97d76", "#b3a173", "#8fb5a0", "#c9a27a", "#a58fb8", "#d6c27a"];
+
+// One animal per top-level label, so each branch has a friendly face.
+const ANIMALS = ["🦊", "🦔", "🦉", "🐻", "🐢", "🐇", "🦡", "🐿️", "🦫", "🐸"];
+
+export function makeLabelAnimal(labels: MailLabel[]) {
+  const tops = [...new Set(labels.map((l) => l.name.split("/")[0]))].sort((a, b) => a.localeCompare(b));
+  const byTop = new Map(tops.map((t, i) => [t, ANIMALS[i % ANIMALS.length]]));
+  return (path: string) => byTop.get(path.split("/")[0]) ?? "🦊";
+}
 
 // Colours for the label tree: each top-level branch gets its own colour and
 // everything under it inherits it, so nested labels read as one family. A

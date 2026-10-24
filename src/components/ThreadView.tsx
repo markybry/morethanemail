@@ -34,15 +34,15 @@ export function ThreadView({ threadId, onLoaded }: { threadId: string; onLoaded?
   }, [threadId]);
 
   if (error) return <p className="text-sm text-red-600">{error}</p>;
-  if (thread === undefined) return <p className="text-sm text-slate-500">Loading email…</p>;
-  if (thread === null) return <p className="text-sm text-slate-500">This email is no longer available.</p>;
+  if (thread === undefined) return <p className="text-sm text-[#a8957a]">Loading email…</p>;
+  if (thread === null) return <p className="text-sm text-[#a8957a]">This email is no longer available.</p>;
 
   return (
     <div className="space-y-3">
       {thread.messages.map((m) => (
-        <article key={m.id} className="rounded-lg border border-slate-200">
-          <header className="flex gap-2 border-b border-slate-100 px-3 py-2 text-xs text-slate-500">
-            <span className="min-w-0 flex-1 truncate font-medium text-slate-700" title={m.from}>
+        <article key={m.id} className="rounded-lg border border-[#e3d5bf]">
+          <header className="flex gap-2 border-b border-[#e3d5bf] px-3 py-2 text-xs text-[#a8957a]">
+            <span className="min-w-0 flex-1 truncate font-medium text-bark" title={m.from}>
               {senderName(m.from)}
             </span>
             <span className="shrink-0">{new Date(m.date).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
@@ -50,7 +50,7 @@ export function ThreadView({ threadId, onLoaded }: { threadId: string; onLoaded?
           {m.html ? (
             <HtmlBody html={m.html} />
           ) : (
-            <pre className="px-3 py-2 font-sans text-sm whitespace-pre-wrap text-slate-800">{m.text ?? "(no content)"}</pre>
+            <pre className="px-3 py-2 font-sans text-sm whitespace-pre-wrap text-walnut">{m.text ?? "(no content)"}</pre>
           )}
           {m.attachments.length > 0 && <Attachments items={m.attachments} />}
         </article>
@@ -85,13 +85,13 @@ function Attachments({ items }: { items: Attachment[] }) {
   const images = items.filter((a) => a.isImage);
   const files = items.filter((a) => !a.isImage);
   return (
-    <div className="space-y-2 border-t border-slate-100 px-3 py-2">
+    <div className="space-y-2 border-t border-[#e3d5bf] px-3 py-2">
       {images.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {images.map((a) => (
             <a key={a.url} href={a.url} target="_blank" rel="noreferrer" title={a.filename} className="block">
               {/* eslint-disable-next-line @next/next/no-img-element -- authenticated attachment URL, not optimisable */}
-              <img src={a.url} alt={a.filename} className="h-28 max-w-[14rem] rounded border border-slate-200 object-cover" />
+              <img src={a.url} alt={a.filename} className="h-28 max-w-[14rem] rounded border border-[#e3d5bf] object-cover" />
             </a>
           ))}
         </div>
@@ -100,11 +100,11 @@ function Attachments({ items }: { items: Attachment[] }) {
         <a
           key={a.url}
           href={a.url}
-          className="flex items-center gap-2 rounded px-1 py-0.5 text-sm text-slate-700 hover:bg-slate-50 hover:text-indigo-700"
+          className="flex items-center gap-2 rounded px-1 py-0.5 text-sm text-bark hover:bg-oat hover:text-terracotta"
         >
           <span aria-hidden>📎</span>
           <span className="min-w-0 flex-1 truncate">{a.filename}</span>
-          <span className="shrink-0 text-xs text-slate-400">{formatSize(a.size)}</span>
+          <span className="shrink-0 text-xs text-[#a8957a]">{formatSize(a.size)}</span>
         </a>
       ))}
     </div>

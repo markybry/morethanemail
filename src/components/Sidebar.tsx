@@ -13,36 +13,34 @@ export function Sidebar({ user }: Props) {
 
   return (
     <nav
-      className="relative flex shrink-0 flex-col bg-gradient-to-b from-indigo-950 via-violet-950 to-fuchsia-950 text-violet-200"
+      className="felt relative flex shrink-0 flex-col text-[#e9dcc7]"
       style={{ width: w.width }}
     >
       <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} label="Resize sidebar" />
       <div className="flex items-center gap-2 px-4 py-4">
-        <span className="animate-pop text-xl">💌</span>
-        <span className="bg-gradient-to-r from-pink-300 via-fuchsia-300 to-sky-300 bg-clip-text text-lg font-extrabold tracking-tight text-transparent">
-          More Than Email
-        </span>
+        <span className="animate-pop text-2xl hover:animate-wiggle">🦊</span>
+        <span className="font-display text-lg font-semibold tracking-tight text-[#f6e9d2]">More Than Email</span>
       </div>
 
       <Link
         href="/tasks"
-        className={`mx-2 rounded-lg px-3 py-1.5 text-sm transition hover:bg-white/10 ${
-          pathname === "/tasks" ? "bg-gradient-to-r from-fuchsia-500/40 to-violet-500/30 text-white" : ""
+        className={`mx-2 rounded-xl px-3 py-1.5 text-sm font-semibold transition hover:bg-white/10 ${
+          pathname === "/tasks" ? "bg-[#f6e9d2]/15 text-[#fff6e6] shadow-[inset_0_1px_3px_rgb(0_0_0/0.3)]" : ""
         }`}
       >
-        ☑ My tasks
+        🐝 My tasks
       </Link>
 
-      <p className="mt-5 px-5 pb-1 text-xs font-semibold tracking-widest text-fuchsia-300/70 uppercase">Labels</p>
+      <p className="mt-5 px-5 pb-1 text-xs font-bold tracking-widest text-[#c9b08a] uppercase">Labels</p>
       <div className="min-h-0 flex-1 overflow-y-auto pb-4">
         <MailNav />
       </div>
 
-      <div className="border-t border-white/10 px-4 py-3 text-xs">
-        <div className="truncate font-medium text-white">{user.name}</div>
-        <div className="truncate text-violet-300/70">{user.isDemo ? "Demo mode · sample emails" : user.email}</div>
+      <div className="border-t border-dashed border-[#f6e9d2]/20 px-4 py-3 text-xs">
+        <div className="truncate font-semibold text-[#f6e9d2]">{user.name}</div>
+        <div className="truncate text-[#c9b08a]">{user.isDemo ? "Demo mode · sample emails" : user.email}</div>
         <form action="/api/auth/logout" method="post">
-          <button className="mt-2 text-violet-300 transition hover:text-pink-300">Sign out</button>
+          <button className="mt-2 text-[#c9b08a] transition hover:text-[#f2b38a]">Sign out</button>
         </form>
       </div>
     </nav>
