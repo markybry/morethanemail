@@ -3,14 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MailNav } from "./LabelTree";
+import { ResizeHandle, useStoredWidth } from "./Resizable";
 
 type Props = { user: { name: string; email: string; isDemo: boolean } };
 
 export function Sidebar({ user }: Props) {
   const pathname = usePathname();
+  const w = useStoredWidth("mte.w.sidebar", 224, 160, 480);
 
   return (
-    <nav className="flex w-56 shrink-0 flex-col bg-slate-900 text-slate-300">
+    <nav className="relative flex shrink-0 flex-col bg-slate-900 text-slate-300" style={{ width: w.width }}>
+      <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} label="Resize sidebar" />
       <div className="px-4 py-4 text-base font-bold text-white">More Than Email</div>
 
       <Link

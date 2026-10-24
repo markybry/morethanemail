@@ -3,10 +3,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { fetchLabels } from "@/app/actions";
 import type { MailLabel } from "@/lib/mail";
+import { makeLabelColorer } from "@/lib/labelColors";
 
 type MailContextValue = {
   labels: MailLabel[];
   labelNames: Map<string, string>;
+  colorOfPath: (path: string) => string;
+  colorOf: (labelId: string) => string | undefined;
   reloadLabels: () => void;
 };
 
@@ -23,8 +26,18 @@ export function MailProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => reloadLabels(), [reloadLabels]);
 
   const labelNames = useMemo(() => new Map(labels.map((l) => [l.id, l.name])), [labels]);
+  const colorOfPath = useMemo(() => makeLabelColorer(labels), [labels]);
+  const colorOf = useCallback(
+    (labelId: string) => {
+      const name = labelNames.get(labelId);
+      return name ? colorOfPath(name) : undefined;
+    },
+    [labelNames, colorOfPath],
+  );
 
-  return <MailContext.Provider value={{ labels, labelNames, reloadLabels }}>{children}</MailContext.Provider>;
+  return (
+    <MailContext.Provider value={{ labels, labelNames, colorOfPath, colorOf, reloadLabels }}>{children}</MailContext.Provider>
+  );
 }
 
 export function useMail() {

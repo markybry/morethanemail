@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const { tokens } = await client.getToken(code);
   // Google's consent screen lets people untick individual scopes; without Gmail the app is useless.
   if (!tokens.scope?.split(" ").includes(GMAIL_SCOPE))
-    return fail("Gmail access wasn't granted. Sign in again and tick “View your email messages and settings”.");
+    return fail("Gmail access wasn't granted. Sign in again and tick the Gmail permission (“Read, compose and send emails”, or “View and modify”).");
   client.setCredentials(tokens);
   const { data: profile } = await google.oauth2({ version: "v2", auth: client }).userinfo.get();
   if (!profile.email) return fail("Google did not return an email address.");

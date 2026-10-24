@@ -2,7 +2,8 @@ import "server-only";
 import type { User } from "@prisma/client";
 import type { gmail_v1 } from "googleapis";
 import { gmailFor } from "./google";
-import { demoLabels, demoThreadDetail, demoThreads } from "./demo-mail";
+import { parseMessageParts, type Attachment } from "./mime";
+import { demoCreateLabel, demoLabels, demoModifyLabels, demoThreadDetail, demoThreads } from "./demo-mail";
 
 export type ThreadSummary = {
   threadId: string;
@@ -16,7 +17,7 @@ export type ThreadSummary = {
 };
 
 // Gmail nests labels by name: "Clients/Acme" sits under "Clients".
-export type MailLabel = { id: string; name: string; unread: number };
+export type MailLabel = { id: string; name: string; unread: number; color?: string };
 
 export type MessageDetail = {
   id: string;
@@ -26,6 +27,7 @@ export type MessageDetail = {
   subject: string;
   html: string | null;
   text: string | null;
+  attachments: Attachment[];
 };
 
 export type ThreadDetail = { threadId: string; subject: string; messages: MessageDetail[] };
@@ -101,10 +103,35 @@ export async function listLabels(user: User): Promise<MailLabel[]> {
   const labels = await Promise.all(
     own.map(async (l) => {
       const full = await gmail.users.labels.get({ userId: "me", id: l.id!, fields: "threadsUnread" });
-      return { id: l.id!, name: l.name!, unread: full.data.threadsUnread ?? 0 };
+      return { id: l.id!, name: l.name!, unread: full.data.threadsUnread ?? 0, color: l.color?.backgroundColor ?? undefined };
     }),
   );
   return labels.sort((x, y) => x.name.localeCompare(y.name));
+}
+
+// Labels the app may add to or remove from a thread: the user's own labels, and
+// INBOX (removing it archives). Other system labels (SPAM, TRASH, ...) are off limits.
+export const isAssignableLabel = (id: string) => id === INBOX || id.startsWith("Label_");
+
+// Apply and remove labels on a whole thread. Returns the thread's labels afterwards.
+export async function modifyThreadLabels(user: User, threadId: string, add: string[], remove: string[]): Promise<string[]> {
+  if (user.isDemo) return demoModifyLabels(threadId, add, remove);
+  const res = await gmailFor(user).users.threads.modify({
+    userId: "me",
+    id: threadId,
+    requestBody: { addLabelIds: add, removeLabelIds: remove },
+  });
+  return [...new Set((res.data.messages ?? []).flatMap((m) => m.labelIds ?? []))];
+}
+
+// A new Gmail label, which is also a new workspace. "Parent/Child" nests it.
+export async function createLabel(user: User, name: string): Promise<MailLabel> {
+  if (user.isDemo) return demoCreateLabel(name);
+  const res = await gmailFor(user).users.labels.create({
+    userId: "me",
+    requestBody: { name, labelListVisibility: "labelShow", messageListVisibility: "show" },
+  });
+  return { id: res.data.id!, name: res.data.name!, unread: 0 };
 }
 
 export async function getThread(user: User, threadId: string): Promise<ThreadDetail | null> {
@@ -112,18 +139,14 @@ export async function getThread(user: User, threadId: string): Promise<ThreadDet
 
   const gmail = gmailFor(user);
   const t = await gmail.users.threads.get({ userId: "me", id: threadId, format: "full" });
-  const messages = (t.data.messages ?? []).map((m) => {
-    const { html, text } = extractBodies(m.payload);
-    return {
-      id: m.id!,
-      from: header(m, "From"),
-      to: header(m, "To"),
-      date: messageDate(m),
-      subject: header(m, "Subject"),
-      html,
-      text,
-    };
-  });
+  const messages = (t.data.messages ?? []).map((m) => ({
+    id: m.id!,
+    from: header(m, "From"),
+    to: header(m, "To"),
+    date: messageDate(m),
+    subject: header(m, "Subject"),
+    ...parseMessageParts(m.id!, m.payload),
+  }));
   return { threadId, subject: messages[0]?.subject || "(no subject)", messages };
 }
 
@@ -133,8 +156,9 @@ export function mailErrorMessage(e: unknown): string {
   const err = e as { code?: unknown; status?: number; message?: string };
   const msg = err.message ?? "";
   if (/insufficient authentication scopes/i.test(msg))
-    return "Gmail access wasn't granted. Sign out, sign in again and tick “View your email messages and settings”.";
+    return "This needs Gmail access the app doesn't have yet. Sign out, sign in again and tick the Gmail permission (“Read, compose and send emails”, or “View and modify”).";
   if (/invalid_grant/i.test(msg)) return "Your Google sign-in has expired. Sign out and sign in again.";
+  if (/exists or conflicts/i.test(msg)) return "A Gmail label with that name already exists.";
   if (/has not been used|is disabled/i.test(msg))
     return "The Gmail API isn't enabled for this Google Cloud project. Enable it in the Google Cloud Console.";
   if (err.status === 429 || err.code === 429) return "Gmail is rate-limiting requests. Try again in a minute.";
@@ -165,21 +189,6 @@ function messageDate(m: gmail_v1.Schema$Message) {
   return new Date(Number(m.internalDate ?? Date.now())).toISOString();
 }
 
-function extractBodies(part: gmail_v1.Schema$MessagePart | undefined): { html: string | null; text: string | null } {
-  let html: string | null = null;
-  let text: string | null = null;
-  const walk = (p: gmail_v1.Schema$MessagePart | undefined) => {
-    if (!p) return;
-    if (p.body?.data && !p.filename) {
-      const decoded = Buffer.from(p.body.data, "base64url").toString("utf8");
-      if (p.mimeType === "text/html" && html === null) html = decoded;
-      if (p.mimeType === "text/plain" && text === null) text = decoded;
-    }
-    p.parts?.forEach(walk);
-  };
-  walk(part);
-  return { html, text };
-}
 
 function decodeEntities(s: string) {
   return s

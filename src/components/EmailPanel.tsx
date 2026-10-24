@@ -1,17 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { addNote, addTask, deleteNote, deleteTask, updateTask } from "@/app/actions";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { addNote, addTask, createLabelForEmail, deleteNote, deleteTask, setEmailLabels, updateTask } from "@/app/actions";
 import type { BoardEmail, LaneDTO, TaskDTO, ThreadSnapshot } from "@/lib/types";
 import { dueLabel, fromDateInput, gmailLink, isOverdue, senderName, toDateInput } from "@/lib/format";
 import { Drawer, DrawerHeader } from "./Drawer";
 import { ThreadView } from "./ThreadView";
 import { Section } from "./ui";
+import { useMail } from "./MailContext";
 
 export const UNSORTED = "__unsorted";
 
 type Props = {
   email: BoardEmail;
+  workspaceLabelId: string;
+  onLabelsChange: (labelIds: string[]) => void;
   lanes: LaneDTO[];
   laneId: string; // UNSORTED when not in a lane
   onPlace: (laneId: string) => void;
@@ -29,7 +34,7 @@ const snapshot = (e: BoardEmail): ThreadSnapshot => ({
 });
 
 // One email: where it sits in this workspace, its tasks and notes, and the thread itself.
-export function EmailPanel({ email, lanes, laneId, onPlace, onChange, onSeen, onClose }: Props) {
+export function EmailPanel({ email, workspaceLabelId, onLabelsChange, lanes, laneId, onPlace, onChange, onSeen, onClose }: Props) {
   return (
     <Drawer onClose={onClose}>
       <DrawerHeader onClose={onClose}>
@@ -55,12 +60,154 @@ export function EmailPanel({ email, lanes, laneId, onPlace, onChange, onSeen, on
         </div>
       </DrawerHeader>
 
+      <Workspaces email={email} here={workspaceLabelId} onLabelsChange={onLabelsChange} />
       <Tasks email={email} onChange={onChange} />
       <Notes email={email} onChange={onChange} />
       <Section title="Thread">
         <ThreadView threadId={email.threadId} onLoaded={onSeen} />
       </Section>
     </Drawer>
+  );
+}
+
+// The email's workspaces are its Gmail labels: add or remove one here and it's
+// applied in Gmail. Inbox counts too; removing it archives the email.
+function Workspaces({
+  email,
+  here,
+  onLabelsChange,
+}: {
+  email: BoardEmail;
+  here: string;
+  onLabelsChange: (labelIds: string[]) => void;
+}) {
+  const { labels, labelNames, reloadLabels } = useMail();
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+  // "Make this its own workspace": a new label nested under this workspace's label.
+  const parent = here === "INBOX" ? "" : (labelNames.get(here) ?? "");
+  const [ownName, setOwnName] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const nameOf = (id: string) => (id === "INBOX" ? "Inbox" : labelNames.get(id));
+  const current = email.labelIds.filter((id) => nameOf(id));
+  const q = query.trim().toLowerCase();
+  const options = [{ id: "INBOX", name: "Inbox" }, ...labels]
+    .filter((l) => !email.labelIds.includes(l.id))
+    .filter((l) => !q || l.name.toLowerCase().includes(q))
+    .slice(0, 8);
+  const exact = [{ name: "Inbox" }, ...labels].some((l) => l.name.toLowerCase() === q);
+
+  async function run(fn: () => Promise<{ labelIds?: string[]; error?: string }>) {
+    setBusy(true);
+    setError("");
+    const res = await fn();
+    setBusy(false);
+    if (res.error) return setError(res.error);
+    if (res.labelIds) onLabelsChange(res.labelIds);
+    setQuery("");
+    reloadLabels();
+  }
+
+  return (
+    <Section title="Workspaces">
+      <div className="flex flex-wrap gap-1.5">
+        {current.map((id) => (
+          <span
+            key={id}
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-sm ${
+              id === here ? "border-indigo-300 bg-indigo-50 text-indigo-800" : "border-slate-200 text-slate-700"
+            }`}
+          >
+            <Link href={`/l/${encodeURIComponent(id)}?thread=${email.threadId}`} className="hover:underline">
+              {nameOf(id)!.split("/").join(" › ")}
+            </Link>
+            <button
+              disabled={busy}
+              onClick={() => run(() => setEmailLabels(email.threadId, [], [id]))}
+              className="text-slate-400 hover:text-red-600 disabled:opacity-40"
+              title={id === "INBOX" ? "Archive (remove from Inbox)" : "Remove this label in Gmail"}
+            >
+              ✕
+            </button>
+          </span>
+        ))}
+        {current.length === 0 && <span className="text-sm text-slate-500">Not in any workspace.</span>}
+      </div>
+      <div className="relative mt-2">
+        <input
+          value={query}
+          disabled={busy}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Add to workspace… (type to search or create a label)"
+          className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-indigo-500"
+        />
+        {q && (
+          <div className="absolute z-10 mt-1 w-full rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+            {options.map((l) => (
+              <button
+                key={l.id}
+                onClick={() => run(() => setEmailLabels(email.threadId, [l.id], []))}
+                className="block w-full truncate px-3 py-1 text-left text-sm hover:bg-indigo-50"
+              >
+                {l.name.split("/").join(" › ")}
+              </button>
+            ))}
+            {!exact && (
+              <button
+                onClick={() => run(() => createLabelForEmail(email.threadId, query))}
+                className="block w-full truncate px-3 py-1 text-left text-sm text-indigo-700 hover:bg-indigo-50"
+              >
+                + Create label “{query.trim()}”
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {ownName === null ? (
+        <button
+          onClick={() => setOwnName(email.subject.split("/").join("-").slice(0, 80))}
+          className="mt-2 text-sm text-indigo-600 hover:underline"
+          title="Create a new Gmail label for this email and open it as its own workspace"
+        >
+          ⇪ Make this its own workspace
+        </button>
+      ) : (
+        <form
+          className="mt-2 flex items-center gap-2"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const name = parent ? `${parent}/${ownName}` : ownName;
+            setBusy(true);
+            setError("");
+            const res = await createLabelForEmail(email.threadId, name);
+            setBusy(false);
+            if (res.error || !res.label) return setError(res.error ?? "Couldn't create the label.");
+            if (res.labelIds) onLabelsChange(res.labelIds);
+            reloadLabels();
+            router.push(`/l/${encodeURIComponent(res.label.id)}?thread=${email.threadId}`);
+          }}
+        >
+          <span className="shrink-0 text-sm text-slate-500">{parent ? `${parent.split("/").join(" › ")} ›` : "New label:"}</span>
+          <input
+            autoFocus
+            value={ownName}
+            disabled={busy}
+            onChange={(e) => setOwnName(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && setOwnName(null)}
+            className="min-w-0 flex-1 rounded-md border border-indigo-400 px-2 py-1 text-sm outline-none"
+          />
+          <button disabled={busy || !ownName.trim()} className="rounded-md bg-indigo-600 px-3 py-1 text-sm text-white disabled:opacity-50">
+            Create
+          </button>
+          <button type="button" onClick={() => setOwnName(null)} className="text-sm text-slate-500">
+            Cancel
+          </button>
+        </form>
+      )}
+      {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+    </Section>
   );
 }
 

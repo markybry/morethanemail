@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchThread } from "@/app/actions";
 import type { ThreadDetail } from "@/lib/mail";
 import { senderName } from "@/lib/format";
+import type { Attachment } from "@/lib/mime";
 
 // Loads and renders every message in a thread. HTML bodies go into a sandboxed
 // iframe with scripts disabled, so email content can't run code in the app.
@@ -51,6 +52,7 @@ export function ThreadView({ threadId, onLoaded }: { threadId: string; onLoaded?
           ) : (
             <pre className="px-3 py-2 font-sans text-sm whitespace-pre-wrap text-slate-800">{m.text ?? "(no content)"}</pre>
           )}
+          {m.attachments.length > 0 && <Attachments items={m.attachments} />}
         </article>
       ))}
     </div>
@@ -76,4 +78,41 @@ function HtmlBody({ html }: { html: string }) {
       title="Email content"
     />
   );
+}
+
+// Attachments not embedded in the email body: images as thumbnails, the rest as downloads.
+function Attachments({ items }: { items: Attachment[] }) {
+  const images = items.filter((a) => a.isImage);
+  const files = items.filter((a) => !a.isImage);
+  return (
+    <div className="space-y-2 border-t border-slate-100 px-3 py-2">
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {images.map((a) => (
+            <a key={a.url} href={a.url} target="_blank" rel="noreferrer" title={a.filename} className="block">
+              {/* eslint-disable-next-line @next/next/no-img-element -- authenticated attachment URL, not optimisable */}
+              <img src={a.url} alt={a.filename} className="h-28 max-w-[14rem] rounded border border-slate-200 object-cover" />
+            </a>
+          ))}
+        </div>
+      )}
+      {files.map((a) => (
+        <a
+          key={a.url}
+          href={a.url}
+          className="flex items-center gap-2 rounded px-1 py-0.5 text-sm text-slate-700 hover:bg-slate-50 hover:text-indigo-700"
+        >
+          <span aria-hidden>📎</span>
+          <span className="min-w-0 flex-1 truncate">{a.filename}</span>
+          <span className="shrink-0 text-xs text-slate-400">{formatSize(a.size)}</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

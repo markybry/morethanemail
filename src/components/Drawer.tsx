@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
+import { ResizeHandle, useStoredWidth } from "./Resizable";
 
 export function Drawer({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  const w = useStoredWidth("mte.w.panel", 672, 360, 1600);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -12,7 +14,10 @@ export function Drawer({ onClose, children }: { onClose: () => void; children: R
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-slate-900/20" onClick={onClose} />
-      <div className="relative flex h-full w-full max-w-2xl flex-col overflow-y-auto bg-white shadow-2xl">{children}</div>
+      <div className="relative h-full max-w-[calc(100vw-3rem)] bg-white shadow-2xl" style={{ width: w.width }}>
+        <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} edge="left" label="Resize panel" />
+        <div className="flex h-full flex-col overflow-y-auto">{children}</div>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import type { MailLabel, ThreadDetail, ThreadSummary } from "./mail";
 
 // Sample mailbox used when the app runs without Google credentials.
-const LABELS: MailLabel[] = [
+const SEED_LABELS: MailLabel[] = [
   { id: "Label_clients", name: "Clients", unread: 1 },
   { id: "Label_acme", name: "Clients/Acme", unread: 1 },
   { id: "Label_studio9", name: "Clients/Studio 9", unread: 0 },
@@ -20,7 +20,7 @@ type DemoThread = {
   labels?: string[];
 };
 
-const DEMO: DemoThread[] = [
+const SEED_THREADS: DemoThread[] = [
   { id: "demo-1", from: "Sarah Chen <sarah@acme.co>", subject: "Q4 website redesign - kickoff", hoursAgo: 2, unread: true, labels: ["INBOX", "CATEGORY_PERSONAL", "Label_clients", "Label_acme"],
     body: "Hi,\n\nThanks for the call earlier. Attached is the brief for the Q4 redesign. Could you send over a rough timeline and quote by Friday?\n\nKey asks:\n- New homepage\n- Pricing page refresh\n- Blog migration\n\nCheers,\nSarah" },
   { id: "demo-2", from: "Accounts <billing@hostly.io>", subject: "Invoice #4821 is due in 7 days", hoursAgo: 5, labels: ["INBOX", "CATEGORY_UPDATES", "Label_finance"],
@@ -43,8 +43,18 @@ const DEMO: DemoThread[] = [
     body: "All done on our side. Thanks again!" },
 ];
 
-// Dates are fixed per server process, so a filed demo email doesn't look like it got a new reply.
-const BASE = Date.now();
+// The demo mailbox is edited in memory (labels applied, labels created). Next.js
+// can load this module more than once (pages and server actions), so the state
+// lives on globalThis to be shared. Dates are fixed per server process, so a
+// filed demo email doesn't look like it got a new reply.
+const store = ((globalThis as { __mteDemoMail?: { labels: MailLabel[]; threads: DemoThread[]; base: number } }).__mteDemoMail ??= {
+  labels: structuredClone(SEED_LABELS),
+  threads: structuredClone(SEED_THREADS),
+  base: Date.now(),
+});
+const LABELS = store.labels;
+const DEMO = store.threads;
+const BASE = store.base;
 const at = (hoursAgo: number) => new Date(BASE - hoursAgo * 3_600_000).toISOString();
 
 const OTHER_TABS = ["CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_UPDATES", "CATEGORY_FORUMS"];
@@ -71,12 +81,27 @@ export function demoThreads(labelId?: string, primaryOnly = false, query?: strin
 
 export const demoLabels = () => LABELS;
 
+// The demo mailbox lives in memory, so label changes last until the server restarts.
+export function demoModifyLabels(threadId: string, add: string[], remove: string[]): string[] {
+  const d = DEMO.find((x) => x.id === threadId);
+  if (!d) return [];
+  d.labels = [...new Set([...(d.labels ?? []).filter((l) => !remove.includes(l)), ...add])];
+  return d.labels;
+}
+
+export function demoCreateLabel(name: string): MailLabel {
+  const label = { id: `Label_${Date.now()}`, name, unread: 0 };
+  LABELS.push(label);
+  LABELS.sort((a, b) => a.name.localeCompare(b.name));
+  return label;
+}
+
 export function demoThreadDetail(threadId: string): ThreadDetail | null {
   const d = DEMO.find((x) => x.id === threadId);
   if (!d) return null;
   return {
     threadId,
     subject: d.subject,
-    messages: [{ id: d.id, from: d.from, to: "you@example.com", date: at(d.hoursAgo), subject: d.subject, html: null, text: d.body }],
+    messages: [{ id: d.id, from: d.from, to: "you@example.com", date: at(d.hoursAgo), subject: d.subject, html: null, text: d.body, attachments: [] }],
   };
 }

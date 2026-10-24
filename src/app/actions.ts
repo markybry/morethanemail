@@ -3,8 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
+  createLabel,
   getThread,
+  isAssignableLabel,
   listLabels,
+  modifyThreadLabels,
   listThreads,
   mailErrorMessage,
   summarizeThreads,
@@ -107,6 +110,69 @@ export async function fetchThread(threadId: string): Promise<{ thread: ThreadDet
   } catch (e) {
     console.error("fetchThread failed", e);
     return { thread: null, error: mailErrorMessage(e) };
+  }
+}
+
+// ---------- assigning emails to workspaces (Gmail labels) ----------
+
+// Add an email to workspaces / take it out, by applying or removing Gmail labels.
+export async function setEmailLabels(
+  threadId: string,
+  add: string[],
+  remove: string[],
+): Promise<{ labelIds?: string[]; error?: string }> {
+  const user = await requireUser();
+  if (![...add, ...remove].every(isAssignableLabel)) return { error: "That label can't be changed here." };
+  try {
+    const labelIds = await modifyThreadLabels(user, threadId, add, remove);
+    // Leaving a label's workspace also takes the email out of that workspace's lanes.
+    if (remove.length)
+      await db.placement.deleteMany({
+        where: { email: { userId: user.id, threadId }, workspace: { userId: user.id, labelId: { in: remove } } },
+      });
+    return { labelIds };
+  } catch (e) {
+    console.error("setEmailLabels failed", e);
+    return { error: mailErrorMessage(e) };
+  }
+}
+
+// Gmail label names: trim each "/"-separated part and drop empty ones.
+const cleanLabelName = (name: string) =>
+  name
+    .split("/")
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .join("/");
+
+// A new workspace is a new Gmail label. "Clients/JR" nests it under Clients.
+export async function createWorkspace(name: string): Promise<{ label?: MailLabel; error?: string }> {
+  const user = await requireUser();
+  const clean = cleanLabelName(name);
+  if (!clean) return { error: "Give the label a name." };
+  try {
+    return { label: await createLabel(user, clean) };
+  } catch (e) {
+    console.error("createWorkspace failed", e);
+    return { error: mailErrorMessage(e) };
+  }
+}
+
+// Create a Gmail label (and so a new workspace) and apply it to an email.
+export async function createLabelForEmail(
+  threadId: string,
+  name: string,
+): Promise<{ label?: MailLabel; labelIds?: string[]; error?: string }> {
+  const user = await requireUser();
+  const clean = cleanLabelName(name);
+  if (!clean) return { error: "Give the label a name." };
+  try {
+    const label = await createLabel(user, clean);
+    const labelIds = await modifyThreadLabels(user, threadId, [label.id], []);
+    return { label, labelIds };
+  } catch (e) {
+    console.error("createLabelForEmail failed", e);
+    return { error: mailErrorMessage(e) };
   }
 }
 
