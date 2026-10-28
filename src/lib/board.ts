@@ -2,7 +2,8 @@ import "server-only";
 import type { Email, Note, Task, User } from "@prisma/client";
 import { db } from "./db";
 import { getLabelName, type ThreadSummary } from "./mail";
-import type { BoardEmail, ThreadSnapshot, WorkspaceDTO } from "./types";
+import { BUILT_IN_TEMPLATES, parseTemplateLanes } from "./laneTemplates";
+import type { BoardEmail, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "./types";
 
 export const emailInclude = {
   notes: { orderBy: { createdAt: "desc" } },
@@ -58,6 +59,15 @@ export async function ensureWorkspace(user: User, labelId: string) {
     create: { userId: user.id, labelId, name },
     update: {},
   });
+}
+
+// Built-in lane templates followed by the user's saved ones.
+export async function loadLaneTemplates(userId: string): Promise<LaneTemplateDTO[]> {
+  const saved = await db.laneTemplate.findMany({ where: { userId }, orderBy: { createdAt: "asc" } });
+  return [
+    ...BUILT_IN_TEMPLATES,
+    ...saved.map((t) => ({ id: t.id, name: t.name, builtIn: false, lanes: parseTemplateLanes(t.lanes) })),
+  ];
 }
 
 // The workspace's lanes plus the stored state of every email placed in them.

@@ -21,16 +21,19 @@ import {
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  applyLaneTemplate,
   arrangeEmails,
   createLane,
+  deleteLaneTemplate,
   deleteLane,
   fetchLabelEmails,
   refreshEmails,
   renameLane,
   reorderLanes,
+  saveLaneTemplate,
   setLaneReopenOnReply,
 } from "@/app/actions";
-import type { BoardEmail, LaneDTO, ThreadSnapshot, WorkspaceDTO } from "@/lib/types";
+import type { BoardEmail, LaneDTO, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "@/lib/types";
 import { CardFace } from "./CardFace";
 import { EmailPanel, UNSORTED } from "./EmailPanel";
 import { useMail } from "./MailContext";
@@ -70,10 +73,12 @@ export function LabelBoard({
   workspace,
   initialEmails,
   initialThreadId,
+  templates: initialTemplates,
 }: {
   workspace: WorkspaceDTO;
   initialEmails: Record<string, BoardEmail>;
   initialThreadId?: string;
+  templates: LaneTemplateDTO[];
 }) {
   const { reloadLabels } = useMail();
   const { theme: look } = useTheme();
@@ -328,6 +333,7 @@ export function LabelBoard({
 
   // ----- lanes -----
   const [newLane, setNewLane] = useState("");
+  const [templates, setTemplates] = useState(initialTemplates);
   const laneWidth = useStoredWidth("mte.w.lane", 288, 200, 640);
 
   async function moveLane(index: number, dir: -1 | 1) {
@@ -458,6 +464,26 @@ export function LabelBoard({
                 Add lanes to sort this label&apos;s emails, for example To do, Waiting and Done, then drag emails into them.
               </p>
             )}
+            <LaneTemplates
+              templates={templates}
+              hasLanes={lanes.length > 0}
+              onUse={(t) =>
+                save(async () => {
+                  const added = await applyLaneTemplate(workspace.id, t.lanes);
+                  setLanes((prev) => [...prev, ...added]);
+                }, () => {})
+              }
+              onSave={(name) =>
+                save(async () => {
+                  const t = await saveLaneTemplate(name, lanes.map((l) => ({ name: l.name, reopenOnReply: l.reopenOnReply })));
+                  setTemplates((prev) => [...prev, t]);
+                }, () => {})
+              }
+              onDelete={(t) => {
+                setTemplates((prev) => prev.filter((x) => x.id !== t.id));
+                return save(() => deleteLaneTemplate(t.id), () => setTemplates((prev) => [...prev, t]));
+              }}
+            />
           </div>
         </section>
         </div>
@@ -737,6 +763,87 @@ function SortableEmail({ email, labelId, onOpen }: { email: BoardEmail; labelId:
       className={`touch-manipulation ${isDragging ? "opacity-30" : ""}`}
     >
       <CardFace email={email} hideLabelId={labelId} />
+    </div>
+  );
+}
+
+// Start a board from a set of lanes, or keep this board's lanes for next time.
+function LaneTemplates({
+  templates,
+  hasLanes,
+  onUse,
+  onSave,
+  onDelete,
+}: {
+  templates: LaneTemplateDTO[];
+  hasLanes: boolean;
+  onUse: (t: LaneTemplateDTO) => Promise<void>;
+  onSave: (name: string) => Promise<void>;
+  onDelete: (t: LaneTemplateDTO) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [naming, setNaming] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    await fn();
+    setBusy(false);
+  };
+  const showList = !hasLanes || open;
+
+  return (
+    <div className="space-y-1.5 text-xs">
+      {hasLanes && (
+        <div className="flex gap-3 px-1 font-semibold text-muted">
+          <button onClick={() => setOpen((v) => !v)} className="hover:text-terracotta">
+            {open ? "Hide templates" : "Add lanes from a template"}
+          </button>
+          {naming === null && (
+            <button onClick={() => setNaming("")} className="hover:text-terracotta">
+              Save as template
+            </button>
+          )}
+        </div>
+      )}
+      {naming !== null && (
+        <form
+          className="flex gap-1.5"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            await run(() => onSave(naming));
+            setNaming(null);
+          }}
+        >
+          <input
+            autoFocus
+            value={naming}
+            disabled={busy}
+            onChange={(e) => setNaming(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && setNaming(null)}
+            placeholder="Template name"
+            className="field min-w-0 flex-1 rounded-xl px-2 py-1"
+          />
+          <button disabled={busy || !naming.trim()} className="btn-press rounded-xl bg-moss px-2.5 font-bold text-cream disabled:opacity-50">
+            Save
+          </button>
+        </form>
+      )}
+      {showList && (
+        <div className="space-y-1.5">
+          {!hasLanes && <p className="px-1 font-semibold text-muted">Or start from a template:</p>}
+          {templates.map((t) => (
+            <div key={t.id} className="card-tactile flex items-start gap-2 rounded-xl px-2.5 py-1.5">
+              <button disabled={busy} onClick={() => run(() => onUse(t))} className="min-w-0 flex-1 text-left disabled:opacity-50">
+                <span className="block font-semibold text-walnut">{t.name}</span>
+                <span className="block truncate text-muted">
+                  {t.lanes.map((l) => l.name + (l.reopenOnReply ? " ↩" : "")).join(" · ")}
+                </span>
+              </button>
+              {!t.builtIn && <ConfirmButton label="✕" confirmLabel="Delete?" onConfirm={() => onDelete(t)} small />}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

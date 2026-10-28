@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { ensureWorkspace, loadWorkspace } from "@/lib/board";
+import { ensureWorkspace, loadLaneTemplates, loadWorkspace } from "@/lib/board";
 import { mailErrorMessage } from "@/lib/mail";
 import { requireUser } from "@/lib/session";
 import { LabelBoard } from "@/components/LabelBoard";
@@ -25,6 +25,14 @@ export default async function LabelPage({
   }
   if (!workspace) notFound();
 
-  const board = await loadWorkspace(user.id, workspace.id);
-  return <LabelBoard key={workspace.id} workspace={board.workspace} initialEmails={board.emails} initialThreadId={thread} />;
+  const [board, templates] = await Promise.all([loadWorkspace(user.id, workspace.id), loadLaneTemplates(user.id)]);
+  return (
+    <LabelBoard
+      key={workspace.id}
+      workspace={board.workspace}
+      initialEmails={board.emails}
+      initialThreadId={thread}
+      templates={templates}
+    />
+  );
 }
