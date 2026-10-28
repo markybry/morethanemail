@@ -39,12 +39,13 @@ model Workspace {
 
 // A column the user adds to sort a workspace's emails. Workspaces start with none.
 model Lane {
-  id          String      @id @default(cuid())
-  workspaceId String
-  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  name        String
-  position    Int         @default(0)
-  placements  Placement[]
+  id            String      @id @default(cuid())
+  workspaceId   String
+  workspace     Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name          String
+  position      Int         @default(0)
+  reopenOnReply Boolean     @default(false) // a new reply sends the email back to unsorted
+  placements    Placement[]
 
   @@index([workspaceId])
 }

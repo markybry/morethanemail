@@ -16,6 +16,7 @@ export type BoardEmail = ThreadSnapshot & {
   newReply: boolean; // has messages newer than the user last opened
 };
 
-export type LaneDTO = { id: string; name: string; threadIds: string[] };
+// reopenOnReply: a new reply sends the email back to unsorted for triage.
+export type LaneDTO = { id: string; name: string; reopenOnReply: boolean; threadIds: string[] };
 
 export type WorkspaceDTO = { id: string; labelId: string; name: string; lanes: LaneDTO[] };
