@@ -3,7 +3,18 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { addNote, addTask, createLabelForEmail, deleteNote, deleteTask, setEmailLabels, updateTask, updateTicket } from "@/app/actions";
+import {
+  addLink,
+  addNote,
+  addTask,
+  createLabelForEmail,
+  deleteLink,
+  deleteNote,
+  deleteTask,
+  setEmailLabels,
+  updateTask,
+  updateTicket,
+} from "@/app/actions";
 import type { BoardEmail, LaneDTO, TaskDTO, ThreadSnapshot } from "@/lib/types";
 import { dueLabel, fromDateInput, gmailLink, isOverdue, senderName, toDateInput } from "@/lib/format";
 import { Drawer, DrawerHeader } from "./Drawer";
@@ -87,6 +98,7 @@ export function EmailPanel({ email, workspaceLabelId, onLabelsChange, lanes, lan
         <Workspaces email={email} here={workspaceLabelId} onLabelsChange={onLabelsChange} />
       )}
       <Tasks email={email} onChange={onChange} />
+      <Links email={email} onChange={onChange} />
       <Notes email={email} onChange={onChange} />
       {!email.local && (
         <Section title="Thread">
@@ -346,6 +358,72 @@ function Tasks({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
         />
         <button className="btn-press rounded-xl bg-terracotta px-3 text-sm font-bold text-cream">Add</button>
       </form>
+    </Section>
+  );
+}
+
+// Links kept with the ticket. Attachments stay in the email thread below.
+function Links({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmail) => void }) {
+  const [url, setUrl] = useState("");
+  const [title, setTitle] = useState("");
+  const [error, setError] = useState("");
+  const host = (u: string) => {
+    try {
+      return new URL(u).hostname.replace(/^www\./, "");
+    } catch {
+      return u;
+    }
+  };
+  return (
+    <Section title="Links">
+      <ul className="space-y-1">
+        {email.links.map((l) => (
+          <li key={l.id} className="group flex items-center gap-2 text-sm">
+            <span className="text-muted">🔗</span>
+            <a href={l.url} target="_blank" rel="noreferrer noopener" className="min-w-0 flex-1 truncate text-walnut hover:text-terracotta">
+              {l.title || host(l.url)}
+              {l.title && <span className="ml-1.5 text-xs text-muted">{host(l.url)}</span>}
+            </a>
+            <button
+              onClick={async () => {
+                onChange({ ...email, links: email.links.filter((x) => x.id !== l.id) });
+                await deleteLink(l.id);
+              }}
+              className="text-xs text-muted opacity-0 group-hover:opacity-100 hover:text-red-600 max-md:opacity-100"
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+      <form
+        className="mt-2 flex flex-wrap gap-1.5"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!url.trim()) return;
+          setError("");
+          const res = await addLink(snapshot(email), url, title);
+          if (!res.link) return setError(res.error ?? "Couldn't save the link.");
+          onChange({ ...email, links: [...email.links, res.link] });
+          setUrl("");
+          setTitle("");
+        }}
+      >
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="Paste a link…"
+          className="field min-w-0 flex-[2] rounded-xl px-2.5 py-1.5 text-sm"
+        />
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Title (optional)"
+          className="field min-w-0 flex-1 rounded-xl px-2.5 py-1.5 text-sm"
+        />
+        {url.trim() && <button className="btn-press rounded-xl bg-moss px-3 py-1 text-sm font-bold text-cream">Add</button>}
+      </form>
+      {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
     </Section>
   );
 }

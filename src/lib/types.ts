@@ -2,6 +2,7 @@
 
 export type TaskDTO = { id: string; title: string; done: boolean; dueDate: string | null };
 export type NoteDTO = { id: string; body: string; createdAt: string };
+export type LinkDTO = { id: string; url: string; title: string };
 
 // Enough about a thread to show it and to create its Email record.
 export type ThreadSnapshot = { threadId: string; subject: string; from: string; snippet: string; date: string };
@@ -13,6 +14,7 @@ export type BoardEmail = ThreadSnapshot & {
   labelIds: string[];
   notes: NoteDTO[];
   tasks: TaskDTO[];
+  links: LinkDTO[];
   newReply: boolean; // has messages newer than the user last opened
   local: boolean; // a ticket with no email: subject is its title, snippet its description
 };
