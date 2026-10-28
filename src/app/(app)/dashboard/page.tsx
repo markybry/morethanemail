@@ -24,7 +24,7 @@ export default async function DashboardPage() {
       },
     }),
     db.task.findMany({
-      where: { done: false, email: { userId: user.id } },
+      where: { done: false, userId: user.id },
       orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
       include: {
         email: {
@@ -108,12 +108,14 @@ export default async function DashboardPage() {
                   <TaskCheckbox taskId={t.id} done={t.done} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm text-walnut">{t.title}</div>
-                    <Link
-                      href={boardLink(t.email.placements[0]?.workspace.labelId ?? t.email.workspace?.labelId, t.email.threadId)}
-                      className="block truncate text-xs text-muted hover:text-terracotta"
-                    >
-                      {t.email.subject}
-                    </Link>
+                    {t.email && (
+                      <Link
+                        href={boardLink(t.email.placements[0]?.workspace.labelId ?? t.email.workspace?.labelId, t.email.threadId)}
+                        className="block truncate text-xs text-muted hover:text-terracotta"
+                      >
+                        {t.email.subject}
+                      </Link>
+                    )}
                   </div>
                   {t.dueDate && (
                     <span className={`shrink-0 text-xs ${isOverdue(t.dueDate.toISOString()) ? "text-red-600" : "text-muted"}`}>
