@@ -479,6 +479,126 @@ html[data-theme="pixel"] svg[shape-rendering="crispEdges"] {
   image-rendering: pixelated;
 }
 
+/* ---------- Dev (compact) ---------- */
+/* An issue tracker look: white and grey, one blue accent, monospace meta,
+   flat 1px borders, tight spacing and no motion. Easy to scan at a glance. */
+html[data-theme="dev"] {
+  font-size: 14px;
+  --theme-sans: var(--font-inter);
+  --theme-display: var(--font-jetbrains);
+
+  --radius-xl: 0.375rem;
+  --radius-2xl: 0.375rem;
+  --radius-3xl: 0.5rem;
+
+  --color-paper: #f6f8fa;
+  --color-cream: #ffffff;
+  --color-oat: #eaeef2;
+  --color-walnut: #1f2328;
+  --color-bark: #424a53;
+  --color-ink: #1f2328;
+  --color-muted: #656d76;
+  --color-faint: #afb8c1;
+  --color-line: #d0d7de;
+  --color-line-strong: #afb8c1;
+  --color-moss: #1f883d;
+  --color-terracotta: #0969da;
+  --color-mustard: #bf8700;
+  --color-dusk: #8250df;
+  --color-accent-soft: #ddf4ff;
+  --color-accent-ink: #0550ae;
+  --color-shadow: #1f2328;
+  --color-side-text: #c9d1d9;
+  --color-side-muted: #8b949e;
+  --color-side-strong: #f0f6fc;
+  --color-side-accent: #58a6ff;
+  --color-ok-bg: #dafbe1;
+  --color-ok-ink: #116329;
+  --color-bad-bg: #ffebe9;
+  --color-bad-ink: #a40e26;
+  --color-warn-bg: #fff8c5;
+  --color-warn-ink: #7d4e00;
+  --color-info-bg: #ddf4ff;
+  --color-info-ink: #0550ae;
+  --color-note: #fff8c5;
+  --color-note-line: #d4a72c;
+  --color-note-edge: #d4a72c;
+  --color-card-edge: #d0d7de;
+  --color-card-line: #d0d7de;
+
+  /* Lanes: white columns; colour only in the top bar and the count. */
+  --lane-1-bg: #f6f8fa;
+  --lane-1-ring: #d0d7de;
+  --lane-1-bar: #0969da;
+  --lane-1-text: #1f2328;
+  --lane-2-bg: #f6f8fa;
+  --lane-2-ring: #d0d7de;
+  --lane-2-bar: #8250df;
+  --lane-2-text: #1f2328;
+  --lane-3-bg: #f6f8fa;
+  --lane-3-ring: #d0d7de;
+  --lane-3-bar: #bf8700;
+  --lane-3-text: #1f2328;
+  --lane-4-bg: #f6f8fa;
+  --lane-4-ring: #d0d7de;
+  --lane-4-bar: #1f883d;
+  --lane-4-text: #1f2328;
+  --lane-5-bg: #f6f8fa;
+  --lane-5-ring: #d0d7de;
+  --lane-5-bar: #cf222e;
+  --lane-5-text: #1f2328;
+  --lane-6-bg: #f6f8fa;
+  --lane-6-ring: #d0d7de;
+  --lane-6-bar: #57606a;
+  --lane-6-text: #1f2328;
+}
+html[data-theme="dev"] h1,
+html[data-theme="dev"] h2,
+html[data-theme="dev"] h3,
+html[data-theme="dev"] .font-display {
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+}
+html[data-theme="dev"] .paper,
+html[data-theme="dev"] .board-bg {
+  background-image: none;
+}
+html[data-theme="dev"] .felt {
+  background-color: #161b22;
+  background-image: none;
+}
+/* Cards become dense list rows. */
+html[data-theme="dev"] .card-tactile {
+  padding: 0.4rem 0.6rem 0.4rem 0.8rem;
+  border: 1px solid var(--color-line);
+  box-shadow: none;
+}
+html[data-theme="dev"] .card-tactile:hover {
+  border-color: var(--color-terracotta);
+  box-shadow: none;
+  transform: none;
+}
+html[data-theme="dev"] .btn-press,
+html[data-theme="dev"] .btn-press:active {
+  box-shadow: none;
+  transform: none;
+}
+html[data-theme="dev"] .field {
+  background: #fff;
+  box-shadow: none;
+}
+html[data-theme="dev"] .field:focus {
+  box-shadow: 0 0 0 3px rgb(9 105 218 / 0.25);
+}
+html[data-theme="dev"] [class*="animate-"] {
+  animation: none;
+}
+/* Dates, counts and badges in monospace, like an issue list. */
+html[data-theme="dev"] .card-tactile .text-xs {
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-faint) transparent;
