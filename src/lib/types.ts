@@ -1,6 +1,6 @@
 // Plain, serializable shapes passed from server to client components.
 
-export type TaskDTO = { id: string; title: string; done: boolean; dueDate: string | null };
+export type TaskDTO = { id: string; title: string; notes: string; done: boolean; dueDate: string | null };
 export type NoteDTO = { id: string; body: string; createdAt: string };
 export type LinkDTO = { id: string; url: string; title: string };
 

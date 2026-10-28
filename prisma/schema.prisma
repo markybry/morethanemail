@@ -22,6 +22,7 @@ model User {
   emails        Email[]
   laneTemplates LaneTemplate[]
   activity      Activity[]
+  tasks         Task[]
 }
 
 // One workspace per Gmail label (INBOX included), created the first time the
@@ -129,17 +130,22 @@ model TicketLink {
   @@index([emailId])
 }
 
+// A to-do: on an email or ticket, or on its own (emailId null) from My tasks.
 model Task {
   id        String    @id @default(cuid())
-  emailId   String
-  email     Email     @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailId   String?
+  email     Email?    @relation(fields: [emailId], references: [id], onDelete: Cascade)
   title     String
+  notes     String    @default("")
   done      Boolean   @default(false)
   dueDate   DateTime?
   position  Int       @default(0)
   createdAt DateTime  @default(now())
 
   @@index([emailId])
+  @@index([userId])
 }
 
 // What the user did, newest first on the dashboard. kind: moved | ticket | task | taskDone | note.

@@ -406,40 +406,67 @@ export async function deleteLink(linkId: string) {
 
 // ---------- tasks ----------
 
+const taskDTO = (t: { id: string; title: string; notes: string; done: boolean; dueDate: Date | null }): TaskDTO => ({
+  id: t.id,
+  title: t.title,
+  notes: t.notes,
+  done: t.done,
+  dueDate: t.dueDate?.toISOString() ?? null,
+});
+
+const revalidateTaskPages = () => {
+  revalidatePath("/tasks");
+  revalidatePath("/dashboard");
+};
+
 export async function addTask(thread: ThreadSnapshot, title: string, dueDate: string | null): Promise<TaskDTO> {
   const user = await requireUser();
   const email = await upsertEmail(user.id, thread);
   const count = await db.task.count({ where: { emailId: email.id } });
   const task = await db.task.create({
-    data: { emailId: email.id, title: title.trim(), dueDate: dueDate ? new Date(dueDate) : null, position: count },
+    data: { userId: user.id, emailId: email.id, title: title.trim(), dueDate: dueDate ? new Date(dueDate) : null, position: count },
   });
   await db.activity.create({ data: { userId: user.id, emailId: email.id, kind: "task", detail: task.title } });
-  revalidatePath("/tasks");
-  return { id: task.id, title: task.title, done: task.done, dueDate: task.dueDate?.toISOString() ?? null };
+  revalidateTaskPages();
+  return taskDTO(task);
 }
 
-export async function updateTask(taskId: string, patch: { done?: boolean; title?: string; dueDate?: string | null }) {
+// A task on its own, added from My tasks.
+export async function addStandaloneTask(title: string, dueDate: string | null): Promise<TaskDTO> {
+  const user = await requireUser();
+  const task = await db.task.create({
+    data: { userId: user.id, title: title.trim().slice(0, 300) || "Untitled task", dueDate: dueDate ? new Date(dueDate) : null },
+  });
+  await db.activity.create({ data: { userId: user.id, kind: "task", detail: task.title } });
+  revalidateTaskPages();
+  return taskDTO(task);
+}
+
+export async function updateTask(
+  taskId: string,
+  patch: { done?: boolean; title?: string; notes?: string; dueDate?: string | null },
+) {
   const user = await requireUser();
   await db.task.updateMany({
-    where: { id: taskId, email: { userId: user.id } },
+    where: { id: taskId, userId: user.id },
     data: {
       ...(patch.done !== undefined ? { done: patch.done } : {}),
-      ...(patch.title !== undefined ? { title: patch.title.trim() } : {}),
+      ...(patch.title !== undefined ? { title: patch.title.trim().slice(0, 300) || "Untitled task" } : {}),
+      ...(patch.notes !== undefined ? { notes: patch.notes.slice(0, 5000) } : {}),
       ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate ? new Date(patch.dueDate) : null } : {}),
     },
   });
   if (patch.done) {
-    const task = await db.task.findFirst({ where: { id: taskId, email: { userId: user.id } } });
+    const task = await db.task.findFirst({ where: { id: taskId, userId: user.id } });
     if (task) await db.activity.create({ data: { userId: user.id, emailId: task.emailId, kind: "taskDone", detail: task.title } });
   }
-  revalidatePath("/tasks");
-  revalidatePath("/dashboard");
+  revalidateTaskPages();
 }
 
 export async function deleteTask(taskId: string) {
   const user = await requireUser();
-  await db.task.deleteMany({ where: { id: taskId, email: { userId: user.id } } });
-  revalidatePath("/tasks");
+  await db.task.deleteMany({ where: { id: taskId, userId: user.id } });
+  revalidateTaskPages();
 }
 
 // ---------- preferences ----------
