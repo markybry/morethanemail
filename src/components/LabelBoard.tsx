@@ -36,6 +36,7 @@ import {
   setLaneReopenOnReply,
 } from "@/app/actions";
 import type { BoardEmail, LaneDTO, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "@/lib/types";
+import { GROUP_BY, GROUP_BY_NAMES, groupThreads, isGroupBy, type GroupBy } from "@/lib/grouping";
 import { CardFace } from "./CardFace";
 import { EmailPanel, UNSORTED } from "./EmailPanel";
 import { useMail } from "./MailContext";
@@ -44,6 +45,7 @@ import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
 import { ThemeIcon, useTheme } from "./ThemeContext";
 
 const PRIMARY_KEY = "mte.inboxPrimaryOnly";
+const GROUP_KEY = "mte.unsortedGroupBy";
 
 // Each lane gets its own colour (defined per theme in globals.css) and an
 // icon from the theme, cycling through these. Literal class names so Tailwind keeps them.
@@ -586,6 +588,24 @@ function UnsortedColumn(p: {
   const [ticket, setTicket] = useState<string | null>(null);
   const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${UNSORTED}` });
   const w = useStoredWidth("mte.w.unsorted", 320, 220, 720);
+  const { labelNames } = useMail();
+  const [groupBy, setGroupBy] = useState<GroupBy>("none");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(GROUP_KEY);
+      if (isGroupBy(saved)) setGroupBy(saved);
+    } catch {}
+  }, []);
+  const changeGroupBy = (v: GroupBy) => {
+    setGroupBy(v);
+    try {
+      localStorage.setItem(GROUP_KEY, v);
+    } catch {}
+  };
+  const groups = useMemo(
+    () => groupThreads(p.threadIds, p.emails, groupBy, { labelNames, hereLabelId: p.labelId }),
+    [p.threadIds, p.emails, groupBy, labelNames, p.labelId],
+  );
   return (
     <aside
       id="col-unsorted"
@@ -658,6 +678,20 @@ function UnsortedColumn(p: {
             </button>
           </form>
         )}
+        <label className="flex items-center gap-1.5 text-xs font-semibold text-muted">
+          Group by
+          <select
+            value={groupBy}
+            onChange={(e) => changeGroupBy(e.target.value as GroupBy)}
+            className="field rounded-lg px-1.5 py-0.5 text-xs text-bark"
+          >
+            {GROUP_BY.map((g) => (
+              <option key={g} value={g}>
+                {GROUP_BY_NAMES[g]}
+              </option>
+            ))}
+          </select>
+        </label>
         <p className="text-xs font-semibold text-muted">
           {p.searching ? "Search results" : "Unsorted"}
           {p.sortedCount > 0 && ` · ${p.sortedCount} sorted into lanes`}
@@ -671,11 +705,21 @@ function UnsortedColumn(p: {
       </div>
       <div ref={setNodeRef} className={`min-h-0 flex-1 space-y-2.5 overflow-y-auto p-2.5 transition-colors ${isOver ? "bg-oat/60" : ""}`}>
         {p.state === "error" && <p className="p-2 text-sm text-red-600">{p.error}</p>}
-        {p.threadIds.map((id) =>
-          p.emails[id] ? (
-            <DraggableEmail key={id} email={p.emails[id]} labelId={p.labelId} selected={p.selected === id} onOpen={() => p.onOpen(id)} />
-          ) : null,
-        )}
+        {groups.map((g) => (
+          <div key={g.key} className="space-y-2.5">
+            {g.title && (
+              <h4 className="sticky top-0 z-[1] -mx-2.5 flex items-baseline gap-2 bg-paper/95 px-3 pt-1 pb-0.5 text-xs font-bold text-bark">
+                <span className="min-w-0 flex-1 truncate">{g.title}</span>
+                <span className="text-muted">{g.threadIds.length}</span>
+              </h4>
+            )}
+            {g.threadIds.map((id) =>
+              p.emails[id] ? (
+                <DraggableEmail key={id} email={p.emails[id]} labelId={p.labelId} selected={p.selected === id} onOpen={() => p.onOpen(id)} />
+              ) : null,
+            )}
+          </div>
+        ))}
         {p.state === "loading" && (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
