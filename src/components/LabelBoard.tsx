@@ -20,7 +20,16 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { arrangeEmails, createLane, deleteLane, fetchLabelEmails, refreshEmails, renameLane, reorderLanes } from "@/app/actions";
+import {
+  arrangeEmails,
+  createLane,
+  deleteLane,
+  fetchLabelEmails,
+  refreshEmails,
+  renameLane,
+  reorderLanes,
+  setLaneReopenOnReply,
+} from "@/app/actions";
 import type { BoardEmail, LaneDTO, ThreadSnapshot, WorkspaceDTO } from "@/lib/types";
 import { CardFace } from "./CardFace";
 import { EmailPanel, UNSORTED } from "./EmailPanel";
@@ -191,10 +200,13 @@ export function LabelBoard({
     setUnsorted(cols.unsorted);
   };
 
+  const reopened = useRef(new Set<string>());
+
   // Save a move from one column to another (or a reorder within a lane).
   // `before` is the board as it was, restored if the save fails.
   const persist = async (threadId: string, from: string | undefined, to: string, cols: Columns, before: Columns) => {
     if (from === to && to === UNSORTED) return;
+    reopened.current.add(threadId);
     const affected = new Set([from, to].filter((x): x is string => !!x && x !== UNSORTED));
     const email = emails[threadId];
     await save(
@@ -227,6 +239,40 @@ export function LabelBoard({
   );
   const [activeId, setActiveId] = useState<string | null>(null);
   const snapshot = useRef<(Columns & { from?: string }) | null>(null);
+
+  // A new reply on an email in a "reopen on reply" lane (Done, Waiting...)
+  // sends it back to unsorted to be triaged again. Each email is tried once per
+  // visit so a failing save can't loop, and emails the user places themselves
+  // stay where they're put.
+  useEffect(() => {
+    if (activeId) return;
+    const back = lanes
+      .filter((l) => l.reopenOnReply)
+      .flatMap((l) => l.threadIds)
+      .filter((t) => emails[t]?.newReply && !reopened.current.has(t));
+    if (!back.length) return;
+    back.forEach((t) => reopened.current.add(t));
+    const before = { lanes, unsorted };
+    const next = {
+      lanes: lanes.map((l) => ({ ...l, threadIds: l.threadIds.filter((t) => !back.includes(t)) })),
+      unsorted: byDate([...unsorted.filter((t) => !back.includes(t)), ...back]),
+    };
+    const changed = next.lanes.filter((l, i) => l.threadIds.length !== lanes[i].threadIds.length);
+    apply(next);
+    void save(
+      () =>
+        arrangeEmails(workspace.id, {
+          lanes: changed.map((l) => ({ laneId: l.id, threadIds: l.threadIds })),
+          unsorted: back,
+          snapshots: [],
+        }),
+      () => apply(before),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when emails or lanes change
+  }, [emails, lanes, activeId]);
+
+  const newReplies = lanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply).length;
+
 
   const collision: CollisionDetection = (args) => {
     const hits = pointerWithin(args);
@@ -338,6 +384,7 @@ export function LabelBoard({
           threadIds={unsorted}
           emails={emails}
           sortedCount={placed.size}
+          newReplies={newReplies}
           query={query}
           searching={!!loadedQuery}
           state={listState}
@@ -370,6 +417,11 @@ export function LabelBoard({
                 await save(() => renameLane(lane.id, name), () => rename(lane.name));
               }}
               onDelete={() => removeLane(lane)}
+              onReopenChange={async (on) => {
+                const set = (v: boolean) => setLanes((prev) => prev.map((l) => (l.id === lane.id ? { ...l, reopenOnReply: v } : l)));
+                set(on);
+                await save(() => setLaneReopenOnReply(lane.id, on), () => set(!on));
+              }}
               onOpen={setSelected}
               width={laneWidth}
               colors={LANE_THEMES[i % LANE_THEMES.length]}
@@ -466,6 +518,7 @@ function UnsortedColumn(p: {
   threadIds: string[];
   emails: Record<string, BoardEmail>;
   sortedCount: number;
+  newReplies: number;
   query: string;
   searching: boolean;
   state: "loading" | "idle" | "error";
@@ -528,6 +581,12 @@ function UnsortedColumn(p: {
         <p className="text-xs font-semibold text-muted">
           {p.searching ? "Search results" : "Unsorted"}
           {p.sortedCount > 0 && ` · ${p.sortedCount} sorted into lanes`}
+          {p.newReplies > 0 && (
+            <span className="text-accent-ink">
+              {" · "}
+              {p.newReplies} new {p.newReplies === 1 ? "reply" : "replies"} in lanes
+            </span>
+          )}
         </p>
       </div>
       <div ref={setNodeRef} className={`min-h-0 flex-1 space-y-2.5 overflow-y-auto p-2.5 transition-colors ${isOver ? "bg-oat/60" : ""}`}>
@@ -591,6 +650,7 @@ function Lane({
   onMove,
   onRename,
   onDelete,
+  onReopenChange,
   onOpen,
   width,
   colors,
@@ -604,6 +664,7 @@ function Lane({
   onMove: (dir: -1 | 1) => void;
   onRename: (name: string) => Promise<void>;
   onDelete: () => Promise<void>;
+  onReopenChange: (on: boolean) => Promise<void>;
   onOpen: (threadId: string) => void;
   width: ReturnType<typeof useStoredWidth>;
   colors: (typeof LANE_THEMES)[number];
@@ -626,7 +687,24 @@ function Lane({
         <span key={lane.threadIds.length} className={`animate-pop rounded-full px-2 text-[11px] font-bold text-cream ${colors.count}`}>
           {lane.threadIds.length}
         </span>
+        {lane.reopenOnReply && (
+          <span className="text-xs text-muted" title="A new reply sends an email back to Unsorted">
+            ↩
+          </span>
+        )}
         <div className="ml-auto flex items-center opacity-0 transition group-hover:opacity-100 max-md:opacity-100">
+          <button
+            onClick={() => onReopenChange(!lane.reopenOnReply)}
+            className={`px-1 text-xs ${lane.reopenOnReply ? "font-bold text-terracotta" : "text-muted"}`}
+            title={
+              lane.reopenOnReply
+                ? "New replies send emails back to Unsorted. Click to stop."
+                : "Send emails back to Unsorted when a new reply arrives"
+            }
+            aria-pressed={lane.reopenOnReply}
+          >
+            ↩
+          </button>
           <button disabled={isFirst} onClick={() => onMove(-1)} className="px-1 text-muted disabled:opacity-30" title="Move left">
             ‹
           </button>

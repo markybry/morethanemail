@@ -81,7 +81,7 @@ export async function loadWorkspace(
       id: ws.id,
       labelId: ws.labelId,
       name: ws.name,
-      lanes: ws.lanes.map((l) => ({ id: l.id, name: l.name, threadIds: l.placements.map((p) => p.email.threadId) })),
+      lanes: ws.lanes.map((l) => ({ id: l.id, name: l.name, reopenOnReply: l.reopenOnReply, threadIds: l.placements.map((p) => p.email.threadId) })),
     },
     emails,
   };

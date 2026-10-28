@@ -189,12 +189,18 @@ export async function createLane(workspaceId: string, name: string): Promise<Lan
   const count = await db.lane.count({ where: { workspaceId } });
   const lane = await db.lane.create({ data: { workspaceId, name: name.trim() || "New lane", position: count } });
   revalidateBoards();
-  return { id: lane.id, name: lane.name, threadIds: [] };
+  return { id: lane.id, name: lane.name, reopenOnReply: lane.reopenOnReply, threadIds: [] };
 }
 
 export async function renameLane(laneId: string, name: string) {
   await ownLane(laneId);
   await db.lane.update({ where: { id: laneId }, data: { name: name.trim() || "Untitled" } });
+  revalidateBoards();
+}
+
+export async function setLaneReopenOnReply(laneId: string, reopenOnReply: boolean) {
+  await ownLane(laneId);
+  await db.lane.update({ where: { id: laneId }, data: { reopenOnReply } });
   revalidateBoards();
 }
 
