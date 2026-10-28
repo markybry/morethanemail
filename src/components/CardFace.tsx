@@ -43,7 +43,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
         {email.subject}
       </div>
       <div className="mt-0.5 truncate text-xs text-muted">{email.snippet}</div>
-      {(email.newReply || chips.length > 0 || email.tasks.length > 0 || email.notes.length > 0) && (
+      {(email.newReply || chips.length > 0 || email.tasks.length > 0 || email.notes.length > 0 || email.links.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
           {email.newReply && (
             <Badge tone="blue">
@@ -61,6 +61,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
           )}
           {nextDue && <Badge tone={isOverdue(nextDue) ? "red" : "amber"}>⏰ {dueLabel(nextDue)}</Badge>}
           {email.notes.length > 0 && <Badge>✎ {email.notes.length}</Badge>}
+          {email.links.length > 0 && <Badge>🔗 {email.links.length}</Badge>}
           {chips.slice(0, 3).map((c) => (
             <Badge key={c.key} tone="label">
               <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: c.color }} />

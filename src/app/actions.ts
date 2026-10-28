@@ -16,7 +16,7 @@ import {
 } from "@/lib/mail";
 import { requireUser } from "@/lib/session";
 import { isThemeId } from "@/lib/themes";
-import type { BoardEmail, LaneDTO, LaneTemplateDTO, NoteDTO, TaskDTO, TemplateLane, ThreadSnapshot } from "@/lib/types";
+import type { BoardEmail, LaneDTO, LaneTemplateDTO, LinkDTO, NoteDTO, TaskDTO, TemplateLane, ThreadSnapshot } from "@/lib/types";
 import { parseTemplateLanes } from "@/lib/laneTemplates";
 import { isLocalThread, LOCAL_PREFIX } from "@/lib/format";
 import { randomUUID } from "crypto";
@@ -375,6 +375,33 @@ export async function addNote(thread: ThreadSnapshot, body: string): Promise<Not
 export async function deleteNote(noteId: string) {
   const user = await requireUser();
   await db.note.deleteMany({ where: { id: noteId, email: { userId: user.id } } });
+}
+
+// ---------- links ----------
+
+// Only web links are kept, so a saved link can't run script when opened.
+function cleanUrl(raw: string): string | null {
+  const text = raw.trim();
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:/i.test(text) ? text : `https://${text}`);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function addLink(thread: ThreadSnapshot, rawUrl: string, title: string): Promise<{ link?: LinkDTO; error?: string }> {
+  const user = await requireUser();
+  const url = cleanUrl(rawUrl);
+  if (!url || url.length > 2000) return { error: "That doesn't look like a web link." };
+  const email = await upsertEmail(user.id, thread);
+  const link = await db.ticketLink.create({ data: { emailId: email.id, url, title: title.trim().slice(0, 200) } });
+  return { link: { id: link.id, url: link.url, title: link.title } };
+}
+
+export async function deleteLink(linkId: string) {
+  const user = await requireUser();
+  await db.ticketLink.deleteMany({ where: { id: linkId, email: { userId: user.id } } });
 }
 
 // ---------- tasks ----------

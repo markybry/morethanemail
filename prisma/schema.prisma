@@ -70,20 +70,21 @@ model LaneTemplate {
 // off it and follow it into every workspace it appears in.
 // A ticket with no email has a "local:" threadId and lives in one workspace.
 model Email {
-  id          String      @id @default(cuid())
+  id          String       @id @default(cuid())
   userId      String
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspaceId String? // set only for tickets with no email
-  workspace   Workspace?  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   threadId    String
   subject     String
   from        String
   snippet     String
   date        DateTime // latest message when last refreshed
   lastSeenAt  DateTime? // latest message the user has opened; newer means a new reply
-  createdAt   DateTime    @default(now())
+  createdAt   DateTime     @default(now())
   notes       Note[]
   tasks       Task[]
+  links       TicketLink[]
   placements  Placement[]
   activity    Activity[]
 
@@ -111,6 +112,18 @@ model Note {
   emailId   String
   email     Email    @relation(fields: [emailId], references: [id], onDelete: Cascade)
   body      String
+  createdAt DateTime @default(now())
+
+  @@index([emailId])
+}
+
+// A link kept with a ticket: a shared doc, a design, a quote, an order page.
+model TicketLink {
+  id        String   @id @default(cuid())
+  emailId   String
+  email     Email    @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  url       String
+  title     String   @default("")
   createdAt DateTime @default(now())
 
   @@index([emailId])

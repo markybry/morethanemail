@@ -1,5 +1,5 @@
 import "server-only";
-import type { Email, Note, Task, User } from "@prisma/client";
+import type { Email, Note, Task, TicketLink, User } from "@prisma/client";
 import { db } from "./db";
 import { isLocalThread } from "./format";
 import { getLabelName, type ThreadSummary } from "./mail";
@@ -9,9 +9,10 @@ import type { BoardEmail, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "
 export const emailInclude = {
   notes: { orderBy: { createdAt: "desc" } },
   tasks: { orderBy: { position: "asc" } },
+  links: { orderBy: { createdAt: "asc" } },
 } as const;
 
-type EmailWithMeta = Email & { notes: Note[]; tasks: Task[] };
+type EmailWithMeta = Email & { notes: Note[]; tasks: Task[]; links: TicketLink[] };
 
 // Combine what Gmail says now (if known) with what the app has stored.
 export function toBoardEmail(stored: EmailWithMeta | undefined, live?: ThreadSummary): BoardEmail {
@@ -28,6 +29,7 @@ export function toBoardEmail(stored: EmailWithMeta | undefined, live?: ThreadSum
     notes: stored?.notes.map((n) => ({ id: n.id, body: n.body, createdAt: n.createdAt.toISOString() })) ?? [],
     tasks:
       stored?.tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, dueDate: t.dueDate?.toISOString() ?? null })) ?? [],
+    links: stored?.links.map((l) => ({ id: l.id, url: l.url, title: l.title })) ?? [],
     newReply: lastSeen !== undefined && new Date(date).getTime() > lastSeen + 1000,
     local: isLocalThread(live?.threadId ?? stored!.threadId),
   };
