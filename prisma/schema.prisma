@@ -21,6 +21,7 @@ model User {
   workspaces    Workspace[]
   emails        Email[]
   laneTemplates LaneTemplate[]
+  activity      Activity[]
 }
 
 // One workspace per Gmail label (INBOX included), created the first time the
@@ -35,6 +36,7 @@ model Workspace {
   lanes      Lane[]
   placements Placement[]
   tickets    Email[] // tickets made in this workspace that have no email
+  activity   Activity[]
 
   @@unique([userId, labelId])
 }
@@ -83,6 +85,7 @@ model Email {
   notes       Note[]
   tasks       Task[]
   placements  Placement[]
+  activity    Activity[]
 
   @@unique([userId, threadId])
   @@index([workspaceId])
@@ -124,4 +127,21 @@ model Task {
   createdAt DateTime  @default(now())
 
   @@index([emailId])
+}
+
+// What the user did, newest first on the dashboard. kind: moved | ticket | task | taskDone | note.
+// detail is the lane name for "moved" (empty = back to unsorted) or the task's title.
+model Activity {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String?
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  emailId     String?
+  email       Email?     @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  kind        String
+  detail      String     @default("")
+  createdAt   DateTime   @default(now())
+
+  @@index([userId, createdAt])
 }
