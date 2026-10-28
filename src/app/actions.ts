@@ -18,6 +18,8 @@ import { requireUser } from "@/lib/session";
 import { isThemeId } from "@/lib/themes";
 import type { BoardEmail, LaneDTO, LaneTemplateDTO, NoteDTO, TaskDTO, TemplateLane, ThreadSnapshot } from "@/lib/types";
 import { parseTemplateLanes } from "@/lib/laneTemplates";
+import { isLocalThread, LOCAL_PREFIX } from "@/lib/format";
+import { randomUUID } from "crypto";
 import { emailInclude, snapshotData, toBoardEmail, upsertEmail } from "@/lib/board";
 
 // ---------- ownership guards ----------
@@ -74,6 +76,7 @@ export async function fetchLabelEmails(
 // replies show even when the thread isn't on the first page of the label.
 export async function refreshEmails(threadIds: string[]): Promise<{ emails: BoardEmail[]; error?: string }> {
   const user = await requireUser();
+  threadIds = threadIds.filter((t) => !isLocalThread(t));
   if (threadIds.length === 0) return { emails: [] };
   try {
     const live = await summarizeThreads(user, threadIds);
@@ -100,6 +103,7 @@ export async function fetchLabels(): Promise<{ labels: MailLabel[]; error?: stri
 // Opening a thread marks it as seen: a later message will show as a new reply.
 export async function fetchThread(threadId: string): Promise<{ thread: ThreadDetail | null; error?: string }> {
   const user = await requireUser();
+  if (isLocalThread(threadId)) return { thread: null };
   try {
     const thread = await getThread(user, threadId);
     const last = thread?.messages[thread.messages.length - 1];
@@ -129,6 +133,7 @@ export async function setEmailLabels(
 ): Promise<{ labelIds?: string[]; error?: string }> {
   const user = await requireUser();
   if (![...add, ...remove].every(isAssignableLabel)) return { error: "That label can't be changed here." };
+  if (isLocalThread(threadId)) return { error: "This ticket has no email, so it has no Gmail labels." };
   try {
     const labelIds = await modifyThreadLabels(user, threadId, add, remove);
     // Leaving a label's workspace also takes the email out of that workspace's lanes.
@@ -173,6 +178,7 @@ export async function createLabelForEmail(
   const user = await requireUser();
   const clean = cleanLabelName(name);
   if (!clean) return { error: "Give the label a name." };
+  if (isLocalThread(threadId)) return { error: "This ticket has no email, so it has no Gmail labels." };
   try {
     const label = await createLabel(user, clean);
     const labelIds = await modifyThreadLabels(user, threadId, [label.id], []);
@@ -218,6 +224,49 @@ export async function reorderLanes(workspaceId: string, laneIds: string[]) {
     laneIds.map((id, position) => db.lane.updateMany({ where: { id, workspaceId }, data: { position } })),
   );
   revalidateBoards();
+}
+
+// ---------- tickets with no email ----------
+
+export async function createTicket(workspaceId: string, title: string): Promise<BoardEmail> {
+  const { user } = await ownWorkspace(workspaceId);
+  const ticket = await db.email.create({
+    data: {
+      userId: user.id,
+      workspaceId,
+      threadId: `${LOCAL_PREFIX}${randomUUID()}`,
+      subject: title.trim().slice(0, 200) || "Untitled ticket",
+      from: user.name ?? user.email,
+      snippet: "",
+      date: new Date(),
+    },
+    include: emailInclude,
+  });
+  revalidateBoards();
+  return toBoardEmail(ticket);
+}
+
+// Title and description of a ticket with no email. Emails' own subjects come from Gmail.
+export async function updateTicket(threadId: string, patch: { subject?: string; snippet?: string }) {
+  const user = await requireUser();
+  if (!isLocalThread(threadId)) throw new Error("Only tickets without an email can be edited");
+  await db.email.updateMany({
+    where: { userId: user.id, threadId },
+    data: {
+      ...(patch.subject !== undefined ? { subject: patch.subject.trim().slice(0, 200) || "Untitled ticket" } : {}),
+      ...(patch.snippet !== undefined ? { snippet: patch.snippet.slice(0, 5000) } : {}),
+    },
+  });
+  revalidateBoards();
+  revalidatePath("/tasks");
+}
+
+export async function deleteTicket(threadId: string) {
+  const user = await requireUser();
+  if (!isLocalThread(threadId)) throw new Error("Only tickets without an email can be deleted");
+  await db.email.deleteMany({ where: { userId: user.id, threadId } });
+  revalidateBoards();
+  revalidatePath("/tasks");
 }
 
 // ---------- lane templates ----------

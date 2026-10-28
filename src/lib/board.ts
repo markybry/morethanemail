@@ -1,6 +1,7 @@
 import "server-only";
 import type { Email, Note, Task, User } from "@prisma/client";
 import { db } from "./db";
+import { isLocalThread } from "./format";
 import { getLabelName, type ThreadSummary } from "./mail";
 import { BUILT_IN_TEMPLATES, parseTemplateLanes } from "./laneTemplates";
 import type { BoardEmail, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "./types";
@@ -28,6 +29,7 @@ export function toBoardEmail(stored: EmailWithMeta | undefined, live?: ThreadSum
     tasks:
       stored?.tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, dueDate: t.dueDate?.toISOString() ?? null })) ?? [],
     newReply: lastSeen !== undefined && new Date(date).getTime() > lastSeen + 1000,
+    local: isLocalThread(live?.threadId ?? stored!.threadId),
   };
 }
 
@@ -86,12 +88,17 @@ export async function loadWorkspace(
   });
   const emails: Record<string, BoardEmail> = {};
   for (const l of ws.lanes) for (const p of l.placements) emails[p.email.threadId] = toBoardEmail(p.email);
+  // Tickets with no email: Gmail doesn't list them, so unplaced ones come from here.
+  const tickets = await db.email.findMany({ where: { userId, workspaceId }, include: emailInclude, orderBy: { date: "desc" } });
+  const ticketIds = tickets.filter((t) => !emails[t.threadId]).map((t) => t.threadId);
+  for (const t of tickets) emails[t.threadId] = toBoardEmail(t);
   return {
     workspace: {
       id: ws.id,
       labelId: ws.labelId,
       name: ws.name,
       lanes: ws.lanes.map((l) => ({ id: l.id, name: l.name, reopenOnReply: l.reopenOnReply, threadIds: l.placements.map((p) => p.email.threadId) })),
+      ticketIds,
     },
     emails,
   };

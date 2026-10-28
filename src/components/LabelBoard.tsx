@@ -24,7 +24,9 @@ import {
   applyLaneTemplate,
   arrangeEmails,
   createLane,
+  createTicket,
   deleteLaneTemplate,
+  deleteTicket,
   deleteLane,
   fetchLabelEmails,
   refreshEmails,
@@ -85,7 +87,7 @@ export function LabelBoard({
   const isInbox = workspace.labelId === "INBOX";
   const [lanes, setLanes] = useState<LaneDTO[]>(workspace.lanes);
   const [emails, setEmails] = useState<Record<string, BoardEmail>>(initialEmails);
-  const [unsorted, setUnsorted] = useState<string[]>([]);
+  const [unsorted, setUnsorted] = useState<string[]>(workspace.ticketIds);
   const [selected, setSelected] = useState<string | null>(initialThreadId ?? null);
   const [saveError, setSaveError] = useState("");
 
@@ -112,9 +114,11 @@ export function LabelBoard({
 
   const placed = useMemo(() => new Set(lanes.flatMap((l) => l.threadIds)), [lanes]);
   const placedRef = useRef(placed);
+  const emailsRef = useRef(emails);
   useEffect(() => {
     placedRef.current = placed;
-  }, [placed]);
+    emailsRef.current = emails;
+  }, [placed, emails]);
 
   // ----- the label's emails from Gmail (unsorted column) -----
   const [primaryOnly, setPrimaryOnly] = useState(true);
@@ -136,7 +140,13 @@ export function LabelBoard({
       }
       mergeEmails(res.emails);
       const ids = res.emails.map((e) => e.threadId).filter((id) => !placedRef.current.has(id));
-      setUnsorted((prev) => (pageToken ? [...prev, ...ids.filter((id) => !prev.includes(id))] : ids));
+      // Tickets with no email aren't in Gmail's list; keep the unsorted ones (matching a search).
+      const needle = q.toLowerCase();
+      const tickets = Object.values(emailsRef.current)
+        .filter((e) => e.local && !placedRef.current.has(e.threadId))
+        .filter((e) => !needle || `${e.subject} ${e.snippet}`.toLowerCase().includes(needle))
+        .map((e) => e.threadId);
+      setUnsorted((prev) => (pageToken ? [...prev, ...ids.filter((id) => !prev.includes(id))] : [...tickets, ...ids]));
       setNextPage(res.nextPageToken);
       setLoadedQuery(q);
       setListState("idle");
@@ -403,6 +413,14 @@ export function LabelBoard({
             reloadLabels();
           }}
           onLoadMore={() => load(loadedQuery, nextPage)}
+          onNewTicket={(title) =>
+            save(async () => {
+              const ticket = await createTicket(workspace.id, title);
+              mergeEmails([ticket]);
+              setUnsorted((prev) => [ticket.threadId, ...prev]);
+              setSelected(ticket.threadId);
+            }, () => {})
+          }
           onOpen={setSelected}
           look={look}
         />
@@ -526,6 +544,13 @@ export function LabelBoard({
           onPlace={(laneId) => place(selectedEmail.threadId, laneId)}
           onChange={(e) => mergeEmails([e])}
           onSeen={() => mergeEmails([{ ...selectedEmail, newReply: false, unread: false }])}
+          onDelete={async () => {
+            const t = selectedEmail.threadId;
+            const before = { lanes, unsorted };
+            setSelected(null);
+            apply({ lanes: lanes.map((l) => ({ ...l, threadIds: l.threadIds.filter((x) => x !== t) })), unsorted: unsorted.filter((x) => x !== t) });
+            await save(() => deleteTicket(t), () => apply(before));
+          }}
           onClose={() => setSelected(null)}
         />
       )}
@@ -554,9 +579,11 @@ function UnsortedColumn(p: {
   onQueryChange: (q: string) => void;
   onSearch: () => void;
   onLoadMore: () => void;
+  onNewTicket: (title: string) => Promise<void>;
   onOpen: (threadId: string) => void;
   look: ReturnType<typeof useTheme>["theme"];
 }) {
+  const [ticket, setTicket] = useState<string | null>(null);
   const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${UNSORTED}` });
   const w = useStoredWidth("mte.w.unsorted", 320, 220, 720);
   return (
@@ -604,6 +631,33 @@ function UnsortedColumn(p: {
             ↻
           </button>
         </form>
+        {ticket === null ? (
+          <button onClick={() => setTicket("")} className="text-xs font-semibold text-terracotta hover:underline">
+            + New ticket (no email)
+          </button>
+        ) : (
+          <form
+            className="flex gap-1.5"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!ticket.trim()) return;
+              await p.onNewTicket(ticket);
+              setTicket(null);
+            }}
+          >
+            <input
+              autoFocus
+              value={ticket}
+              onChange={(e) => setTicket(e.target.value)}
+              onKeyDown={(e) => e.key === "Escape" && setTicket(null)}
+              placeholder="What needs doing?"
+              className="field min-w-0 flex-1 rounded-xl px-2.5 py-1 text-sm"
+            />
+            <button disabled={!ticket.trim()} className="btn-press rounded-xl bg-moss px-2.5 text-sm font-bold text-cream disabled:opacity-50">
+              Add
+            </button>
+          </form>
+        )}
         <p className="text-xs font-semibold text-muted">
           {p.searching ? "Search results" : "Unsorted"}
           {p.sortedCount > 0 && ` · ${p.sortedCount} sorted into lanes`}

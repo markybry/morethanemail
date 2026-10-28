@@ -14,6 +14,7 @@ export type BoardEmail = ThreadSnapshot & {
   notes: NoteDTO[];
   tasks: TaskDTO[];
   newReply: boolean; // has messages newer than the user last opened
+  local: boolean; // a ticket with no email: subject is its title, snippet its description
 };
 
 // reopenOnReply: a new reply sends the email back to unsorted for triage.
@@ -22,4 +23,5 @@ export type LaneDTO = { id: string; name: string; reopenOnReply: boolean; thread
 export type TemplateLane = { name: string; reopenOnReply: boolean };
 export type LaneTemplateDTO = { id: string; name: string; builtIn: boolean; lanes: TemplateLane[] };
 
-export type WorkspaceDTO = { id: string; labelId: string; name: string; lanes: LaneDTO[] };
+// ticketIds: tickets with no email that aren't in a lane (they join the unsorted column).
+export type WorkspaceDTO = { id: string; labelId: string; name: string; lanes: LaneDTO[]; ticketIds: string[] };

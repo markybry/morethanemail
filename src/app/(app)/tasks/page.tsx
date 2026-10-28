@@ -15,6 +15,7 @@ export default async function TasksPage() {
         select: {
           threadId: true,
           subject: true,
+          workspace: { select: { labelId: true } }, // tickets with no email
           placements: { take: 1, select: { lane: { select: { name: true } }, workspace: { select: { labelId: true, name: true } } } },
         },
       },
@@ -57,7 +58,7 @@ export default async function TasksPage() {
                     <div className="min-w-0 flex-1">
                       <div className={`text-sm ${t.done ? "text-muted line-through" : "text-walnut"}`}>{t.title}</div>
                       <Link
-                        href={`/l/${encodeURIComponent(where?.workspace.labelId ?? "INBOX")}?thread=${t.email.threadId}`}
+                        href={`/l/${encodeURIComponent(where?.workspace.labelId ?? t.email.workspace?.labelId ?? "INBOX")}?thread=${t.email.threadId}`}
                         className="block truncate text-xs text-muted hover:text-terracotta"
                       >
                         {where ? `${where.workspace.name} › ${where.lane.name} › ` : ""}
