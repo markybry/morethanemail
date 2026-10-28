@@ -35,7 +35,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
       <span className="absolute inset-y-2 left-1.5 w-1 rounded-full transition-all group-hover/card:w-1.5" style={{ background: accent }} />
       <div className="flex items-baseline gap-2 text-xs">
         <span className={`min-w-0 flex-1 truncate ${email.unread ? "font-bold text-walnut" : "text-bark"}`}>
-          {senderName(email.from)}
+          {email.local ? "✎ Ticket" : senderName(email.from)}
         </span>
         <span className="shrink-0 text-muted">{shortDate(email.date)}</span>
       </div>

@@ -35,4 +35,8 @@ export function isOverdue(iso: string) {
 export const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
 export const fromDateInput = (v: string) => (v ? new Date(`${v}T12:00:00`).toISOString() : null);
 
+// Tickets made in the app with no email behind them.
+export const LOCAL_PREFIX = "local:";
+export const isLocalThread = (threadId: string) => threadId.startsWith(LOCAL_PREFIX);
+
 export const gmailLink = (threadId: string) => `https://mail.google.com/mail/u/0/#all/${threadId}`;

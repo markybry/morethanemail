@@ -3,12 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { addNote, addTask, createLabelForEmail, deleteNote, deleteTask, setEmailLabels, updateTask } from "@/app/actions";
+import { addNote, addTask, createLabelForEmail, deleteNote, deleteTask, setEmailLabels, updateTask, updateTicket } from "@/app/actions";
 import type { BoardEmail, LaneDTO, TaskDTO, ThreadSnapshot } from "@/lib/types";
 import { dueLabel, fromDateInput, gmailLink, isOverdue, senderName, toDateInput } from "@/lib/format";
 import { Drawer, DrawerHeader } from "./Drawer";
 import { ThreadView } from "./ThreadView";
-import { Section } from "./ui";
+import { ConfirmButton, InlineEdit, Section } from "./ui";
 import { useMail } from "./MailContext";
 
 export const UNSORTED = "__unsorted";
@@ -22,6 +22,7 @@ type Props = {
   onPlace: (laneId: string) => void;
   onChange: (email: BoardEmail) => void;
   onSeen: () => void;
+  onDelete: () => Promise<void>; // only for tickets with no email
   onClose: () => void;
 };
 
@@ -34,16 +35,36 @@ const snapshot = (e: BoardEmail): ThreadSnapshot => ({
 });
 
 // One email: where it sits in this workspace, its tasks and notes, and the thread itself.
-export function EmailPanel({ email, workspaceLabelId, onLabelsChange, lanes, laneId, onPlace, onChange, onSeen, onClose }: Props) {
+export function EmailPanel({ email, workspaceLabelId, onLabelsChange, lanes, laneId, onPlace, onChange, onSeen, onDelete, onClose }: Props) {
   return (
     <Drawer onClose={onClose}>
       <DrawerHeader onClose={onClose}>
-        <h2 className="text-xl font-semibold text-walnut">{email.subject}</h2>
+        {email.local ? (
+          <InlineEdit
+            value={email.subject}
+            onSave={async (subject) => {
+              onChange({ ...email, subject });
+              await updateTicket(email.threadId, { subject });
+            }}
+            className="w-full text-xl font-semibold text-walnut"
+          />
+        ) : (
+          <h2 className="text-xl font-semibold text-walnut">{email.subject}</h2>
+        )}
         <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
-          <span>{senderName(email.from)}</span>
-          <a href={gmailLink(email.threadId)} target="_blank" rel="noreferrer" className="hover:text-terracotta">
-            Open in Gmail ↗
-          </a>
+          {email.local ? (
+            <>
+              <span>Ticket · no email</span>
+              <ConfirmButton label="Delete ticket" confirmLabel="Delete for good?" onConfirm={onDelete} small />
+            </>
+          ) : (
+            <>
+              <span>{senderName(email.from)}</span>
+              <a href={gmailLink(email.threadId)} target="_blank" rel="noreferrer" className="hover:text-terracotta">
+                Open in Gmail ↗
+              </a>
+            </>
+          )}
           <select
             value={laneId}
             onChange={(e) => onPlace(e.target.value)}
@@ -60,13 +81,56 @@ export function EmailPanel({ email, workspaceLabelId, onLabelsChange, lanes, lan
         </div>
       </DrawerHeader>
 
-      <Workspaces email={email} here={workspaceLabelId} onLabelsChange={onLabelsChange} />
+      {email.local ? (
+        <Description email={email} onChange={onChange} />
+      ) : (
+        <Workspaces email={email} here={workspaceLabelId} onLabelsChange={onLabelsChange} />
+      )}
       <Tasks email={email} onChange={onChange} />
       <Notes email={email} onChange={onChange} />
-      <Section title="Thread">
-        <ThreadView threadId={email.threadId} onLoaded={onSeen} />
-      </Section>
+      {!email.local && (
+        <Section title="Thread">
+          <ThreadView threadId={email.threadId} onLoaded={onSeen} />
+        </Section>
+      )}
     </Drawer>
+  );
+}
+
+// A ticket with no email keeps its own description (stored as the snippet the card shows).
+function Description({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmail) => void }) {
+  const [draft, setDraft] = useState(email.snippet);
+  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  const dirty = draft !== email.snippet;
+  return (
+    <Section title="Description">
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        rows={4}
+        placeholder="Details, links, anything to remember…"
+        className="field w-full rounded-xl px-2.5 py-1.5 text-sm"
+      />
+      <div className="mt-1 flex items-center gap-2">
+        <button
+          disabled={!dirty || state === "saving"}
+          onClick={async () => {
+            setState("saving");
+            try {
+              await updateTicket(email.threadId, { snippet: draft });
+              onChange({ ...email, snippet: draft });
+              setState("idle");
+            } catch {
+              setState("error");
+            }
+          }}
+          className="btn-press rounded-xl bg-moss px-3 py-1 text-sm font-bold text-cream disabled:opacity-50"
+        >
+          {state === "saving" ? "Saving…" : "Save"}
+        </button>
+        {state === "error" && <span className="text-sm text-red-600">Couldn&apos;t save. Try again.</span>}
+      </div>
+    </Section>
   );
 }
 

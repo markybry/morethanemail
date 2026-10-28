@@ -34,6 +34,7 @@ model Workspace {
   createdAt  DateTime    @default(now())
   lanes      Lane[]
   placements Placement[]
+  tickets    Email[] // tickets made in this workspace that have no email
 
   @@unique([userId, labelId])
 }
@@ -65,22 +66,26 @@ model LaneTemplate {
 
 // An email thread the app knows about: the ticket itself. Notes and tasks hang
 // off it and follow it into every workspace it appears in.
+// A ticket with no email has a "local:" threadId and lives in one workspace.
 model Email {
-  id         String      @id @default(cuid())
-  userId     String
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  threadId   String
-  subject    String
-  from       String
-  snippet    String
-  date       DateTime // latest message when last refreshed
-  lastSeenAt DateTime? // latest message the user has opened; newer means a new reply
-  createdAt  DateTime    @default(now())
-  notes      Note[]
-  tasks      Task[]
-  placements Placement[]
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspaceId String? // set only for tickets with no email
+  workspace   Workspace?  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  threadId    String
+  subject     String
+  from        String
+  snippet     String
+  date        DateTime // latest message when last refreshed
+  lastSeenAt  DateTime? // latest message the user has opened; newer means a new reply
+  createdAt   DateTime    @default(now())
+  notes       Note[]
+  tasks       Task[]
+  placements  Placement[]
 
   @@unique([userId, threadId])
+  @@index([workspaceId])
 }
 
 // Where an email sits in one workspace. No placement means it's unsorted.
