@@ -2,7 +2,7 @@
 // [data-theme=...]; this file holds the names and the icons each theme uses.
 // An icon is an emoji, or "sprite:<name>" for the pixel-art sprites.
 
-export type ThemeId = "woodland" | "georgian" | "pixel";
+export type ThemeId = "woodland" | "georgian" | "pixel" | "dev";
 
 export type ThemeIcons = {
   logo: string;
@@ -90,6 +90,24 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
       ],
     },
     text: { sorted: "INBOX CLEAR! +100 XP", empty: "NO FILES FOUND", loading: "LOADING..." },
+  },
+  // Plain and dense, like an issue tracker: easy to scan, no decoration.
+  dev: {
+    id: "dev",
+    name: "⌨️ Dev (compact)",
+    icons: {
+      logo: "▣",
+      dashboard: "◫",
+      tasks: "☑",
+      addLane: "+",
+      empty: "∅",
+      sorted: "✓",
+      loading: "…",
+      hint: "›",
+      lanes: ["●", "●", "●", "●", "●", "●"],
+      labels: ["#", "#", "#", "#", "#", "#", "#", "#", "#", "#"],
+    },
+    text: { sorted: "0 unsorted. All triaged.", empty: "No threads with this label.", loading: "Loading threads…" },
   },
 };
 
