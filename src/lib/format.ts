@@ -35,6 +35,16 @@ export function isOverdue(iso: string) {
 export const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
 export const fromDateInput = (v: string) => (v ? new Date(`${v}T12:00:00`).toISOString() : null);
 
+// "just now", "5m ago", "3h ago", "2d ago", then the date.
+export function timeAgo(iso: string) {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (mins < 24 * 60) return `${Math.floor(mins / 60)}h ago`;
+  if (mins < 7 * 24 * 60) return `${Math.floor(mins / 1440)}d ago`;
+  return shortDate(iso);
+}
+
 // Tickets made in the app with no email behind them.
 export const LOCAL_PREFIX = "local:";
 export const isLocalThread = (threadId: string) => threadId.startsWith(LOCAL_PREFIX);

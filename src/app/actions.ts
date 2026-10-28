@@ -242,6 +242,7 @@ export async function createTicket(workspaceId: string, title: string): Promise<
     },
     include: emailInclude,
   });
+  await db.activity.create({ data: { userId: user.id, workspaceId, emailId: ticket.id, kind: "ticket" } });
   revalidateBoards();
   return toBoardEmail(ticket);
 }
@@ -319,6 +320,28 @@ export async function arrangeEmails(
   const emails = await db.email.findMany({ where: { userId: user.id, threadId: { in: threadIds } }, select: { id: true, threadId: true } });
   const idOf = new Map(emails.map((e) => [e.threadId, e.id]));
 
+  // Which emails actually changed column, for the activity log (reorders aren't logged).
+  const before = await db.placement.findMany({
+    where: { workspaceId, emailId: { in: [...idOf.values()] } },
+    select: { emailId: true, laneId: true },
+  });
+  const laneBefore = new Map(before.map((p) => [p.emailId, p.laneId]));
+  const laneNames = new Map(
+    (await db.lane.findMany({ where: { id: { in: laneIds } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]),
+  );
+  const moves = [
+    ...change.lanes.flatMap((l) =>
+      l.threadIds
+        .map((t) => idOf.get(t))
+        .filter((id): id is string => !!id && laneBefore.get(id) !== l.laneId)
+        .map((emailId) => ({ emailId, detail: laneNames.get(l.laneId) ?? "" })),
+    ),
+    ...change.unsorted
+      .map((t) => idOf.get(t))
+      .filter((id): id is string => !!id && laneBefore.has(id))
+      .map((emailId) => ({ emailId, detail: "" })),
+  ];
+
   await db.$transaction([
     db.placement.deleteMany({
       where: { workspaceId, emailId: { in: change.unsorted.map((t) => idOf.get(t)).filter((x): x is string => !!x) } },
@@ -334,6 +357,7 @@ export async function arrangeEmails(
           }),
         ),
     ),
+    db.activity.createMany({ data: moves.map((m) => ({ userId: user.id, workspaceId, kind: "moved", ...m })) }),
   ]);
   revalidateBoards();
 }
@@ -344,6 +368,7 @@ export async function addNote(thread: ThreadSnapshot, body: string): Promise<Not
   const user = await requireUser();
   const email = await upsertEmail(user.id, thread);
   const note = await db.note.create({ data: { emailId: email.id, body: body.trim() } });
+  await db.activity.create({ data: { userId: user.id, emailId: email.id, kind: "note", detail: note.body.slice(0, 120) } });
   return { id: note.id, body: note.body, createdAt: note.createdAt.toISOString() };
 }
 
@@ -361,6 +386,7 @@ export async function addTask(thread: ThreadSnapshot, title: string, dueDate: st
   const task = await db.task.create({
     data: { emailId: email.id, title: title.trim(), dueDate: dueDate ? new Date(dueDate) : null, position: count },
   });
+  await db.activity.create({ data: { userId: user.id, emailId: email.id, kind: "task", detail: task.title } });
   revalidatePath("/tasks");
   return { id: task.id, title: task.title, done: task.done, dueDate: task.dueDate?.toISOString() ?? null };
 }
@@ -375,7 +401,12 @@ export async function updateTask(taskId: string, patch: { done?: boolean; title?
       ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate ? new Date(patch.dueDate) : null } : {}),
     },
   });
+  if (patch.done) {
+    const task = await db.task.findFirst({ where: { id: taskId, email: { userId: user.id } } });
+    if (task) await db.activity.create({ data: { userId: user.id, emailId: task.emailId, kind: "taskDone", detail: task.title } });
+  }
   revalidatePath("/tasks");
+  revalidatePath("/dashboard");
 }
 
 export async function deleteTask(taskId: string) {

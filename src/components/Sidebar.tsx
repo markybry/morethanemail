@@ -38,6 +38,14 @@ export function Sidebar({ user, mobileOpen, onClose }: Props) {
         </div>
 
         <Link
+          href="/dashboard"
+          className={`mx-2 flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold transition hover:bg-white/10 ${
+            pathname === "/dashboard" ? "bg-side-strong/15 text-side-strong shadow-[inset_0_1px_3px_rgb(0_0_0/0.3)]" : ""
+          }`}
+        >
+          <ThemeIcon icon={theme.icons.dashboard} size={16} /> Dashboard
+        </Link>
+        <Link
           href="/tasks"
           className={`mx-2 flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold transition hover:bg-white/10 ${
             pathname === "/tasks" ? "bg-side-strong/15 text-side-strong shadow-[inset_0_1px_3px_rgb(0_0_0/0.3)]" : ""

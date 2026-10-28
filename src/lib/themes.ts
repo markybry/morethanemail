@@ -6,6 +6,7 @@ export type ThemeId = "woodland" | "georgian" | "pixel";
 
 export type ThemeIcons = {
   logo: string;
+  dashboard: string;
   tasks: string;
   addLane: string;
   empty: string;
@@ -29,6 +30,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: "🦊 Woodland",
     icons: {
       logo: "🦊",
+      dashboard: "🏡",
       tasks: "🐝",
       addLane: "🌱",
       empty: "🦔",
@@ -45,6 +47,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: "🖋️ Georgian writing desk",
     icons: {
       logo: "🖋️",
+      dashboard: "🧭",
       tasks: "📜",
       addLane: "🪶",
       empty: "🕯️",
@@ -65,6 +68,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: "👾 Pixel office",
     icons: {
       logo: "sprite:envelope",
+      dashboard: "sprite:monitor",
       tasks: "sprite:clipboard",
       addLane: "sprite:plus",
       empty: "sprite:cactus",
