@@ -8,18 +8,19 @@ datasource db {
 }
 
 model User {
-  id           String      @id @default(cuid())
-  email        String      @unique
-  name         String?
-  picture      String?
-  isDemo       Boolean     @default(false)
-  accessToken  String?
-  refreshToken String?
-  tokenExpiry  DateTime?
-  theme        String      @default("woodland") // woodland | georgian | pixel
-  createdAt    DateTime    @default(now())
-  workspaces   Workspace[]
-  emails       Email[]
+  id            String         @id @default(cuid())
+  email         String         @unique
+  name          String?
+  picture       String?
+  isDemo        Boolean        @default(false)
+  accessToken   String?
+  refreshToken  String?
+  tokenExpiry   DateTime?
+  theme         String         @default("woodland") // woodland | georgian | pixel
+  createdAt     DateTime       @default(now())
+  workspaces    Workspace[]
+  emails        Email[]
+  laneTemplates LaneTemplate[]
 }
 
 // One workspace per Gmail label (INBOX included), created the first time the
@@ -48,6 +49,18 @@ model Lane {
   placements    Placement[]
 
   @@index([workspaceId])
+}
+
+// A set of lanes the user saved to start other workspaces with.
+model LaneTemplate {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  lanes     Json // [{ name, reopenOnReply }] in order
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // An email thread the app knows about: the ticket itself. Notes and tasks hang

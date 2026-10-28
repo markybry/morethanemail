@@ -16,7 +16,8 @@ import {
 } from "@/lib/mail";
 import { requireUser } from "@/lib/session";
 import { isThemeId } from "@/lib/themes";
-import type { BoardEmail, LaneDTO, NoteDTO, TaskDTO, ThreadSnapshot } from "@/lib/types";
+import type { BoardEmail, LaneDTO, LaneTemplateDTO, NoteDTO, TaskDTO, TemplateLane, ThreadSnapshot } from "@/lib/types";
+import { parseTemplateLanes } from "@/lib/laneTemplates";
 import { emailInclude, snapshotData, toBoardEmail, upsertEmail } from "@/lib/board";
 
 // ---------- ownership guards ----------
@@ -216,6 +217,36 @@ export async function reorderLanes(workspaceId: string, laneIds: string[]) {
   await db.$transaction(
     laneIds.map((id, position) => db.lane.updateMany({ where: { id, workspaceId }, data: { position } })),
   );
+  revalidateBoards();
+}
+
+// ---------- lane templates ----------
+
+// Add a template's lanes after any the workspace already has.
+export async function applyLaneTemplate(workspaceId: string, lanes: TemplateLane[]): Promise<LaneDTO[]> {
+  await ownWorkspace(workspaceId);
+  const clean = parseTemplateLanes(lanes);
+  const count = await db.lane.count({ where: { workspaceId } });
+  const created = await db.$transaction(
+    clean.map((l, i) => db.lane.create({ data: { workspaceId, name: l.name, reopenOnReply: l.reopenOnReply, position: count + i } })),
+  );
+  revalidateBoards();
+  return created.map((l) => ({ id: l.id, name: l.name, reopenOnReply: l.reopenOnReply, threadIds: [] }));
+}
+
+export async function saveLaneTemplate(name: string, lanes: TemplateLane[]): Promise<LaneTemplateDTO> {
+  const user = await requireUser();
+  const clean = parseTemplateLanes(lanes);
+  const t = await db.laneTemplate.create({
+    data: { userId: user.id, name: name.trim().slice(0, 80) || "My lanes", lanes: clean },
+  });
+  revalidateBoards();
+  return { id: t.id, name: t.name, builtIn: false, lanes: clean };
+}
+
+export async function deleteLaneTemplate(templateId: string) {
+  const user = await requireUser();
+  await db.laneTemplate.deleteMany({ where: { id: templateId, userId: user.id } });
   revalidateBoards();
 }
 
