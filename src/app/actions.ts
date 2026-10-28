@@ -45,6 +45,10 @@ async function withStoredMeta(userId: string, live: Awaited<ReturnType<typeof su
   return live.map((t) => toBoardEmail(byThread.get(t.threadId), t));
 }
 
+// Board pages are cached in the browser's router; after a lane or placement
+// change, drop that cache so going back to a board shows what was saved.
+const revalidateBoards = () => revalidatePath("/l/[labelId]", "page");
+
 // ---------- mail ----------
 
 type ListResult = { emails: BoardEmail[]; nextPageToken?: string; error?: string };
@@ -131,6 +135,7 @@ export async function setEmailLabels(
       await db.placement.deleteMany({
         where: { email: { userId: user.id, threadId }, workspace: { userId: user.id, labelId: { in: remove } } },
       });
+    revalidateBoards();
     return { labelIds };
   } catch (e) {
     console.error("setEmailLabels failed", e);
@@ -183,18 +188,21 @@ export async function createLane(workspaceId: string, name: string): Promise<Lan
   await ownWorkspace(workspaceId);
   const count = await db.lane.count({ where: { workspaceId } });
   const lane = await db.lane.create({ data: { workspaceId, name: name.trim() || "New lane", position: count } });
+  revalidateBoards();
   return { id: lane.id, name: lane.name, threadIds: [] };
 }
 
 export async function renameLane(laneId: string, name: string) {
   await ownLane(laneId);
   await db.lane.update({ where: { id: laneId }, data: { name: name.trim() || "Untitled" } });
+  revalidateBoards();
 }
 
 // Deleting a lane sends its emails back to unsorted (their placements go with it).
 export async function deleteLane(laneId: string) {
   await ownLane(laneId);
   await db.lane.delete({ where: { id: laneId } });
+  revalidateBoards();
 }
 
 export async function reorderLanes(workspaceId: string, laneIds: string[]) {
@@ -202,6 +210,7 @@ export async function reorderLanes(workspaceId: string, laneIds: string[]) {
   await db.$transaction(
     laneIds.map((id, position) => db.lane.updateMany({ where: { id, workspaceId }, data: { position } })),
   );
+  revalidateBoards();
 }
 
 // ---------- placing emails ----------
@@ -240,6 +249,7 @@ export async function arrangeEmails(
         ),
     ),
   ]);
+  revalidateBoards();
 }
 
 // ---------- notes ----------

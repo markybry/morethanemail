@@ -73,6 +73,20 @@ export function LabelBoard({
   const [emails, setEmails] = useState<Record<string, BoardEmail>>(initialEmails);
   const [unsorted, setUnsorted] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(initialThreadId ?? null);
+  const [saveError, setSaveError] = useState("");
+
+  // The board updates straight away; if saving then fails, put it back and say so
+  // rather than leave a change on screen that will be gone on the next visit.
+  const save = useCallback(async (write: () => Promise<unknown>, undo: () => void) => {
+    try {
+      await write();
+      setSaveError("");
+    } catch (e) {
+      console.error("Saving the board failed", e);
+      undo();
+      setSaveError("Couldn't save that change, so it has been undone. Check your connection and try again.");
+    }
+  }, []);
 
   const mergeEmails = useCallback((list: BoardEmail[]) => {
     setEmails((prev) => {
@@ -129,10 +143,13 @@ export function LabelBoard({
 
   // Emails sorted into lanes may be far down the label; refresh them directly
   // so new replies show. Also fetch an email linked to directly (?thread=).
+  // Only on first load: saving a change re-renders the page with new props.
+  const [refreshIds] = useState(() => [
+    ...new Set([...workspace.lanes.flatMap((l) => l.threadIds), ...(initialThreadId ? [initialThreadId] : [])]),
+  ]);
   useEffect(() => {
-    const ids = [...new Set([...workspace.lanes.flatMap((l) => l.threadIds), ...(initialThreadId ? [initialThreadId] : [])])];
-    void refreshEmails(ids).then((r) => mergeEmails(r.emails));
-  }, [workspace.lanes, initialThreadId, mergeEmails]);
+    void refreshEmails(refreshIds).then((r) => mergeEmails(r.emails));
+  }, [refreshIds, mergeEmails]);
 
   const changePrimaryOnly = (v: boolean) => {
     setPrimaryOnly(v);
@@ -169,21 +186,26 @@ export function LabelBoard({
     };
   };
 
-  // Save a move from one column to another (or a reorder within a lane).
-  const persist = async (threadId: string, from: string | undefined, to: string, cols: Columns) => {
-    if (from === to && to === UNSORTED) return;
-    const affected = new Set([from, to].filter((x): x is string => !!x && x !== UNSORTED));
-    const email = emails[threadId];
-    await arrangeEmails(workspace.id, {
-      lanes: cols.lanes.filter((l) => affected.has(l.id)).map((l) => ({ laneId: l.id, threadIds: l.threadIds })),
-      unsorted: to === UNSORTED ? [threadId] : [],
-      snapshots: to !== UNSORTED && email ? [snapshotOf(email)] : [],
-    });
-  };
-
   const apply = (cols: Columns) => {
     setLanes(cols.lanes);
     setUnsorted(cols.unsorted);
+  };
+
+  // Save a move from one column to another (or a reorder within a lane).
+  // `before` is the board as it was, restored if the save fails.
+  const persist = async (threadId: string, from: string | undefined, to: string, cols: Columns, before: Columns) => {
+    if (from === to && to === UNSORTED) return;
+    const affected = new Set([from, to].filter((x): x is string => !!x && x !== UNSORTED));
+    const email = emails[threadId];
+    await save(
+      () =>
+        arrangeEmails(workspace.id, {
+          lanes: cols.lanes.filter((l) => affected.has(l.id)).map((l) => ({ laneId: l.id, threadIds: l.threadIds })),
+          unsorted: to === UNSORTED ? [threadId] : [],
+          snapshots: to !== UNSORTED && email ? [snapshotOf(email)] : [],
+        }),
+      () => apply(before),
+    );
   };
 
   // From the email panel's lane picker.
@@ -193,7 +215,7 @@ export function LabelBoard({
     if (from === target) return;
     const next = moveInto(cols, threadId, target);
     apply(next);
-    await persist(threadId, from, target, next);
+    await persist(threadId, from, target, next, cols);
   };
 
   // ----- drag and drop -----
@@ -255,7 +277,7 @@ export function LabelBoard({
       }
     }
     apply(next);
-    await persist(id, snap.from, target, next);
+    await persist(id, snap.from, target, next, snap);
   }
 
   // ----- lanes -----
@@ -265,17 +287,19 @@ export function LabelBoard({
   async function moveLane(index: number, dir: -1 | 1) {
     const target = index + dir;
     if (target < 0 || target >= lanes.length) return;
+    const before = lanes;
     const next = [...lanes];
     [next[index], next[target]] = [next[target], next[index]];
     setLanes(next);
-    await reorderLanes(workspace.id, next.map((l) => l.id));
+    await save(() => reorderLanes(workspace.id, next.map((l) => l.id)), () => setLanes(before));
   }
 
   async function removeLane(lane: LaneDTO) {
     // Its emails go back to unsorted.
+    const before = { lanes, unsorted };
     setLanes((prev) => prev.filter((l) => l.id !== lane.id));
     setUnsorted((prev) => byDate([...prev, ...lane.threadIds]));
-    await deleteLane(lane.id);
+    await save(() => deleteLane(lane.id), () => apply(before));
   }
 
   const selectedEmail = selected ? emails[selected] : undefined;
@@ -341,8 +365,9 @@ export function LabelBoard({
               isLast={i === lanes.length - 1}
               onMove={(dir) => moveLane(i, dir)}
               onRename={async (name) => {
-                setLanes((prev) => prev.map((l) => (l.id === lane.id ? { ...l, name } : l)));
-                await renameLane(lane.id, name);
+                const rename = (to: string) => setLanes((prev) => prev.map((l) => (l.id === lane.id ? { ...l, name: to } : l)));
+                rename(name);
+                await save(() => renameLane(lane.id, name), () => rename(lane.name));
               }}
               onDelete={() => removeLane(lane)}
               onOpen={setSelected}
@@ -356,9 +381,14 @@ export function LabelBoard({
               onSubmit={async (e) => {
                 e.preventDefault();
                 if (!newLane.trim()) return;
-                const lane = await createLane(workspace.id, newLane);
-                setLanes((prev) => [...prev, lane]);
-                setNewLane("");
+                await save(
+                  async () => {
+                    const lane = await createLane(workspace.id, newLane);
+                    setLanes((prev) => [...prev, lane]);
+                    setNewLane("");
+                  },
+                  () => {},
+                );
               }}
               className="relative"
             >
@@ -380,6 +410,18 @@ export function LabelBoard({
         </section>
         </div>
       </div>
+
+      {saveError && (
+        <div
+          role="alert"
+          className="card-tactile fixed inset-x-4 bottom-4 z-40 mx-auto flex max-w-md items-start gap-2 rounded-2xl px-3 py-2 text-sm text-red-700"
+        >
+          <span className="flex-1">{saveError}</span>
+          <button onClick={() => setSaveError("")} className="text-muted hover:text-bark" aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      )}
 
       <DragOverlay dropAnimation={null}>
         {activeEmail ? <CardFace email={activeEmail} hideLabelId={workspace.labelId} dragging /> : null}
