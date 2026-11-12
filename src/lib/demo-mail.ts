@@ -71,6 +71,7 @@ export function demoThreads(labelId?: string, primaryOnly = false, query?: strin
   const q = query?.toLowerCase();
   return DEMO.filter((d) => {
     const has = (l: string) => d.labels?.includes(l) ?? false;
+    if (has("TRASH")) return false;
     if (labelId && !has(labelId)) return false;
     if (primaryOnly && OTHER_TABS.some(has)) return false;
     return !q || `${d.from} ${d.subject} ${d.body}`.toLowerCase().includes(q);

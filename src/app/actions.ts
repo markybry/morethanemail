@@ -7,6 +7,7 @@ import {
   getThread,
   isAssignableLabel,
   labelWithSubLabels,
+  trashThread,
   listLabels,
   modifyThreadLabels,
   listThreads,
@@ -650,6 +651,41 @@ export async function deleteTask(taskId: string) {
   const user = await requireUser();
   await db.task.deleteMany({ where: { id: taskId, userId: user.id } });
   revalidateTaskPages();
+}
+
+// ---------- deleting (Gmail's Trash) ----------
+
+// Move a card's emails to Gmail's Trash and take the card off the board. Its
+// notes and next actions are kept, so Undo brings everything back.
+export async function trashCard(threadIds: string[]): Promise<{ error?: string }> {
+  const user = await requireUser();
+  try {
+    for (const t of threadIds.filter((t) => !isLocalThread(t))) {
+      const labelIds = await trashThread(user, t, true);
+      await db.email.updateMany({ where: { userId: user.id, threadId: t }, data: { labelIds } });
+    }
+    await db.placement.deleteMany({ where: { email: { userId: user.id, threadId: { in: threadIds } } } });
+    revalidateBoards();
+    return {};
+  } catch (e) {
+    console.error("trashCard failed", e);
+    return { error: mailErrorMessage(e) };
+  }
+}
+
+export async function untrashCard(threadIds: string[]): Promise<{ error?: string }> {
+  const user = await requireUser();
+  try {
+    for (const t of threadIds.filter((t) => !isLocalThread(t))) {
+      const labelIds = await trashThread(user, t, false);
+      await db.email.updateMany({ where: { userId: user.id, threadId: t }, data: { labelIds } });
+    }
+    revalidateBoards();
+    return {};
+  } catch (e) {
+    console.error("untrashCard failed", e);
+    return { error: mailErrorMessage(e) };
+  }
 }
 
 // ---------- hiding from the first column ----------

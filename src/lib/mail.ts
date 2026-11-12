@@ -145,6 +145,16 @@ export async function listLabels(user: User): Promise<MailLabel[]> {
 // INBOX (removing it archives). Other system labels (SPAM, TRASH, ...) are off limits.
 export const isAssignableLabel = (id: string) => id === INBOX || id.startsWith("Label_");
 
+// Move a whole thread to Gmail's Trash (recoverable there for 30 days), or back out.
+export async function trashThread(user: User, threadId: string, trash: boolean): Promise<string[]> {
+  if (user.isDemo) return trash ? demoModifyLabels(threadId, ["TRASH"], ["INBOX"]) : demoModifyLabels(threadId, ["INBOX"], ["TRASH"]);
+  const gmail = gmailFor(user);
+  const res = trash
+    ? await gmail.users.threads.trash({ userId: "me", id: threadId })
+    : await gmail.users.threads.untrash({ userId: "me", id: threadId });
+  return [...new Set((res.data.messages ?? []).flatMap((m) => m.labelIds ?? []))];
+}
+
 // Apply and remove labels on a whole thread. Returns the thread's labels afterwards.
 export async function modifyThreadLabels(user: User, threadId: string, add: string[], remove: string[]): Promise<string[]> {
   if (user.isDemo) return demoModifyLabels(threadId, add, remove);

@@ -44,6 +44,7 @@ type Props = {
   onAddThread: (thread: ThreadSnapshot) => Promise<string | undefined>;
   onRemoveThread: (threadId: string) => Promise<string | undefined>;
   onDelete: () => Promise<void>; // only for tickets with no email
+  onTrash: () => void; // a card with email: move its emails to Gmail's Trash
   onClose: () => void;
 };
 
@@ -92,6 +93,14 @@ export function EmailPanel(p: Props) {
                 <a href={gmailLink(email.threadId)} target="_blank" rel="noreferrer" className="hover:text-terracotta">
                   Open in Gmail ↗
                 </a>
+              )}
+              {emailCount > 0 && (
+                <ConfirmButton
+                  label="Delete"
+                  confirmLabel={emailCount > 1 ? `Move all ${emailCount} emails to Trash?` : "Move to Trash?"}
+                  onConfirm={async () => p.onTrash()}
+                  small
+                />
               )}
             </>
           )}

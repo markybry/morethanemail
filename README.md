@@ -17,13 +17,13 @@ How it's organised (the plan and its history are in [ROADMAP.md](ROADMAP.md)):
 - **On a phone**, statuses show one at a time with tabs, and each card has a "Move to…" menu (and Inbox cards an Archive button), so nothing needs dragging.
 - **Themes**: Woodland, Georgian writing desk, Pixel office, Dev (compact), Dark and Light. **Resizable layout**: drag the edges of the sidebar, the first column, the statuses and the card panel; double-click an edge to reset it.
 
-Stack: Next.js 15 (App Router, server actions) · Prisma + Postgres · Gmail API (`gmail.modify`: read mail and change labels; never sends or deletes) · dnd-kit · Tailwind.
+Stack: Next.js 15 (App Router, server actions) · Prisma + Postgres · Gmail API (`gmail.modify`: read mail, change labels and move mail to Trash; never sends or deletes permanently) · dnd-kit · Tailwind.
 
 ## Deploy (GitHub → Vercel)
 
 1. **Google OAuth client.** In the [Google Cloud Console](https://console.cloud.google.com/):
    - Create a project, then enable the **Gmail API**.
-   - On the **OAuth consent screen**, choose External and add yourself as a test user. Add the `gmail.modify` scope (the app reads mail and applies or removes labels; it never sends or deletes mail).
+   - On the **OAuth consent screen**, choose External and add yourself as a test user. Add the `gmail.modify` scope (the app reads mail, applies or removes labels and can move mail to Trash; it never sends mail or deletes it permanently).
    - Under **Credentials → Create OAuth client ID**, choose Web application. Add these as authorised redirect URIs:
      - `https://<your-app>.vercel.app/api/auth/google/callback`
      - `http://localhost:3000/api/auth/google/callback`

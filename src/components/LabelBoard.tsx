@@ -36,6 +36,8 @@ import {
   removeThreadFromCard,
   renameLane,
   setHidden,
+  trashCard,
+  untrashCard,
   reorderLanes,
   saveLaneTemplate,
   setEmailLabels,
@@ -592,6 +594,7 @@ export function LabelBoard({
     archive: (threadId: string) => void archive(threadId, selected === threadId),
     canHide: (threadId: string) => !lanes.some((l) => l.threadIds.includes(threadId)) && !emails[threadId]?.hidden,
     hide: (threadId: string) => void hide(threadId, true),
+    remove: (threadId: string) => void trash(threadId),
   };
 
   // ----- triage: archive, and keys to file the open email -----
@@ -631,6 +634,48 @@ export function LabelBoard({
     });
   };
 
+  // Delete: the card's emails go to Gmail's Trash and the card leaves the board.
+  // Undo (for a few seconds) brings them back to the first column.
+  const [undo, setUndo] = useState<{ text: string; run: () => void } | null>(null);
+  useEffect(() => {
+    if (!undo) return;
+    const t = setTimeout(() => setUndo(null), 8000);
+    return () => clearTimeout(t);
+  }, [undo]);
+
+  const trash = async (threadId: string) => {
+    const e = emails[threadId];
+    const ids = (e?.threads ?? []).map((t) => t.threadId).filter((t) => !t.startsWith("local:"));
+    if (!e || ids.length === 0) return;
+    if (selected === threadId) {
+      if (lanes.some((l) => l.threadIds.includes(threadId))) setSelected(null);
+      else openNext(threadId);
+    }
+    const before = { lanes, unsorted, recentIds };
+    const restore = () => {
+      apply({ lanes: before.lanes, unsorted: before.unsorted });
+      setRecentIds(before.recentIds);
+    };
+    apply({ lanes: lanes.map((l) => ({ ...l, threadIds: l.threadIds.filter((x) => x !== threadId) })), unsorted: unsorted.filter((x) => x !== threadId) });
+    setRecentIds((prev) => prev.filter((x) => x !== threadId));
+    const res = await trashCard(ids);
+    if (res.error) {
+      restore();
+      setSaveError(res.error);
+      return;
+    }
+    setUndo({
+      text: `Moved “${e.title}” to Trash.`,
+      run: async () => {
+        setUndo(null);
+        const back = await untrashCard(ids);
+        if (back.error) return setSaveError(back.error);
+        setUnsorted((prev) => byDate([...prev.filter((x) => x !== threadId), threadId]));
+        setRecentIds((prev) => (prev.includes(threadId) ? prev : [threadId, ...prev]));
+      },
+    });
+  };
+
   const hide = async (threadId: string, hidden: boolean) => {
     const e = emails[threadId];
     if (!e) return;
@@ -648,6 +693,9 @@ export function LabelBoard({
       if (ev.key === "e" && isInbox && fromFirst) {
         ev.preventDefault();
         void archive(selected, true);
+      } else if (ev.key === "#" && !emails[selected]?.local) {
+        ev.preventDefault();
+        void trash(selected);
       } else if (ev.key === "h" && fromFirst && !emails[selected]?.hidden) {
         ev.preventDefault();
         void hide(selected, true);
@@ -720,6 +768,7 @@ export function LabelBoard({
           laneCount={lanes.length}
           hiddenIds={hiddenIds}
           onHide={(id) => void hide(id, true)}
+          onTrash={(id) => void trash(id)}
           onUnhide={(id) => void hide(id, false)}
           onArchive={isInbox && !recent ? (id) => void archive(id, selected === id) : undefined}
           selected={selected}
@@ -830,6 +879,20 @@ export function LabelBoard({
         </div>
       </div>
 
+      {undo && (
+        <div
+          role="status"
+          className="card-tactile fixed inset-x-4 bottom-4 z-40 mx-auto flex max-w-md items-center gap-3 rounded-2xl px-3 py-2 text-sm text-bark"
+        >
+          <span className="min-w-0 flex-1 truncate">{undo.text}</span>
+          <button onClick={undo.run} className="font-bold text-terracotta hover:underline">
+            Undo
+          </button>
+          <button onClick={() => setUndo(null)} className="text-muted hover:text-bark" aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      )}
       {saveError && (
         <div
           role="alert"
@@ -888,6 +951,7 @@ export function LabelBoard({
             else setUnsorted((prev) => byDate([...prev.filter((x) => x !== threadId), threadId]));
             return undefined;
           }}
+          onTrash={() => void trash(selectedEmail.threadId)}
           onDelete={async () => {
             const t = selectedEmail.threadId;
             const before = { lanes, unsorted };
@@ -909,6 +973,7 @@ function UnsortedColumn(p: {
   laneCount: number;
   hiddenIds: string[];
   onHide: (threadId: string) => void;
+  onTrash: (threadId: string) => void;
   onUnhide: (threadId: string) => void;
   onArchive?: (threadId: string) => void;
   title: string;
@@ -1001,7 +1066,7 @@ function UnsortedColumn(p: {
         {p.onArchive && p.laneCount > 0 && (
           <p className="text-xs text-muted" title="Keyboard shortcuts while an email is open">
             Open an email, then <kbd className="font-semibold">1</kbd>–<kbd className="font-semibold">{Math.min(p.laneCount, 9)}</kbd> files it
-            into a status, <kbd className="font-semibold">e</kbd> archives it, <kbd className="font-semibold">h</kbd> hides it.
+            into a status, <kbd className="font-semibold">e</kbd> archives it, <kbd className="font-semibold">h</kbd> hides it, <kbd className="font-semibold">#</kbd> deletes it.
           </p>
         )}
         {p.isLens && (
@@ -1116,6 +1181,7 @@ function UnsortedColumn(p: {
                     onOpen={() => p.onOpen(id)}
                     onArchive={p.onArchive && !p.emails[id].local ? () => p.onArchive!(id) : undefined}
                     onHide={() => p.onHide(id)}
+                    onTrash={!p.emails[id].local ? () => p.onTrash(id) : undefined}
                   />
                 )
               ) : null,
@@ -1178,6 +1244,7 @@ function DraggableEmail({
   onOpen,
   onArchive,
   onHide,
+  onTrash,
 }: {
   email: BoardEmail;
   labelId: string;
@@ -1185,6 +1252,7 @@ function DraggableEmail({
   onOpen: () => void;
   onArchive?: () => void;
   onHide?: () => void;
+  onTrash?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `${T}${email.threadId}` });
   return (
@@ -1202,6 +1270,7 @@ function DraggableEmail({
           {[
             { label: "Hide", title: "Hide: doesn't need tracking (h). It comes back if a new message arrives.", run: onHide },
             { label: "Archive", title: "Archive in Gmail: needs nothing (e)", run: onArchive },
+            { label: "Delete", title: "Move to Gmail's Trash (#). Undo straight after, or restore from Trash for 30 days.", run: onTrash },
           ]
             .filter((b) => b.run)
             .map((b) => (
