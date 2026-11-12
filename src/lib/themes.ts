@@ -2,7 +2,7 @@
 // [data-theme=...]; this file holds the names and the icons each theme uses.
 // An icon is an emoji, or "sprite:<name>" for the pixel-art sprites.
 
-export type ThemeId = "woodland" | "georgian" | "pixel" | "dev" | "dark";
+export type ThemeId = "woodland" | "georgian" | "pixel" | "dev" | "dark" | "light";
 
 export type ThemeIcons = {
   logo: string;
@@ -113,6 +113,24 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
   dark: {
     id: "dark",
     name: "🌙 Dark",
+    icons: {
+      logo: "◆",
+      dashboard: "◧",
+      tasks: "☑",
+      addLane: "+",
+      empty: "○",
+      sorted: "✓",
+      loading: "…",
+      hint: "›",
+      lanes: ["●", "●", "●", "●", "●", "●"],
+      labels: ["●", "●", "●", "●", "●", "●", "●", "●", "●", "●"],
+    },
+    text: { sorted: "All clear.", empty: "Nothing here yet.", loading: "Loading…" },
+  },
+  // The bright twin of Dark.
+  light: {
+    id: "light",
+    name: "☀️ Light",
     icons: {
       logo: "◆",
       dashboard: "◧",
