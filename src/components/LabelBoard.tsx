@@ -36,6 +36,7 @@ import {
   renameLane,
   reorderLanes,
   saveLaneTemplate,
+  setEmailLabels,
   setLaneReopenOnReply,
 } from "@/app/actions";
 import type { BoardEmail, LaneDTO, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "@/lib/types";
@@ -49,6 +50,7 @@ import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
 import { ThemeIcon, useTheme } from "./ThemeContext";
 
 const PRIMARY_KEY = "mte.inboxPrimaryOnly";
+const RECENT_KEY = "mte.firstColumnRecent";
 const GROUP_KEY = "mte.unsortedGroupBy";
 
 // Each lane gets its own colour (defined per theme in globals.css) and an
@@ -62,8 +64,12 @@ const LANE_THEMES = [
   { box: "bg-[var(--lane-6-bg)] ring-[var(--lane-6-ring)]", bar: "bg-[var(--lane-6-bar)]", text: "text-[var(--lane-6-text)]", count: "bg-[var(--lane-6-bar)]" },
 ];
 const T = "t:"; // draggable email ids
-const LANE = "lane:"; // droppable column ids
+const LANE = "lane:"; // droppable column ids; "lane:<id>#<row>" for one row of a column
 const fromId = (id: string) => id.slice(T.length);
+const GENERAL = "__general"; // the row for cards with no sub-label
+
+// A row of the board: one sub-label of the label being looked through.
+type Row = { key: string; labelId: string | null; name: string; path: string };
 
 type Columns = { lanes: LaneDTO[]; unsorted: string[] };
 
@@ -90,7 +96,7 @@ export function LabelBoard({
   initialThreadId?: string;
   templates: LaneTemplateDTO[];
 }) {
-  const { reloadLabels, labelNames } = useMail();
+  const { reloadLabels, labelNames, labels } = useMail();
   const { theme: look } = useTheme();
   const lens = workspace.lens;
   // The label whose Gmail emails fill the first column.
@@ -108,6 +114,27 @@ export function LabelBoard({
     },
     [lens, labelNames],
   );
+  // A label with sub-labels splits each status into one row per sub-label, plus
+  // "General" for cards with only the label itself.
+  const rows = useMemo<Row[] | null>(() => {
+    if (!lens) return null;
+    const base = labelNames.get(lens.labelId) ?? lens.name;
+    const kids = labels
+      .filter((l) => l.name.startsWith(`${base}/`) && !l.name.slice(base.length + 1).includes("/"))
+      .map((l) => ({ key: l.id, labelId: l.id, name: l.name.slice(base.length + 1), path: l.name }));
+    return kids.length ? [...kids, { key: GENERAL, labelId: null, name: "General", path: base }] : null;
+  }, [lens, labels, labelNames]);
+  const rowOf = useCallback(
+    (e: BoardEmail | undefined) => {
+      if (!rows || !e) return GENERAL;
+      const names = cardLabelIds(e)
+        .map((id) => labelNames.get(id))
+        .filter((n): n is string => !!n);
+      return rows.find((r) => r.labelId && names.some((n) => n === r.path || n.startsWith(`${r.path}/`)))?.key ?? GENERAL;
+    },
+    [rows, labelNames],
+  );
+
   const [lanes, setLanes] = useState<LaneDTO[]>(workspace.lanes);
   const [emails, setEmails] = useState<Record<string, BoardEmail>>(initialEmails);
   const [unsorted, setUnsorted] = useState<string[]>(workspace.ticketIds);
@@ -145,6 +172,10 @@ export function LabelBoard({
 
   // ----- the label's emails from Gmail (unsorted column) -----
   const [primaryOnly, setPrimaryOnly] = useState(true);
+  // The first column shows what's left to triage, or everything recent (newest
+  // first, cards already in a status included) so nothing active is out of sight.
+  const [recent, setRecent] = useState(false);
+  const [recentIds, setRecentIds] = useState<string[]>([]);
   const [prefsReady, setPrefsReady] = useState(false);
   const [query, setQuery] = useState("");
   const [loadedQuery, setLoadedQuery] = useState("");
@@ -155,13 +186,18 @@ export function LabelBoard({
   const load = useCallback(
     async (q: string, pageToken?: string) => {
       setListState("loading");
-      const res = await fetchLabelEmails(sourceLabelId, { primaryOnly, query: q, pageToken });
+      const res = await fetchLabelEmails(recent && isInbox ? "ALL" : sourceLabelId, { primaryOnly: primaryOnly && !recent, query: q, pageToken });
       if (res.error) {
         setListError(res.error);
         setListState("error");
         return;
       }
       mergeEmails(res.emails);
+      // Recent lists cards: an email added to a card shows as that card.
+      const cardIds = [...new Set(res.emails.map((e) => e.partOf ?? e.threadId))];
+      setRecentIds((prev) => (pageToken ? [...prev, ...cardIds.filter((id) => !prev.includes(id))] : cardIds));
+      const missing = cardIds.filter((id) => !emailsRef.current[id] && !res.emails.some((e) => e.threadId === id));
+      if (missing.length) void refreshEmails(missing).then((r) => mergeEmails(r.emails));
       // Cards already in a status, and emails added to a card, aren't unsorted.
       const ids = res.emails
         .filter((e) => !placedRef.current.has(e.threadId) && !(e.homeId && e.homeId !== workspace.id) && !e.partOf)
@@ -177,12 +213,13 @@ export function LabelBoard({
       setLoadedQuery(q);
       setListState("idle");
     },
-    [sourceLabelId, workspace.id, primaryOnly, mergeEmails],
+    [sourceLabelId, isInbox, recent, workspace.id, primaryOnly, mergeEmails],
   );
 
   useEffect(() => {
     try {
       setPrimaryOnly(localStorage.getItem(PRIMARY_KEY) !== "false");
+      setRecent(localStorage.getItem(RECENT_KEY) === "true");
     } catch {}
     setPrefsReady(true);
   }, []);
@@ -201,6 +238,13 @@ export function LabelBoard({
     void refreshEmails(refreshIds).then((r) => mergeEmails(r.emails));
   }, [refreshIds, mergeEmails]);
 
+  const changeRecent = (v: boolean) => {
+    setRecent(v);
+    try {
+      localStorage.setItem(RECENT_KEY, String(v));
+    } catch {}
+  };
+
   const changePrimaryOnly = (v: boolean) => {
     setPrimaryOnly(v);
     try {
@@ -218,7 +262,7 @@ export function LabelBoard({
     cols.lanes.find((l) => l.threadIds.includes(threadId))?.id ?? (cols.unsorted.includes(threadId) ? UNSORTED : undefined);
 
   const targetOf = (overId: string, cols: Columns) =>
-    overId.startsWith(LANE) ? overId.slice(LANE.length) : containerOf(fromId(overId), cols);
+    overId.startsWith(LANE) ? overId.slice(LANE.length).split("#")[0] : containerOf(fromId(overId), cols);
 
   const moveInto = (cols: Columns, threadId: string, target: string, before?: string): Columns => {
     const lanesOut = cols.lanes.map((l) => ({ ...l, threadIds: l.threadIds.filter((t) => t !== threadId) }));
@@ -318,6 +362,8 @@ export function LabelBoard({
     [lanes, emails, inLens],
   );
   const shownUnsorted = useMemo(() => unsorted.filter((t) => inLens(emails[t])), [unsorted, emails, inLens]);
+  const shownRecent = useMemo(() => recentIds.filter((t) => emails[t] && inLens(emails[t])), [recentIds, emails, inLens]);
+  const statusOf = (threadId: string) => lanes.find((l) => l.threadIds.includes(threadId))?.name;
   const shownPlaced = shownLanes.reduce((n, l) => n + l.threadIds.length, 0);
   const newReplies = shownLanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply).length;
 
@@ -326,9 +372,46 @@ export function LabelBoard({
     const hits = pointerWithin(args);
     const cardHits = hits.filter((h) => String(h.id).startsWith(T));
     if (cardHits.length) return cardHits;
+    const rowHits = hits.filter((h) => String(h.id).includes("#"));
+    if (rowHits.length) return rowHits;
     if (hits.length) return hits;
     return closestCorners(args);
   };
+
+  // Moving a card to another row swaps its sub-label in Gmail, on every thread.
+  async function moveToRow(threadId: string, rowKey: string) {
+    const e = emails[threadId];
+    const to = rows?.find((r) => r.key === rowKey);
+    const from = rows?.find((r) => r.key === rowOf(e));
+    if (!e || !to || !from || !lens || to === from) return;
+    const inside = (id: string, path: string) => {
+      const n = labelNames.get(id);
+      return !!n && (n === path || n.startsWith(`${path}/`));
+    };
+    const add = to.labelId ?? lens.labelId;
+    const updated = new Map<string, string[]>();
+    for (const t of e.threads) {
+      const remove = from.labelId ? t.labelIds.filter((id) => inside(id, from.path)) : [];
+      const res = await setEmailLabels(t.threadId, [add], remove);
+      if (res.error || !res.labelIds) {
+        setSaveError(res.error ?? "Couldn't change the label.");
+        break;
+      }
+      updated.set(t.threadId, res.labelIds);
+    }
+    setEmails((prev) => {
+      const cur = prev[threadId];
+      if (!cur) return prev;
+      return {
+        ...prev,
+        [threadId]: {
+          ...cur,
+          labelIds: updated.get(cur.threadId) ?? cur.labelIds,
+          threads: cur.threads.map((t) => ({ ...t, labelIds: updated.get(t.threadId) ?? t.labelIds })),
+        },
+      };
+    });
+  }
 
   function onDragStart({ active }: DragStartEvent) {
     const id = fromId(String(active.id));
@@ -371,7 +454,11 @@ export function LabelBoard({
       }
     }
     apply(next);
+    // Which row it was dropped in: the row itself, or the row of the card it landed on.
+    const overId = String(over!.id);
+    const row = rows && target !== UNSORTED ? (overId.startsWith(LANE) ? overId.split("#")[1] : rowOf(emails[fromId(overId)])) : undefined;
     await persist(id, snap.from, target, next, snap);
+    if (row && row !== rowOf(emails[id])) await moveToRow(id, row);
   }
 
   // ----- lanes -----
@@ -476,13 +563,16 @@ export function LabelBoard({
         {/* On phones this row scrolls sideways, one column per screen; on desktop it dissolves. */}
         <div className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] md:contents">
         <UnsortedColumn
-          title={title}
+          title={recent && isInbox ? "Recent" : title}
           labelId={sourceLabelId}
           isLens={!!lens}
           isInbox={isInbox}
+          recent={recent}
+          onRecentChange={changeRecent}
+          statusOf={statusOf}
           primaryOnly={primaryOnly}
           onPrimaryOnlyChange={changePrimaryOnly}
-          threadIds={shownUnsorted}
+          threadIds={recent ? shownRecent : shownUnsorted}
           emails={emails}
           sortedCount={shownPlaced}
           newReplies={newReplies}
@@ -532,6 +622,8 @@ export function LabelBoard({
                 await save(() => setLaneReopenOnReply(lane.id, on), () => set(!on));
               }}
               onOpen={setSelected}
+              rows={rows}
+              rowOf={rowOf}
               width={laneWidth}
               colors={LANE_THEMES[i % LANE_THEMES.length]}
               icon={look.icons.lanes[i % look.icons.lanes.length]}
@@ -578,7 +670,7 @@ export function LabelBoard({
               }
               onSave={(name) =>
                 save(async () => {
-                  const t = await saveLaneTemplate(name, lanes.map((l) => ({ name: l.name, reopenOnReply: l.reopenOnReply })));
+                  const t = await saveLaneTemplate(name, lanes.map((l) => ({ name: l.name, reopenOnReply: l.reopenOnReply, finished: l.finished })));
                   setTemplates((prev) => [...prev, t]);
                 }, () => {})
               }
@@ -643,7 +735,11 @@ export function LabelBoard({
             const res = await removeThreadFromCard(threadId);
             if (res.error || !res.card) return res.error ?? "Couldn't take that email off.";
             mergeEmails([res.card, ...(res.thread ? [res.thread] : [])]);
-            setUnsorted((prev) => byDate([...prev.filter((x) => x !== threadId), threadId]));
+            // It stays in the card's status, just below it; or joins the first column.
+            const cardId = selectedEmail.threadId;
+            if (lanes.some((l) => l.threadIds.includes(cardId)))
+              setLanes((prev) => prev.map((l) => ({ ...l, threadIds: l.threadIds.flatMap((x) => (x === cardId ? [x, threadId] : [x])) })));
+            else setUnsorted((prev) => byDate([...prev.filter((x) => x !== threadId), threadId]));
             return undefined;
           }}
           onDelete={async () => {
@@ -667,6 +763,9 @@ function UnsortedColumn(p: {
   labelId: string;
   isLens: boolean;
   isInbox: boolean;
+  recent: boolean;
+  onRecentChange: (v: boolean) => void;
+  statusOf: (threadId: string) => string | undefined;
   primaryOnly: boolean;
   onPrimaryOnlyChange: (v: boolean) => void;
   threadIds: string[];
@@ -719,7 +818,7 @@ function UnsortedColumn(p: {
           <h1 className="min-w-0 flex-1 truncate text-xl font-semibold text-walnut" title={p.title}>
             {p.title.split("/").join(" › ")}
           </h1>
-          {p.isInbox && (
+          {p.isInbox && !p.recent && (
             <div className="flex shrink-0 overflow-hidden rounded-full border border-line-strong bg-cream text-xs font-semibold">
               {[true, false].map((v) => (
                 <button
@@ -734,6 +833,18 @@ function UnsortedColumn(p: {
               ))}
             </div>
           )}
+        </div>
+        <div className="flex overflow-hidden rounded-full border border-line-strong bg-cream text-xs font-semibold">
+          {[false, true].map((v) => (
+            <button
+              key={String(v)}
+              onClick={() => p.onRecentChange(v)}
+              className={`flex-1 px-2.5 py-0.5 transition ${p.recent === v ? "bg-moss text-cream" : "text-bark hover:bg-oat"}`}
+              title={v ? "Everything, newest first, including cards already in a status" : "Emails not yet in a status"}
+            >
+              {v ? "Recent" : "To triage"}
+            </button>
+          ))}
         </div>
         {p.isLens && (
           <p className="text-xs text-muted">
@@ -802,8 +913,8 @@ function UnsortedColumn(p: {
           </select>
         </label>
         <p className="text-xs font-semibold text-muted">
-          {p.searching ? "Search results" : "Not in a status yet"}
-          {p.sortedCount > 0 && ` · ${p.sortedCount} in statuses`}
+          {p.searching ? "Search results" : p.recent ? (p.isInbox ? "All mail, newest first" : "Newest first") : "Not in a status yet"}
+          {!p.recent && p.sortedCount > 0 && ` · ${p.sortedCount} in statuses`}
           {p.newReplies > 0 && (
             <span className="text-accent-ink">
               {" · "}
@@ -824,7 +935,19 @@ function UnsortedColumn(p: {
             )}
             {g.threadIds.map((id) =>
               p.emails[id] ? (
-                <DraggableEmail key={id} email={p.emails[id]} labelId={p.labelId} selected={p.selected === id} onOpen={() => p.onOpen(id)} />
+                p.statusOf(id) ? (
+                  // Already in a status: shown for the record, opened with a click.
+                  <button
+                    key={id}
+                    onClick={() => p.onOpen(id)}
+                    className={`block w-full text-left ${p.selected === id ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper" : ""}`}
+                  >
+                    <span className="mb-1 block px-1 text-xs font-semibold text-muted">→ {p.statusOf(id)}</span>
+                    <CardFace email={p.emails[id]} hideLabelId={p.labelId} />
+                  </button>
+                ) : (
+                  <DraggableEmail key={id} email={p.emails[id]} labelId={p.labelId} selected={p.selected === id} onOpen={() => p.onOpen(id)} />
+                )
               ) : null,
             )}
           </div>
@@ -885,6 +1008,8 @@ function Lane({
   onDelete,
   onReopenChange,
   onOpen,
+  rows,
+  rowOf,
   width,
   colors,
   icon,
@@ -899,6 +1024,8 @@ function Lane({
   onDelete: () => Promise<void>;
   onReopenChange: (on: boolean) => Promise<void>;
   onOpen: (threadId: string) => void;
+  rows: Row[] | null;
+  rowOf: (e: BoardEmail | undefined) => string;
   width: ReturnType<typeof useStoredWidth>;
   colors: (typeof LANE_THEMES)[number];
   icon: string;
@@ -947,13 +1074,60 @@ function Lane({
           <ConfirmButton label="✕" confirmLabel="Delete status?" onConfirm={onDelete} small />
         </div>
       </div>
-      <div ref={setNodeRef} className={`flex min-h-24 flex-1 flex-col gap-2.5 overflow-y-auto px-2.5 pb-2.5 ${isOver ? "rounded-2xl bg-cream/50" : ""}`}>
-        <SortableContext items={lane.threadIds.map((t) => `${T}${t}`)} strategy={verticalListSortingStrategy}>
-          {lane.threadIds.map((t) =>
-            emails[t] ? <SortableEmail key={t} email={emails[t]} labelId={labelId} onOpen={() => onOpen(t)} /> : null,
-          )}
-        </SortableContext>
+      <div ref={setNodeRef} className={`flex min-h-24 flex-1 flex-col gap-2.5 overflow-y-auto px-2.5 pb-2.5 ${isOver && !rows ? "rounded-2xl bg-cream/50" : ""}`}>
+        {rows ? (
+          rows.map((r) => (
+            <RowGroup
+              key={r.key}
+              laneId={lane.id}
+              row={r}
+              threadIds={lane.threadIds.filter((t) => rowOf(emails[t]) === r.key)}
+              emails={emails}
+              labelId={labelId}
+              onOpen={onOpen}
+            />
+          ))
+        ) : (
+          <SortableContext items={lane.threadIds.map((t) => `${T}${t}`)} strategy={verticalListSortingStrategy}>
+            {lane.threadIds.map((t) =>
+              emails[t] ? <SortableEmail key={t} email={emails[t]} labelId={labelId} onOpen={() => onOpen(t)} /> : null,
+            )}
+          </SortableContext>
+        )}
       </div>
+    </div>
+  );
+}
+
+// One row (sub-label) within a status. Dropping a card here gives it that sub-label.
+function RowGroup({
+  laneId,
+  row,
+  threadIds,
+  emails,
+  labelId,
+  onOpen,
+}: {
+  laneId: string;
+  row: Row;
+  threadIds: string[];
+  emails: Record<string, BoardEmail>;
+  labelId: string;
+  onOpen: (threadId: string) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${laneId}#${row.key}` });
+  return (
+    <div ref={setNodeRef} className={`space-y-2 rounded-2xl p-1 transition-colors ${isOver ? "bg-cream/60" : ""}`}>
+      <h4 className="flex items-baseline gap-2 px-1 text-xs font-bold text-bark">
+        <span className="min-w-0 flex-1 truncate" title={row.path}>
+          {row.name}
+        </span>
+        <span className="text-muted">{threadIds.length}</span>
+      </h4>
+      <SortableContext items={threadIds.map((t) => `${T}${t}`)} strategy={verticalListSortingStrategy}>
+        {threadIds.map((t) => (emails[t] ? <SortableEmail key={t} email={emails[t]} labelId={labelId} onOpen={() => onOpen(t)} /> : null))}
+      </SortableContext>
+      {threadIds.length === 0 && <div className="h-8 rounded-xl border border-dashed border-line" />}
     </div>
   );
 }

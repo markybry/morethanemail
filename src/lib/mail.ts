@@ -34,22 +34,45 @@ export type ThreadDetail = { threadId: string; subject: string; messages: Messag
 
 export const INBOX = "INBOX";
 
-// One page of a label's threads (or of all mail, with no label). For the inbox,
-// primaryOnly matches Gmail's Primary tab. A query narrows the list. Gmail leaves
-// out spam and trash.
+// Gmail's search name for a label: "Clients/JR Lease" is label:clients-jr-lease.
+const searchName = (name: string) => name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "");
+
+// A label and every label under it ("Clients/JR" and "Clients/JR/Lease").
+export async function labelWithSubLabels(user: User, labelId: string): Promise<{ id: string; name: string }[]> {
+  if (labelId === INBOX) return [{ id: INBOX, name: "Inbox" }];
+  const all = user.isDemo
+    ? demoLabels()
+    : ((await gmailFor(user).users.labels.list({ userId: "me" })).data.labels ?? [])
+        .filter((l) => l.id && l.name)
+        .map((l) => ({ id: l.id!, name: l.name! }));
+  const self = all.find((l) => l.id === labelId);
+  if (!self) return [{ id: labelId, name: "" }];
+  return all.filter((l) => l.id === labelId || l.name.startsWith(`${self.name}/`)).map((l) => ({ id: l.id, name: l.name }));
+}
+
+// One page of threads, newest first: in any of `labels` (a label and its
+// sub-labels), or in all mail with none. For the inbox, primaryOnly matches
+// Gmail's Primary tab. A query narrows the list. Gmail leaves out spam and trash.
 export async function listThreads(
   user: User,
-  opts: { labelId?: string; primaryOnly?: boolean; query?: string; pageToken?: string },
+  opts: { labels?: { id: string; name: string }[]; primaryOnly?: boolean; query?: string; pageToken?: string },
 ): Promise<{ threads: ThreadSummary[]; nextPageToken?: string }> {
   const query = opts.query?.trim();
-  const primaryOnly = opts.labelId === INBOX && !!opts.primaryOnly;
-  if (user.isDemo) return { threads: demoThreads(opts.labelId, primaryOnly, query) };
+  const labels = opts.labels ?? [];
+  const primaryOnly = labels.length === 1 && labels[0].id === INBOX && !!opts.primaryOnly;
+  if (user.isDemo) {
+    const ids = labels.map((l) => l.id);
+    const threads = ids.length ? demoThreads(undefined, primaryOnly, query).filter((t) => t.labelIds.some((l) => ids.includes(l))) : demoThreads(undefined, false, query);
+    return { threads: primaryOnly ? demoThreads(INBOX, true, query) : threads };
+  }
 
-  const q = [primaryOnly ? "category:primary" : "", query ?? ""].filter(Boolean).join(" ");
+  // One label filters by id; several (with sub-labels) become an OR search.
+  const anyOf = labels.length > 1 ? `{${labels.map((l) => `label:${searchName(l.name)}`).join(" ")}}` : "";
+  const q = [primaryOnly ? "category:primary" : "", anyOf, query ?? ""].filter(Boolean).join(" ");
   const gmail = gmailFor(user);
   const res = await gmail.users.threads.list({
     userId: "me",
-    labelIds: opts.labelId ? [opts.labelId] : undefined,
+    labelIds: labels.length === 1 ? [labels[0].id] : undefined,
     q: q || undefined,
     maxResults: 30,
     pageToken: opts.pageToken,

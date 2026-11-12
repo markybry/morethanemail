@@ -39,8 +39,10 @@ const hrefFor = (labelId: string) => `/l/${encodeURIComponent(labelId)}`;
 // The workflow first, then the user's labels as a tree. A label is a lens:
 // opening it shows the workflow filtered to that label.
 export function MailNav() {
-  const { labels, reloadLabels } = useMail();
+  const { labels, reloadLabels, pinned, togglePin, openCount, reloadPins, colorOf } = useMail();
   const pathname = usePathname();
+  // Counts change as cards move; refresh them when moving between pages.
+  useEffect(() => reloadPins(), [pathname, reloadPins]);
   const router = useRouter();
   // Where a new label is being typed: "" for top level, else the parent's path.
   const [creatingUnder, setCreatingUnder] = useState<string | null>(null);
@@ -94,6 +96,34 @@ export function MailNav() {
       <NavRow href={hrefFor("INBOX")} active={activeId === "INBOX"} depth={0}>
         <span className="truncate">Inbox</span>
       </NavRow>
+      {pinned.length > 0 && (
+        <>
+          <p className="mt-3 px-5 pb-1 text-xs font-bold tracking-widest text-side-muted uppercase">Pinned</p>
+          {pinned.map((id) => {
+            const label = labels.find((l) => l.id === id);
+            if (!label) return null;
+            const count = openCount(id);
+            const color = colorOf(id);
+            return (
+              <NavRow key={id} href={hrefFor(id)} active={activeId === id} activeColor={color} depth={0}>
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
+                <span className="truncate font-semibold text-side-strong" title={label.name}>
+                  {label.name.split("/").join(" › ")}
+                </span>
+                <span className="ml-auto flex items-center gap-1 pl-2">
+                  {count > 0 && (
+                    <span className="rounded-full px-1.5 text-[11px] font-bold text-side-strong ring-1 ring-side-strong/30" title="Open cards">
+                      {count}
+                    </span>
+                  )}
+                  <PinButton pinned onToggle={() => togglePin(id)} />
+                </span>
+              </NavRow>
+            );
+          })}
+          <p className="mt-3 px-5 pb-1 text-xs font-bold tracking-widest text-side-muted uppercase">All labels</p>
+        </>
+      )}
       {tree.map((n) => (
         <TreeNode
           key={n.path}
@@ -141,7 +171,7 @@ function TreeNode({
   creatingUnder: string | null;
   onCreate: (name: string) => void;
 }) {
-  const { colorOfPath, labels } = useMail();
+  const { colorOfPath, labels, pinned, togglePin } = useMail();
   const { theme } = useTheme();
   const iconOf = useMemo(() => makeLabelIcon(labels, theme.icons.labels), [labels, theme]);
   const color = colorOfPath(node.path);
@@ -178,6 +208,7 @@ function TreeNode({
             {node.label.unread}
           </span>
         )}
+        {node.label && !pinned.includes(node.label.id) && <PinButton pinned={false} onToggle={() => togglePin(node.label!.id)} />}
         <span
           role="button"
           aria-label={`New label under ${node.path}`}
@@ -273,6 +304,25 @@ function NavRow({
     <button onClick={onClick} className={className} style={style}>
       {inner}
     </button>
+  );
+}
+
+// Pin a label to the top of the sidebar, or unpin it.
+function PinButton({ pinned, onToggle }: { pinned: boolean; onToggle: () => void }) {
+  return (
+    <span
+      role="button"
+      aria-label={pinned ? "Unpin" : "Pin to the top"}
+      title={pinned ? "Unpin" : "Pin to the top"}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle();
+      }}
+      className={`w-4 text-center text-xs text-muted hover:text-side-accent hidden group-hover:inline max-md:inline`}
+    >
+      {pinned ? "✕" : "📌"}
+    </span>
   );
 }
 

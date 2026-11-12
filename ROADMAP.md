@@ -130,13 +130,14 @@ Done when: a card shows the same status from every label, and opening a label cr
 
 Done when: a case that has moved across three email threads is one card with one status, one task list and one summary.
 
-### Step 3: pinned labels and splitting cards
+### Step 3: pinned labels and splitting cards (done, except the quick label picker)
 
 - **Rows per sub-label:** a label with sub-labels shows one row for each, across the same statuses. Dragging a card to another row swaps its sub-label in Gmail.
-- **Pick the label when a card is made:** dragging an Inbox email into a status while a label is selected gives it that label. On the unfiltered workflow, the card offers a quick label picker.
+- **Pick the label when a card is made:** dragging an email into a row gives it that sub-label, and emails picked up in a label's view already carry it. *Later:* a quick label picker on the unfiltered workflow.
+- **Recent** (added at the user's request): the first column switches between "To triage" and "Recent", which is all mail newest first, sent and archived included, with cards already in a status marked. A label's first column includes its sub-labels' emails.
 - **Pin a label** to the top of the sidebar, with a count of its cards that are not finished.
 - **New label for this card** in the card panel (a nested label, as now), for when one card turns into several.
-- **Split a card:** move a thread off a card into a new card with the same labels.
+- **Split a card:** "Split off" moves a thread off a card into its own card, in the same status, keeping its labels.
 
 Done when: the top of the sidebar shows only the labels you are working in.
 

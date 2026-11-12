@@ -38,9 +38,10 @@ export type BoardEmail = ThreadSnapshot & {
 };
 
 // reopenOnReply: a new reply sends the email back to unsorted for triage.
-export type LaneDTO = { id: string; name: string; reopenOnReply: boolean; threadIds: string[] };
+// finished: work here is done; its cards don't count as open.
+export type LaneDTO = { id: string; name: string; reopenOnReply: boolean; finished: boolean; threadIds: string[] };
 
-export type TemplateLane = { name: string; reopenOnReply: boolean };
+export type TemplateLane = { name: string; reopenOnReply: boolean; finished?: boolean };
 export type LaneTemplateDTO = { id: string; name: string; builtIn: boolean; lanes: TemplateLane[] };
 
 // ticketIds: tickets with no email that aren't in a lane (they join the unsorted column).

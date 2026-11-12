@@ -17,6 +17,7 @@ model User {
   refreshToken  String?
   tokenExpiry   DateTime?
   theme         String         @default("woodland") // woodland | georgian | pixel | dev | dark | light
+  pinnedLabels  String[]       @default([]) // labels shown at the top of the sidebar, in order
   createdAt     DateTime       @default(now())
   workspaces    Workspace[]
   emails        Email[]
@@ -50,6 +51,7 @@ model Lane {
   name          String
   position      Int         @default(0)
   reopenOnReply Boolean     @default(false) // a new reply sends the email back to unsorted
+  finished      Boolean     @default(false) // work here is finished (Done); not counted as open
   placements    Placement[]
 
   @@index([workspaceId])

@@ -123,7 +123,7 @@ const DEFAULT_STATUSES = [
   { name: "WIP", reopenOnReply: false },
   { name: "Waiting", reopenOnReply: true },
   { name: "Blocked", reopenOnReply: false },
-  { name: "Done", reopenOnReply: true },
+  { name: "Done", reopenOnReply: true, finished: true },
 ];
 
 // The main workflow (stored as the Inbox workspace), with default statuses the
@@ -188,7 +188,13 @@ export async function loadWorkspace(
       id: ws.id,
       labelId: ws.labelId,
       name: ws.name,
-      lanes: ws.lanes.map((l) => ({ id: l.id, name: l.name, reopenOnReply: l.reopenOnReply, threadIds: l.placements.map((p) => p.email.threadId) })),
+      lanes: ws.lanes.map((l) => ({
+        id: l.id,
+        name: l.name,
+        reopenOnReply: l.reopenOnReply,
+        finished: l.finished,
+        threadIds: l.placements.map((p) => p.email.threadId),
+      })),
       ticketIds,
       lens,
     },

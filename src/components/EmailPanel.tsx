@@ -292,8 +292,8 @@ function Emails({
                 </a>
                 {t.threadId !== email.threadId && (
                   <ConfirmButton
-                    label="Take off"
-                    confirmLabel="Take off card?"
+                    label="Split off"
+                    confirmLabel="Make it its own card?"
                     small
                     onConfirm={async () => {
                       const err = await onRemoveThread(t.threadId);

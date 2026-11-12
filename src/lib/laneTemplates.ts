@@ -10,7 +10,7 @@ export const BUILT_IN_TEMPLATES: LaneTemplateDTO[] = [
     lanes: [
       { name: "To do", reopenOnReply: false },
       { name: "Doing", reopenOnReply: false },
-      { name: "Done", reopenOnReply: true },
+      { name: "Done", reopenOnReply: true, finished: true },
     ],
   },
   {
@@ -20,7 +20,7 @@ export const BUILT_IN_TEMPLATES: LaneTemplateDTO[] = [
     lanes: [
       { name: "Action needed", reopenOnReply: false },
       { name: "Waiting on reply", reopenOnReply: true },
-      { name: "Done", reopenOnReply: true },
+      { name: "Done", reopenOnReply: true, finished: true },
     ],
   },
   {
@@ -31,7 +31,7 @@ export const BUILT_IN_TEMPLATES: LaneTemplateDTO[] = [
       { name: "New", reopenOnReply: false },
       { name: "In progress", reopenOnReply: false },
       { name: "Waiting on customer", reopenOnReply: true },
-      { name: "Resolved", reopenOnReply: true },
+      { name: "Resolved", reopenOnReply: true, finished: true },
     ],
   },
   {
@@ -41,8 +41,8 @@ export const BUILT_IN_TEMPLATES: LaneTemplateDTO[] = [
     lanes: [
       { name: "Lead", reopenOnReply: false },
       { name: "Quoted", reopenOnReply: true },
-      { name: "Won", reopenOnReply: false },
-      { name: "Lost", reopenOnReply: true },
+      { name: "Won", reopenOnReply: false, finished: true },
+      { name: "Lost", reopenOnReply: true, finished: true },
     ],
   },
 ];
@@ -51,7 +51,7 @@ export const BUILT_IN_TEMPLATES: LaneTemplateDTO[] = [
 export function parseTemplateLanes(value: unknown): TemplateLane[] {
   if (!Array.isArray(value)) return [];
   return value
-    .filter((l): l is { name: string; reopenOnReply?: unknown } => typeof l?.name === "string" && l.name.trim() !== "")
-    .map((l) => ({ name: l.name.trim().slice(0, 80), reopenOnReply: l.reopenOnReply === true }))
+    .filter((l): l is { name: string; reopenOnReply?: unknown; finished?: unknown } => typeof l?.name === "string" && l.name.trim() !== "")
+    .map((l) => ({ name: l.name.trim().slice(0, 80), reopenOnReply: l.reopenOnReply === true, finished: l.finished === true }))
     .slice(0, 20);
 }

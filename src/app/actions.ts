@@ -6,6 +6,7 @@ import {
   createLabel,
   getThread,
   isAssignableLabel,
+  labelWithSubLabels,
   listLabels,
   modifyThreadLabels,
   listThreads,
@@ -49,15 +50,17 @@ const revalidateBoards = () => revalidatePath("/l/[labelId]", "page");
 
 type ListResult = { emails: BoardEmail[]; nextPageToken?: string; error?: string };
 
-// One page of a label's emails. Errors come back as readable text because
-// production hides the message of anything thrown from a server action.
+// One page of a label's emails, its sub-labels' included; "ALL" for all mail,
+// newest first. Errors come back as readable text because production hides the
+// message of anything thrown from a server action.
 export async function fetchLabelEmails(
   labelId: string,
   opts: { primaryOnly?: boolean; query?: string; pageToken?: string } = {},
 ): Promise<ListResult> {
   const user = await requireUser();
   try {
-    const res = await listThreads(user, { labelId, ...opts });
+    const labels = labelId === "ALL" ? undefined : await labelWithSubLabels(user, labelId);
+    const res = await listThreads(user, { labels, ...opts });
     return { emails: await withStoredMeta(user.id, res.threads), nextPageToken: res.nextPageToken };
   } catch (e) {
     console.error("fetchLabelEmails failed", e);
@@ -159,7 +162,15 @@ export async function setEmailLabels(
 ): Promise<{ labelIds?: string[]; error?: string }> {
   const user = await requireUser();
   if (![...add, ...remove].every(isAssignableLabel)) return { error: "That label can't be changed here." };
-  if (isLocalThread(threadId)) return { error: "This ticket has no email, so it has no Gmail labels." };
+  if (isLocalThread(threadId)) {
+    // A ticket with no email keeps its labels in the app only.
+    const row = await db.email.findUnique({ where: { userId_threadId: { userId: user.id, threadId } } });
+    if (!row) return { error: "That ticket no longer exists." };
+    const labelIds = [...new Set([...row.labelIds.filter((l) => !remove.includes(l)), ...add.filter((l) => l !== "INBOX")])];
+    await db.email.update({ where: { id: row.id }, data: { labelIds } });
+    revalidateBoards();
+    return { labelIds };
+  }
   try {
     const labelIds = await modifyThreadLabels(user, threadId, add, remove);
     await db.email.updateMany({ where: { userId: user.id, threadId }, data: { labelIds } });
@@ -220,7 +231,7 @@ export async function createLane(workspaceId: string, name: string): Promise<Lan
   const count = await db.lane.count({ where: { workspaceId } });
   const lane = await db.lane.create({ data: { workspaceId, name: name.trim() || "New lane", position: count } });
   revalidateBoards();
-  return { id: lane.id, name: lane.name, reopenOnReply: lane.reopenOnReply, threadIds: [] };
+  return { id: lane.id, name: lane.name, reopenOnReply: lane.reopenOnReply, finished: lane.finished, threadIds: [] };
 }
 
 export async function renameLane(laneId: string, name: string) {
@@ -346,15 +357,28 @@ export async function addThreadToCard(cardThreadId: string, thread: ThreadSnapsh
   }
 }
 
-// Take a thread off its card again; it becomes a card of its own, not in a status.
+// Split a thread off its card: it becomes a card of its own, in the same status
+// as the card it came from (just below it), keeping its labels.
 export async function removeThreadFromCard(threadId: string): Promise<{ card?: BoardEmail; thread?: BoardEmail; error?: string }> {
   const user = await requireUser();
   const row = await db.email.findUnique({
     where: { userId_threadId: { userId: user.id, threadId } },
-    select: { id: true, parent: { select: { threadId: true } } },
+    select: { id: true, parent: { select: { threadId: true, placements: { select: { workspaceId: true, laneId: true, position: true } } } } },
   });
   if (!row?.parent) return { error: "That email isn't part of a card." };
-  await db.email.update({ where: { id: row.id }, data: { parentId: null } });
+  const home = row.parent.placements[0];
+  await db.$transaction([
+    db.email.update({ where: { id: row.id }, data: { parentId: null } }),
+    ...(home
+      ? [
+          db.placement.updateMany({
+            where: { laneId: home.laneId, position: { gt: home.position } },
+            data: { position: { increment: 1 } },
+          }),
+          db.placement.create({ data: { workspaceId: home.workspaceId, laneId: home.laneId, emailId: row.id, position: home.position + 1 } }),
+        ]
+      : []),
+  ]);
   revalidateBoards();
   const [card, thread] = await Promise.all([cardOf(user.id, row.parent.threadId), cardOf(user.id, threadId)]);
   return { card, thread };
@@ -381,10 +405,12 @@ export async function applyLaneTemplate(workspaceId: string, lanes: TemplateLane
   const clean = parseTemplateLanes(lanes);
   const count = await db.lane.count({ where: { workspaceId } });
   const created = await db.$transaction(
-    clean.map((l, i) => db.lane.create({ data: { workspaceId, name: l.name, reopenOnReply: l.reopenOnReply, position: count + i } })),
+    clean.map((l, i) =>
+      db.lane.create({ data: { workspaceId, name: l.name, reopenOnReply: l.reopenOnReply, finished: !!l.finished, position: count + i } }),
+    ),
   );
   revalidateBoards();
-  return created.map((l) => ({ id: l.id, name: l.name, reopenOnReply: l.reopenOnReply, threadIds: [] }));
+  return created.map((l) => ({ id: l.id, name: l.name, reopenOnReply: l.reopenOnReply, finished: l.finished, threadIds: [] }));
 }
 
 export async function saveLaneTemplate(name: string, lanes: TemplateLane[]): Promise<LaneTemplateDTO> {
@@ -571,6 +597,28 @@ export async function deleteTask(taskId: string) {
   const user = await requireUser();
   await db.task.deleteMany({ where: { id: taskId, userId: user.id } });
   revalidateTaskPages();
+}
+
+// ---------- pinned labels ----------
+
+// Labels pinned to the top of the sidebar, and the labels on every open card
+// (in a status that isn't finished) so the sidebar can count them.
+export async function fetchPins(): Promise<{ pinned: string[]; open: string[][] }> {
+  const user = await requireUser();
+  const cards = await db.placement.findMany({
+    where: { workspace: { userId: user.id }, lane: { finished: false } },
+    select: { email: { select: { labelIds: true, threads: { select: { labelIds: true } } } } },
+  });
+  return {
+    pinned: user.pinnedLabels,
+    open: cards.map((c) => [...new Set([c.email.labelIds, ...c.email.threads.map((t) => t.labelIds)].flat())]),
+  };
+}
+
+export async function setPinnedLabels(labelIds: string[]) {
+  const user = await requireUser();
+  const clean = [...new Set(labelIds.filter((id) => typeof id === "string" && id.startsWith("Label_")))].slice(0, 30);
+  await db.user.update({ where: { id: user.id }, data: { pinnedLabels: clean } });
 }
 
 // ---------- preferences ----------
