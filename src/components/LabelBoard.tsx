@@ -396,6 +396,16 @@ export function LabelBoard({
   );
   const statusOf = (threadId: string) => lanes.find((l) => l.threadIds.includes(threadId))?.name;
   const shownPlaced = shownLanes.reduce((n, l) => n + l.threadIds.length, 0);
+  // Rows with the most cards first, so empty sub-labels sink to the bottom.
+  const orderedRows = useMemo(() => {
+    if (!rows) return null;
+    const count = new Map(rows.map((r) => [r.key, 0]));
+    for (const t of shownLanes.flatMap((l) => l.threadIds)) {
+      const k = rowOf(emails[t]);
+      count.set(k, (count.get(k) ?? 0) + 1);
+    }
+    return [...rows].sort((a, b) => (count.get(b.key) ?? 0) - (count.get(a.key) ?? 0));
+  }, [rows, shownLanes, rowOf, emails]);
   const newReplies = shownLanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply).length;
 
 
@@ -817,7 +827,7 @@ export function LabelBoard({
                 await save(() => setLaneFinished(lane.id, on), () => set(!on));
               }}
               onOpen={setSelected}
-              rows={rows}
+              rows={orderedRows}
               rowOf={rowOf}
               width={laneWidth}
               colors={LANE_THEMES[i % LANE_THEMES.length]}
