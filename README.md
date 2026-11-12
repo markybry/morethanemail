@@ -2,16 +2,18 @@
 
 An email client in the style of Sortd and Trello, run entirely off Gmail labels and emails.
 
-- **Every Gmail label is a workspace**, Inbox included. The sidebar shows your labels as a nested tree (`Parent/Child` names) with unread counts. Opening a label for the first time creates its workspace.
-- **A workspace starts with just the label's emails** in an unsorted column, read live from Gmail. There are no preset columns. Add lanes when you want them, then drag emails into them.
-- **The email is the ticket.** Notes and tasks belong to the email thread itself and follow it into every label it carries. One email can sit in a different lane in each of its labels' workspaces.
-- **Assigning an email to a workspace applies the Gmail label.** In the email panel, add or remove workspaces; the change is made in Gmail. Inbox is just a label, so removing it archives the email.
-- **New labels are new workspaces.** Use "+ New label" or the "+" on any label in the sidebar (nested names such as `Clients/JR` work). Any email can be made into **its own workspace**: a new label nested under the current one, applied to the email.
+> **Changing:** the app is moving to one workflow of statuses, cards that hold several email threads, and labels as lenses. Step 1 (one workflow, labels as lenses) is in. See [ROADMAP.md](ROADMAP.md).
+
+- **One workflow.** Its first column is your Inbox, live from Gmail. The rest are your statuses (To do, WIP, Waiting, Blocked and Done to start with; rename, add or reorder them). Drag an email into a status and it becomes a card.
+- **A card sits in one status.** It's the same wherever you look at it from. Notes, tasks and links belong to the card.
+- **Labels are lenses.** The sidebar shows your Gmail labels as a nested tree (`Parent/Child` names) with unread counts. Opening a label shows the same workflow with only that label's cards, including its sub-labels'. The first column then lists the label's emails not yet in a status. Opening a label never creates anything.
+- **Labels are Gmail's.** In the card panel, add or remove labels; the change is made in Gmail and the card keeps its status. Inbox is just a label, so removing it archives the email.
+- **New labels** come from "+ New label" or the "+" on any label in the sidebar (nested names such as `Clients/JR` work), or from a card ("New label for this card").
 - The label tree is **colour-coded by branch** (or by the label's Gmail colour), with guide lines showing which labels sit under which parent.
 - **Embedded images and attachments** show in the email: inline images in place, image attachments as thumbnails, other files as downloads.
 - **New replies** show on the card ("↩ New reply") until you open the email.
 - In the Inbox, a **Primary / All tabs** switch keeps promotions out. Search looks within the current label.
-- **Resizable layout**: drag the edges of the sidebar, the email column, the lanes and the email panel. Double-click an edge to reset it.
+- **Resizable layout**: drag the edges of the sidebar, the email column, the statuses and the email panel. Double-click an edge to reset it.
 
 "My tasks" lists every task across all your emails, grouped by due date.
 

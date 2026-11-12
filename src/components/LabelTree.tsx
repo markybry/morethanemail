@@ -36,7 +36,8 @@ function buildTree(labels: MailLabel[]): Node[] {
 
 const hrefFor = (labelId: string) => `/l/${encodeURIComponent(labelId)}`;
 
-// Every label is a workspace: Inbox first, then the user's labels as a tree.
+// The workflow first, then the user's labels as a tree. A label is a lens:
+// opening it shows the workflow filtered to that label.
 export function MailNav() {
   const { labels, reloadLabels } = useMail();
   const pathname = usePathname();
@@ -70,7 +71,7 @@ export function MailNav() {
     });
   };
 
-  // Creating a label creates its workspace; open it straight away.
+  // Open a new label straight away (an empty view of the workflow through it).
   const create = async (name: string) => {
     const parent = creatingUnder;
     setCreatingUnder(null);
@@ -91,7 +92,7 @@ export function MailNav() {
   return (
     <div>
       <NavRow href={hrefFor("INBOX")} active={activeId === "INBOX"} depth={0}>
-        <span className="truncate">Inbox</span>
+        <span className="truncate">Workflow</span>
       </NavRow>
       {tree.map((n) => (
         <TreeNode

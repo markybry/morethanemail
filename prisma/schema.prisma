@@ -25,8 +25,8 @@ model User {
   tasks         Task[]
 }
 
-// One workspace per Gmail label (INBOX included), created the first time the
-// label is opened. Gmail is the source of truth for which emails belong to it.
+// A workflow: a set of statuses (lanes) that cards move through. There is one,
+// stored with labelId INBOX; opening any other label shows it filtered to that label.
 model Workspace {
   id         String      @id @default(cuid())
   userId     String
@@ -81,6 +81,7 @@ model Email {
   from        String
   snippet     String
   date        DateTime // latest message when last refreshed
+  labelIds    String[]  @default([]) // Gmail labels when last seen (or chosen, for a ticket with no email)
   lastSeenAt  DateTime? // latest message the user has opened; newer means a new reply
   createdAt   DateTime     @default(now())
   notes       Note[]
@@ -93,7 +94,8 @@ model Email {
   @@index([workspaceId])
 }
 
-// Where an email sits in one workspace. No placement means it's unsorted.
+// Where a card sits: one status in one workflow. A card has at most one.
+// No placement means it's unsorted.
 model Placement {
   id          String    @id @default(cuid())
   workspaceId String
@@ -104,7 +106,7 @@ model Placement {
   email       Email     @relation(fields: [emailId], references: [id], onDelete: Cascade)
   position    Int       @default(0)
 
-  @@unique([workspaceId, emailId])
+  @@unique([emailId])
   @@index([laneId])
 }
 

@@ -81,7 +81,9 @@ export async function refreshEmails(threadIds: string[]): Promise<{ emails: Boar
   try {
     const live = await summarizeThreads(user, threadIds);
     await Promise.all(
-      live.map((t) => db.email.updateMany({ where: { userId: user.id, threadId: t.threadId }, data: snapshotData(t) })),
+      live.map((t) =>
+        db.email.updateMany({ where: { userId: user.id, threadId: t.threadId }, data: { ...snapshotData(t), labelIds: t.labelIds } }),
+      ),
     );
     return { emails: await withStoredMeta(user.id, live) };
   } catch (e) {
@@ -123,9 +125,10 @@ export async function fetchThread(threadId: string): Promise<{ thread: ThreadDet
   }
 }
 
-// ---------- assigning emails to workspaces (Gmail labels) ----------
+// ---------- labels ----------
 
-// Add an email to workspaces / take it out, by applying or removing Gmail labels.
+// Apply or remove Gmail labels on an email. Its status stays as it is: labels
+// say what a card is about, statuses say where it's up to.
 export async function setEmailLabels(
   threadId: string,
   add: string[],
@@ -136,11 +139,7 @@ export async function setEmailLabels(
   if (isLocalThread(threadId)) return { error: "This ticket has no email, so it has no Gmail labels." };
   try {
     const labelIds = await modifyThreadLabels(user, threadId, add, remove);
-    // Leaving a label's workspace also takes the email out of that workspace's lanes.
-    if (remove.length)
-      await db.placement.deleteMany({
-        where: { email: { userId: user.id, threadId }, workspace: { userId: user.id, labelId: { in: remove } } },
-      });
+    await db.email.updateMany({ where: { userId: user.id, threadId }, data: { labelIds } });
     revalidateBoards();
     return { labelIds };
   } catch (e) {
@@ -157,7 +156,7 @@ const cleanLabelName = (name: string) =>
     .filter(Boolean)
     .join("/");
 
-// A new workspace is a new Gmail label. "Clients/JR" nests it under Clients.
+// A new Gmail label. "Clients/JR" nests it under Clients.
 export async function createWorkspace(name: string): Promise<{ label?: MailLabel; error?: string }> {
   const user = await requireUser();
   const clean = cleanLabelName(name);
@@ -170,7 +169,7 @@ export async function createWorkspace(name: string): Promise<{ label?: MailLabel
   }
 }
 
-// Create a Gmail label (and so a new workspace) and apply it to an email.
+// Create a Gmail label and apply it to an email.
 export async function createLabelForEmail(
   threadId: string,
   name: string,
@@ -182,6 +181,8 @@ export async function createLabelForEmail(
   try {
     const label = await createLabel(user, clean);
     const labelIds = await modifyThreadLabels(user, threadId, [label.id], []);
+    await db.email.updateMany({ where: { userId: user.id, threadId }, data: { labelIds } });
+    revalidateBoards();
     return { label, labelIds };
   } catch (e) {
     console.error("createLabelForEmail failed", e);
@@ -228,7 +229,8 @@ export async function reorderLanes(workspaceId: string, laneIds: string[]) {
 
 // ---------- tickets with no email ----------
 
-export async function createTicket(workspaceId: string, title: string): Promise<BoardEmail> {
+// labelId: the label being looked through, so the ticket shows in that view.
+export async function createTicket(workspaceId: string, title: string, labelId?: string): Promise<BoardEmail> {
   const { user } = await ownWorkspace(workspaceId);
   const ticket = await db.email.create({
     data: {
@@ -239,6 +241,7 @@ export async function createTicket(workspaceId: string, title: string): Promise<
       from: user.name ?? user.email,
       snippet: "",
       date: new Date(),
+      labelIds: labelId && isAssignableLabel(labelId) && labelId !== "INBOX" ? [labelId] : [],
     },
     include: emailInclude,
   });
@@ -304,7 +307,8 @@ export async function deleteLaneTemplate(templateId: string) {
 
 // Save the result of a drag (or a lane picked in the email panel):
 // - `lanes`: the full email order of every lane that changed
-// - `unsorted`: emails taken out of lanes, back to the label's unsorted list
+// - `unsorted`: emails taken out of lanes, back to the unsorted list
+// A card has one home, so placing it here moves it out of any other workflow.
 // - `snapshots`: threads that may not have an Email record yet
 export async function arrangeEmails(
   workspaceId: string,
@@ -322,8 +326,8 @@ export async function arrangeEmails(
 
   // Which emails actually changed column, for the activity log (reorders aren't logged).
   const before = await db.placement.findMany({
-    where: { workspaceId, emailId: { in: [...idOf.values()] } },
-    select: { emailId: true, laneId: true },
+    where: { emailId: { in: [...idOf.values()] } },
+    select: { emailId: true, laneId: true, workspaceId: true },
   });
   const laneBefore = new Map(before.map((p) => [p.emailId, p.laneId]));
   const laneNames = new Map(
@@ -338,7 +342,7 @@ export async function arrangeEmails(
     ),
     ...change.unsorted
       .map((t) => idOf.get(t))
-      .filter((id): id is string => !!id && laneBefore.has(id))
+      .filter((id): id is string => !!id && before.some((p) => p.emailId === id && p.workspaceId === workspaceId))
       .map((emailId) => ({ emailId, detail: "" })),
   ];
 
@@ -351,9 +355,9 @@ export async function arrangeEmails(
         .filter((t) => idOf.has(t))
         .map((t, position) =>
           db.placement.upsert({
-            where: { workspaceId_emailId: { workspaceId, emailId: idOf.get(t)! } },
+            where: { emailId: idOf.get(t)! },
             create: { workspaceId, laneId: l.laneId, emailId: idOf.get(t)!, position },
-            update: { laneId: l.laneId, position },
+            update: { workspaceId, laneId: l.laneId, position },
           }),
         ),
     ),
