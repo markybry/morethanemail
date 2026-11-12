@@ -18,6 +18,8 @@ export const CardBoardContext = createContext<{
   moveTo: (threadId: string, statusId: string | null) => void;
   canArchive: (threadId: string) => boolean;
   archive: (threadId: string) => void;
+  canHide: (threadId: string) => boolean;
+  hide: (threadId: string) => void;
 } | null>(null);
 
 const NEXT_SHOWN = 4;
@@ -120,6 +122,11 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
           {board.canArchive(email.threadId) && (
             <button onClick={() => board.archive(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-xs font-semibold text-bark">
               Archive
+            </button>
+          )}
+          {board.canHide(email.threadId) && (
+            <button onClick={() => board.hide(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-xs font-semibold text-bark">
+              Hide
             </button>
           )}
         </div>

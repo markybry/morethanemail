@@ -35,6 +35,7 @@ export type BoardEmail = ThreadSnapshot & {
   summary: string; // where things stand and what was decided
   threads: CardThread[];
   partOf: string | null; // for a thread added to another card: that card's threadId
+  hidden: boolean; // hidden from the first column until a newer message arrives
 };
 
 // reopenOnReply: a new reply sends the email back to unsorted for triage.

@@ -652,6 +652,17 @@ export async function deleteTask(taskId: string) {
   revalidateTaskPages();
 }
 
+// ---------- hiding from the first column ----------
+
+// Hide an email that doesn't need tracking (it shows again when a newer message
+// arrives), or bring it back. Nothing changes in Gmail.
+export async function setHidden(thread: ThreadSnapshot, hidden: boolean) {
+  const user = await requireUser();
+  const email = await upsertEmail(user.id, thread);
+  await db.email.update({ where: { id: email.id }, data: { hiddenAt: hidden ? new Date() : null } });
+  revalidateBoards();
+}
+
 // ---------- pinned labels ----------
 
 // Labels pinned to the top of the sidebar, and the labels on every open card

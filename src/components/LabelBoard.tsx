@@ -35,6 +35,7 @@ import {
   refreshEmails,
   removeThreadFromCard,
   renameLane,
+  setHidden,
   reorderLanes,
   saveLaneTemplate,
   setEmailLabels,
@@ -377,12 +378,19 @@ export function LabelBoard({
     () => lanes.map((l) => ({ ...l, threadIds: l.threadIds.filter((t) => inLens(emails[t])) })),
     [lanes, emails, inLens],
   );
-  const shownUnsorted = useMemo(() => unsorted.filter((t) => inLens(emails[t])), [unsorted, emails, inLens]);
+  const inFirstColumn = useMemo(() => unsorted.filter((t) => inLens(emails[t])), [unsorted, emails, inLens]);
   // Recent picks up labelled mail that isn't tracked in a status yet (cards in
   // a status are already on the board), newest first.
-  const shownRecent = useMemo(
+  const inRecent = useMemo(
     () => recentIds.filter((t) => emails[t] && inLens(emails[t]) && !placed.has(t) && !emails[t].homeId),
     [recentIds, emails, inLens, placed],
+  );
+  // Hidden emails ("doesn't need tracking") fold into a list at the bottom of the column.
+  const shownUnsorted = useMemo(() => inFirstColumn.filter((t) => !emails[t]?.hidden), [inFirstColumn, emails]);
+  const shownRecent = useMemo(() => inRecent.filter((t) => !emails[t]?.hidden), [inRecent, emails]);
+  const hiddenIds = useMemo(
+    () => (recent ? inRecent : inFirstColumn).filter((t) => emails[t]?.hidden),
+    [recent, inRecent, inFirstColumn, emails],
   );
   const statusOf = (threadId: string) => lanes.find((l) => l.threadIds.includes(threadId))?.name;
   const shownPlaced = shownLanes.reduce((n, l) => n + l.threadIds.length, 0);
@@ -582,6 +590,8 @@ export function LabelBoard({
     canArchive: (threadId: string) =>
       isInbox && !recent && !emails[threadId]?.local && !lanes.some((l) => l.threadIds.includes(threadId)),
     archive: (threadId: string) => void archive(threadId, selected === threadId),
+    canHide: (threadId: string) => !lanes.some((l) => l.threadIds.includes(threadId)) && !emails[threadId]?.hidden,
+    hide: (threadId: string) => void hide(threadId, true),
   };
 
   // ----- triage: archive, and keys to file the open email -----
@@ -621,6 +631,15 @@ export function LabelBoard({
     });
   };
 
+  const hide = async (threadId: string, hidden: boolean) => {
+    const e = emails[threadId];
+    if (!e) return;
+    if (hidden && selected === threadId) openNext(threadId);
+    const set = (v: boolean) => setEmails((prev) => (prev[threadId] ? { ...prev, [threadId]: { ...prev[threadId], hidden: v } } : prev));
+    set(hidden);
+    await save(() => setHidden(snapshotOf(e), hidden), () => set(!hidden));
+  };
+
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.metaKey || ev.ctrlKey || ev.altKey || !selected) return;
@@ -629,6 +648,9 @@ export function LabelBoard({
       if (ev.key === "e" && isInbox && fromFirst) {
         ev.preventDefault();
         void archive(selected, true);
+      } else if (ev.key === "h" && fromFirst && !emails[selected]?.hidden) {
+        ev.preventDefault();
+        void hide(selected, true);
       } else if (/^[1-9]$/.test(ev.key) && lanes[Number(ev.key) - 1]) {
         ev.preventDefault();
         if (fromFirst) openNext(selected);
@@ -696,6 +718,9 @@ export function LabelBoard({
           error={listError}
           hasMore={!!nextPage}
           laneCount={lanes.length}
+          hiddenIds={hiddenIds}
+          onHide={(id) => void hide(id, true)}
+          onUnhide={(id) => void hide(id, false)}
           onArchive={isInbox && !recent ? (id) => void archive(id, selected === id) : undefined}
           selected={selected}
           onQueryChange={setQuery}
@@ -882,6 +907,9 @@ export function LabelBoard({
 
 function UnsortedColumn(p: {
   laneCount: number;
+  hiddenIds: string[];
+  onHide: (threadId: string) => void;
+  onUnhide: (threadId: string) => void;
   onArchive?: (threadId: string) => void;
   title: string;
   labelId: string;
@@ -973,7 +1001,7 @@ function UnsortedColumn(p: {
         {p.onArchive && p.laneCount > 0 && (
           <p className="text-xs text-muted" title="Keyboard shortcuts while an email is open">
             Open an email, then <kbd className="font-semibold">1</kbd>–<kbd className="font-semibold">{Math.min(p.laneCount, 9)}</kbd> files it
-            into a status, <kbd className="font-semibold">e</kbd> archives it.
+            into a status, <kbd className="font-semibold">e</kbd> archives it, <kbd className="font-semibold">h</kbd> hides it.
           </p>
         )}
         {p.isLens && (
@@ -1087,6 +1115,7 @@ function UnsortedColumn(p: {
                     selected={p.selected === id}
                     onOpen={() => p.onOpen(id)}
                     onArchive={p.onArchive && !p.emails[id].local ? () => p.onArchive!(id) : undefined}
+                    onHide={() => p.onHide(id)}
                   />
                 )
               ) : null,
@@ -1113,6 +1142,25 @@ function UnsortedColumn(p: {
             {p.sortedCount > 0 ? p.look.text.sorted : p.look.text.empty}
           </p>
         )}
+        {p.hiddenIds.length > 0 && (
+          <details className="rounded-2xl border border-dashed border-line px-3 py-2">
+            <summary className="cursor-pointer text-xs font-semibold text-muted">
+              Hidden · {p.hiddenIds.length} <span className="font-normal">(no tracking needed; back if a new message arrives)</span>
+            </summary>
+            <ul className="mt-2 space-y-1">
+              {p.hiddenIds.map((id) => (
+                <li key={id} className="flex items-baseline gap-2 text-sm">
+                  <button onClick={() => p.onOpen(id)} className="min-w-0 flex-1 truncate text-left text-bark hover:text-terracotta">
+                    {p.emails[id]?.title}
+                  </button>
+                  <button onClick={() => p.onUnhide(id)} className="shrink-0 text-xs font-semibold text-muted hover:text-terracotta">
+                    Unhide
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
         {p.state === "idle" && p.hasMore && (
           <button onClick={p.onLoadMore} className="btn-press w-full rounded-xl bg-oat p-2 text-sm font-semibold text-bark">
             Load more
@@ -1129,12 +1177,14 @@ function DraggableEmail({
   selected,
   onOpen,
   onArchive,
+  onHide,
 }: {
   email: BoardEmail;
   labelId: string;
   selected: boolean;
   onOpen: () => void;
   onArchive?: () => void;
+  onHide?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `${T}${email.threadId}` });
   return (
@@ -1146,18 +1196,29 @@ function DraggableEmail({
       className={`group/drag relative touch-manipulation ${isDragging ? "opacity-30" : ""} ${selected ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper" : ""}`}
     >
       <CardFace email={email} hideLabelId={labelId} />
-      {onArchive && (
-        <button
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onArchive();
-          }}
-          className="btn-press absolute right-2 bottom-2 rounded-lg bg-oat px-2 py-0.5 text-xs font-semibold text-bark opacity-0 transition group-hover/drag:opacity-100 hover:text-terracotta max-md:hidden"
-          title="Archive: needs nothing (e)"
-        >
-          Archive
-        </button>
+      {(onArchive || onHide) && (
+        // Desktop: on hover. Phones use the buttons on the card itself.
+        <div className="absolute right-2 bottom-2 flex gap-1 opacity-0 transition group-hover/drag:opacity-100 max-md:hidden">
+          {[
+            { label: "Hide", title: "Hide: doesn't need tracking (h). It comes back if a new message arrives.", run: onHide },
+            { label: "Archive", title: "Archive in Gmail: needs nothing (e)", run: onArchive },
+          ]
+            .filter((b) => b.run)
+            .map((b) => (
+              <button
+                key={b.label}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  b.run!();
+                }}
+                className="btn-press rounded-lg bg-oat px-2 py-0.5 text-xs font-semibold text-bark hover:text-terracotta"
+                title={b.title}
+              >
+                {b.label}
+              </button>
+            ))}
+        </div>
       )}
     </div>
   );

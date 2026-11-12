@@ -90,6 +90,7 @@ model Email {
   threads     Email[]      @relation("CardThreads")
   title       String? // the card's own title; the first email's subject when unset
   summary     String       @default("") // where things stand and what was decided
+  hiddenAt    DateTime? // hidden from the first column ("doesn't need tracking") until a newer message arrives
   lastSeenAt  DateTime? // latest message the user has opened; newer means a new reply
   createdAt   DateTime     @default(now())
   notes       Note[]

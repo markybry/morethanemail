@@ -73,6 +73,7 @@ export function toBoardEmail(stored: EmailWithMeta | undefined, live?: ThreadSum
     summary: stored?.summary ?? "",
     threads,
     partOf: stored?.parent?.threadId ?? null,
+    hidden: !!stored?.hiddenAt && new Date(threads[0].date).getTime() <= stored.hiddenAt.getTime(),
   };
 }
 
