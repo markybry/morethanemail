@@ -2,7 +2,7 @@
 
 **Status, 12 November 2026:** steps 1 to 6 are built and live. What's left is under "Later", plus the few items marked *later* in the steps.
 
-_Written 12 November 2026, fifth pass. Nothing here is built yet._
+_Written 12 November 2026 (fifth pass)._
 
 ## The idea in one line
 
