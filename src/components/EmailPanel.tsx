@@ -221,7 +221,7 @@ function Labels({
           className="w-full field rounded-xl px-2.5 py-1.5 text-sm"
         />
         {q && (
-          <div className="absolute z-10 mt-1 w-full rounded-md border border-line bg-white py-1 shadow-lg">
+          <div className="absolute z-10 mt-1 w-full rounded-md border border-line bg-cream py-1 shadow-lg">
             {options.map((l) => (
               <button
                 key={l.id}

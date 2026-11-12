@@ -16,7 +16,7 @@ model User {
   accessToken   String?
   refreshToken  String?
   tokenExpiry   DateTime?
-  theme         String         @default("woodland") // woodland | georgian | pixel | dev
+  theme         String         @default("woodland") // woodland | georgian | pixel | dev | dark
   createdAt     DateTime       @default(now())
   workspaces    Workspace[]
   emails        Email[]

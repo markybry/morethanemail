@@ -34,7 +34,7 @@ export function InlineEdit({ value, onSave, className = "" }: { value: string; o
           setEditing(false);
         }
       }}
-      className={`min-w-0 flex-1 rounded border border-terracotta bg-white px-1 outline-none ${className}`}
+      className={`min-w-0 flex-1 rounded border border-terracotta bg-cream px-1 outline-none ${className}`}
     />
   );
 }

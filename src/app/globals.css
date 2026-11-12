@@ -599,6 +599,142 @@ html[data-theme="dev"] .card-tactile .text-xs {
   font-size: 0.72rem;
 }
 
+/* ---------- Dark ---------- */
+/* Clean and clear: charcoal surfaces, soft light text, one calm blue accent,
+   no textures. Accents are light, so text on them (text-cream) is dark. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  font-size: 15px;
+  --theme-sans: var(--font-inter);
+  --theme-display: var(--font-inter);
+
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.625rem;
+  --radius-3xl: 0.75rem;
+
+  --color-paper: #111318; /* page and board */
+  --color-cream: #1a1d24; /* cards, panels */
+  --color-oat: #252933; /* subtle fills */
+  --color-walnut: #f1f3f7; /* strongest text */
+  --color-bark: #c3c8d2; /* secondary text */
+  --color-ink: #e4e7ec; /* body text */
+  --color-muted: #8a91a0; /* dates, snippets */
+  --color-faint: #4a505d;
+  --color-line: #2a2e38;
+  --color-line-strong: #363b47;
+  --color-moss: #6cc98f;
+  --color-terracotta: #7ea6f8; /* the main accent */
+  --color-mustard: #e5c06a;
+  --color-dusk: #b19cf5;
+  --color-accent-soft: #1f2a40;
+  --color-accent-ink: #a9c4ff;
+  --color-shadow: #000000;
+  --color-side-text: #c3c8d2;
+  --color-side-muted: #7d8494;
+  --color-side-strong: #f1f3f7;
+  --color-side-accent: #7ea6f8;
+  --color-ok-bg: #173325;
+  --color-ok-ink: #7fd6a0;
+  --color-bad-bg: #3a1c1f;
+  --color-bad-ink: #f59b9b;
+  --color-warn-bg: #352c14;
+  --color-warn-ink: #ebc76f;
+  --color-info-bg: #1d2638;
+  --color-info-ink: #9dbbf5;
+  --color-note: #2b2717;
+  --color-note-line: #4a4220;
+  --color-note-edge: #4a4220;
+  --color-card-edge: #2a2e38;
+  --color-card-line: #2a2e38;
+
+  /* Lanes: one quiet surface; colour only in the top bar and the count. */
+  --lane-1-bg: #15181e;
+  --lane-1-ring: #262a33;
+  --lane-1-bar: #7ea6f8;
+  --lane-1-text: #e4e7ec;
+  --lane-2-bg: #15181e;
+  --lane-2-ring: #262a33;
+  --lane-2-bar: #b19cf5;
+  --lane-2-text: #e4e7ec;
+  --lane-3-bg: #15181e;
+  --lane-3-ring: #262a33;
+  --lane-3-bar: #e5c06a;
+  --lane-3-text: #e4e7ec;
+  --lane-4-bg: #15181e;
+  --lane-4-ring: #262a33;
+  --lane-4-bar: #f08c8c;
+  --lane-4-text: #e4e7ec;
+  --lane-5-bg: #15181e;
+  --lane-5-ring: #262a33;
+  --lane-5-bar: #6cc98f;
+  --lane-5-text: #e4e7ec;
+  --lane-6-bg: #15181e;
+  --lane-6-ring: #262a33;
+  --lane-6-bar: #9aa3b2;
+  --lane-6-text: #e4e7ec;
+}
+html[data-theme="dark"] h1,
+html[data-theme="dark"] h2,
+html[data-theme="dark"] h3,
+html[data-theme="dark"] .font-display {
+  letter-spacing: -0.01em;
+}
+html[data-theme="dark"] .paper,
+html[data-theme="dark"] .board-bg {
+  background-image: none;
+}
+html[data-theme="dark"] .felt {
+  background-color: #0c0e12;
+  background-image: none;
+  border-right: 1px solid var(--color-line);
+}
+html[data-theme="dark"] .card-tactile {
+  border: 1px solid var(--color-card-line);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+}
+html[data-theme="dark"] .card-tactile:hover {
+  border-color: var(--color-line-strong);
+  box-shadow: 0 4px 12px -4px rgb(0 0 0 / 0.6);
+}
+html[data-theme="dark"] .btn-press,
+html[data-theme="dark"] .btn-press:active {
+  box-shadow: none;
+}
+html[data-theme="dark"] .field {
+  background: #14171c;
+  border-color: var(--color-line-strong);
+  box-shadow: none;
+}
+html[data-theme="dark"] .field:focus {
+  border-color: var(--color-terracotta);
+  box-shadow: 0 0 0 3px rgb(126 166 248 / 0.25);
+}
+/* Calm: keep the small movements, drop the playful ones. */
+html[data-theme="dark"] .animate-wiggle,
+html[data-theme="dark"] [class*="hover\:animate-wiggle"]:hover,
+html[data-theme="dark"] .animate-bob,
+html[data-theme="dark"] .animate-float {
+  animation: none;
+}
+/* Red text and native menus readable on dark. */
+html[data-theme="dark"] .text-red-600,
+html[data-theme="dark"] .hover\:text-red-600:hover,
+html[data-theme="dark"] .text-red-700 {
+  color: #f59b9b;
+}
+html[data-theme="dark"] .bg-red-50 {
+  background-color: var(--color-bad-bg);
+}
+html[data-theme="dark"] option {
+  color: var(--color-ink);
+  background: var(--color-cream);
+}
+/* Emails are written for a white page, so they keep one. */
+html[data-theme="dark"] iframe[title="Email content"] {
+  background: #fff;
+  border-radius: 0 0 0.5rem 0.5rem;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-faint) transparent;
