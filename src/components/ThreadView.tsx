@@ -6,7 +6,7 @@ import type { MessageDetail, ThreadDetail } from "@/lib/mail";
 import { senderName } from "@/lib/format";
 import type { Attachment } from "@/lib/mime";
 
-// Loads and renders a thread. To keep long threads readable, older messages
+// Loads and renders a thread, newest message first. To keep long threads readable, older messages
 // fold to one line (the newest stays open) and each message's quoted copy of
 // earlier ones is hidden behind "show quoted text". HTML bodies go into a
 // sandboxed iframe with scripts disabled, so email content can't run code.
@@ -61,7 +61,8 @@ export function ThreadView({ threadId, onLoaded }: { threadId: string; onLoaded?
           {allOpen ? "Fold older messages" : `Open all ${thread.messages.length} messages`}
         </button>
       )}
-      {thread.messages.map((m) => (
+      {/* Newest first, like the cards: the latest message is at the top and open. */}
+      {[...thread.messages].reverse().map((m) => (
         <article key={m.id} className="rounded-lg border border-line">
           <button
             onClick={() => toggle(m.id)}

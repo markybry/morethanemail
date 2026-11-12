@@ -132,12 +132,13 @@ export function EmailPanel(p: Props) {
           }}
         />
       )}
-      {!email.local && <AddToCard email={email} choices={p.cardChoices} onAdd={p.onAddToCard} />}
-      {!email.local && <Labels email={email} here={p.workspaceLabelId} onLabelsChange={p.onLabelsChange} />}
+      {/* What matters most first: the summary (above), next actions, then the emails. */}
       <Tasks email={email} onChange={onChange} />
+      <Emails email={email} onSeenThread={p.onSeenThread} onAddThread={p.onAddThread} onRemoveThread={p.onRemoveThread} />
+      {!email.local && <Labels email={email} here={p.workspaceLabelId} onLabelsChange={p.onLabelsChange} />}
       <Links email={email} onChange={onChange} />
       <Notes email={email} onChange={onChange} />
-      <Emails email={email} onSeenThread={p.onSeenThread} onAddThread={p.onAddThread} onRemoveThread={p.onRemoveThread} />
+      {!email.local && <AddToCard email={email} choices={p.cardChoices} onAdd={p.onAddToCard} />}
     </Drawer>
   );
 }
