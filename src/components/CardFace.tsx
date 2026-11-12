@@ -1,21 +1,33 @@
 "use client";
 
-import type { BoardEmail } from "@/lib/types";
+import { createContext, useContext } from "react";
+import type { BoardEmail, TaskDTO } from "@/lib/types";
 import { dueLabel, isOverdue, senderName, shortDate } from "@/lib/format";
 import { useMail } from "./MailContext";
 import { cardLabelIds, latestThread } from "@/lib/cards";
 
-// A card on the board, in the first column or in a status. It shows the card's
-// title and its newest message, whichever of its threads that is in.
+// Lets a card tick off its next actions without opening it (provided by the board).
+export const CardTaskContext = createContext<((cardId: string, taskId: string, done: boolean) => void) | null>(null);
+
+const NEXT_SHOWN = 4;
+
+// Open actions, soonest due first, then in the order they were added.
+const nextActions = (tasks: TaskDTO[]) =>
+  tasks
+    .filter((t) => !t.done)
+    .map((t, i) => ({ t, i }))
+    .sort((a, b) => (a.t.dueDate ?? "9999").localeCompare(b.t.dueDate ?? "9999") || a.i - b.i)
+    .map((x) => x.t);
+
+// A card on the board, in the first column or in a status. At a glance: what it
+// is (title, and its summary or newest message) and what needs to happen next.
 export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; hideLabelId?: string; dragging?: boolean }) {
   const { labelNames, colorOf } = useMail();
+  const toggleTask = useContext(CardTaskContext);
   const accent = (hideLabelId && colorOf(hideLabelId)) || "var(--color-terracotta)";
-  const open = email.tasks.filter((t) => !t.done);
-  const nextDue = open
-    .map((t) => t.dueDate)
-    .filter((d): d is string => !!d)
-    .sort()[0];
-  const done = email.tasks.length - open.length;
+  const next = nextActions(email.tasks);
+  const done = email.tasks.length - next.length;
+  const summary = email.summary.trim();
 
   // Other labels on the email, most specific only ("Clients/Acme" implies "Clients").
   // The workspace's own label and its parents go without saying.
@@ -44,7 +56,38 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
       <div className={`mt-0.5 text-sm leading-snug ${email.unread ? "font-extrabold text-walnut" : "font-semibold text-ink"}`}>
         {email.title}
       </div>
-      <div className="mt-0.5 truncate text-xs text-muted">{latest.snippet}</div>
+      {summary ? (
+        <div className="mt-0.5 line-clamp-2 text-xs text-bark">{summary}</div>
+      ) : (
+        <div className="mt-0.5 truncate text-xs text-muted">{latest.snippet}</div>
+      )}
+      {next.length > 0 && (
+        <ul className="mt-2 space-y-1 border-t border-dashed border-line pt-1.5">
+          {next.slice(0, NEXT_SHOWN).map((t) => (
+            <li key={t.id} className="flex items-start gap-1.5 text-xs leading-snug">
+              {toggleTask ? (
+                <input
+                  type="checkbox"
+                  checked={false}
+                  aria-label={`Done: ${t.title}`}
+                  // Tick it here without picking the card up or opening it.
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={() => toggleTask(email.threadId, t.id, true)}
+                  className="mt-px h-3.5 w-3.5 shrink-0 cursor-pointer accent-moss"
+                />
+              ) : (
+                <span className="text-muted">○</span>
+              )}
+              <span className="min-w-0 flex-1 text-ink">{t.title}</span>
+              {t.dueDate && (
+                <span className={`shrink-0 font-semibold ${isOverdue(t.dueDate) ? "text-bad-ink" : "text-muted"}`}>{dueLabel(t.dueDate)}</span>
+              )}
+            </li>
+          ))}
+          {next.length > NEXT_SHOWN && <li className="pl-5 text-xs text-muted">+{next.length - NEXT_SHOWN} more</li>}
+        </ul>
+      )}
       {(email.newReply || chips.length > 0 || email.threads.length > 1 || email.tasks.length > 0 || email.notes.length > 0 || email.links.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
           {email.newReply && (
@@ -59,10 +102,9 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
           {email.threads.length > 1 && <Badge>✉ {email.threads.length}</Badge>}
           {email.tasks.length > 0 && (
             <Badge tone={done === email.tasks.length ? "green" : undefined}>
-              ☑ {done}/{email.tasks.length}
+              {done === email.tasks.length ? "✓ All done" : `☑ ${done}/${email.tasks.length}`}
             </Badge>
           )}
-          {nextDue && <Badge tone={isOverdue(nextDue) ? "red" : "amber"}>⏰ {dueLabel(nextDue)}</Badge>}
           {email.notes.length > 0 && <Badge>✎ {email.notes.length}</Badge>}
           {email.links.length > 0 && <Badge>🔗 {email.links.length}</Badge>}
           {chips.slice(0, 3).map((c) => (

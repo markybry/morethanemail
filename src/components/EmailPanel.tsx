@@ -549,7 +549,7 @@ function Tasks({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
   const setTasks = (tasks: TaskDTO[]) => onChange({ ...email, tasks });
 
   return (
-    <Section title={`Tasks ${email.tasks.length ? `· ${email.tasks.filter((t) => t.done).length}/${email.tasks.length}` : ""}`}>
+    <Section title={`Next actions ${email.tasks.length ? `· ${email.tasks.filter((t) => t.done).length}/${email.tasks.length} done` : ""}`}>
       <ul className="space-y-1">
         {email.tasks.map((t) => (
           <li key={t.id} className="group flex items-center gap-2 rounded px-1 py-0.5 hover:bg-oat">
@@ -582,7 +582,7 @@ function Tasks({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
                 await deleteTask(t.id);
               }}
               className="text-faint opacity-0 group-hover:opacity-100 hover:text-red-600"
-              title="Delete task"
+              title="Delete action"
             >
               ✕
             </button>
@@ -603,7 +603,7 @@ function Tasks({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Add a task…"
+          placeholder="Add a next action…"
           className="min-w-0 flex-1 field rounded-xl px-2.5 py-1.5 text-sm"
         />
         <input

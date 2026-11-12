@@ -38,10 +38,11 @@ import {
   saveLaneTemplate,
   setEmailLabels,
   setLaneReopenOnReply,
+  updateTask,
 } from "@/app/actions";
 import type { BoardEmail, LaneDTO, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "@/lib/types";
 import { GROUP_BY, GROUP_BY_NAMES, groupThreads, isGroupBy, type GroupBy } from "@/lib/grouping";
-import { CardFace } from "./CardFace";
+import { CardFace, CardTaskContext } from "./CardFace";
 import { EmailPanel, UNSORTED, type CardChoice } from "./EmailPanel";
 import { cardLabelIds, senderAddress } from "@/lib/cards";
 import { useMail } from "./MailContext";
@@ -464,7 +465,7 @@ export function LabelBoard({
   // ----- lanes -----
   const [newLane, setNewLane] = useState("");
   const [templates, setTemplates] = useState(initialTemplates);
-  const laneWidth = useStoredWidth("mte.w.lane", 288, 200, 640);
+  const laneWidth = useStoredWidth("mte.w.lane", 320, 200, 640);
 
   async function moveLane(index: number, dir: -1 | 1) {
     const target = index + dir;
@@ -526,6 +527,20 @@ export function LabelBoard({
     return undefined;
   };
 
+  // Tick a next action straight from the card.
+  const toggleTask = useCallback(
+    (cardId: string, taskId: string, done: boolean) => {
+      const set = (v: boolean) =>
+        setEmails((prev) => {
+          const e = prev[cardId];
+          return e ? { ...prev, [cardId]: { ...e, tasks: e.tasks.map((t) => (t.id === taskId ? { ...t, done: v } : t)) } } : prev;
+        });
+      set(done);
+      void save(() => updateTask(taskId, { done }), () => set(!done));
+    },
+    [save],
+  );
+
   // Opening a thread on a card marks that thread seen.
   const seenThread = (cardId: string, threadId: string) =>
     setEmails((prev) => {
@@ -539,6 +554,7 @@ export function LabelBoard({
   const activeEmail = activeId ? emails[activeId] : undefined;
 
   return (
+    <CardTaskContext.Provider value={toggleTask}>
     <DndContext
       id="label-board" // stable id avoids an SSR/client hydration mismatch in dnd-kit's aria ids
       sensors={sensors}
@@ -753,6 +769,7 @@ export function LabelBoard({
         />
       )}
     </DndContext>
+    </CardTaskContext.Provider>
   );
 }
 
