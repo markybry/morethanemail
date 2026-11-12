@@ -66,20 +66,16 @@ export async function listThreads(
     const threads = ids.length
       ? all.filter((t) => t.labelIds.some((l) => ids.includes(l)))
       : opts.inboxOrLabelled
-        ? all.filter(
-            (t) =>
-              t.labelIds.some((l) => l.startsWith("Label_")) ||
-              (t.labelIds.includes(INBOX) && !t.labelIds.some((l) => l.startsWith("CATEGORY_") && l !== "CATEGORY_PERSONAL")),
-          )
+        ? all.filter((t) => t.labelIds.some((l) => l.startsWith("Label_")))
         : all;
     return { threads: primaryOnly ? demoThreads(INBOX, true, query) : threads };
   }
 
   // One label filters by id; several (with sub-labels) become an OR search.
   const anyOf = labels.length > 1 ? `{${labels.map((l) => `label:${searchName(l.name)}`).join(" ")}}` : "";
-  // "Recent": the Primary Inbox (no Updates, Promotions, Social or Forums) plus
-  // anything filed under one of the user's labels.
-  const scope = opts.inboxOrLabelled ? "{has:userlabels (in:inbox category:primary)}" : "";
+  // "Recent": what has been triaged, i.e. anything filed under one of the
+  // user's labels (cards in a status are added by the board).
+  const scope = opts.inboxOrLabelled ? "has:userlabels" : "";
   const q = [primaryOnly ? "category:primary" : "", anyOf, scope, query ?? ""].filter(Boolean).join(" ");
   const gmail = gmailFor(user);
   const res = await gmail.users.threads.list({

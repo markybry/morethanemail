@@ -378,7 +378,12 @@ export function LabelBoard({
     [lanes, emails, inLens],
   );
   const shownUnsorted = useMemo(() => unsorted.filter((t) => inLens(emails[t])), [unsorted, emails, inLens]);
-  const shownRecent = useMemo(() => recentIds.filter((t) => emails[t] && inLens(emails[t])), [recentIds, emails, inLens]);
+  // Recent picks up labelled mail that isn't tracked in a status yet (cards in
+  // a status are already on the board), newest first.
+  const shownRecent = useMemo(
+    () => recentIds.filter((t) => emails[t] && inLens(emails[t]) && !placed.has(t) && !emails[t].homeId),
+    [recentIds, emails, inLens, placed],
+  );
   const statusOf = (threadId: string) => lanes.find((l) => l.threadIds.includes(threadId))?.name;
   const shownPlaced = shownLanes.reduce((n, l) => n + l.threadIds.length, 0);
   const newReplies = shownLanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply).length;
@@ -959,7 +964,7 @@ function UnsortedColumn(p: {
               key={String(v)}
               onClick={() => p.onRecentChange(v)}
               className={`flex-1 px-2.5 py-0.5 transition ${p.recent === v ? "bg-moss text-cream" : "text-bark hover:bg-oat"}`}
-              title={v ? "Primary inbox and labelled mail, newest first, including cards already in a status" : "Emails not yet in a status"}
+              title={v ? "Labelled mail that isn't in a status yet, newest first" : "Emails not yet in a status"}
             >
               {v ? "Recent" : "To triage"}
             </button>
@@ -1038,7 +1043,7 @@ function UnsortedColumn(p: {
           </select>
         </label>
         <p className="text-xs font-semibold text-muted">
-          {p.searching ? "Search results" : p.recent ? (p.isInbox ? "Primary inbox and labelled mail, newest first" : "Newest first") : "Not in a status yet"}
+          {p.searching ? "Search results" : p.recent ? (p.isInbox ? "Labelled, not in a status yet, newest first" : "Not in a status yet, newest first") : "Not in a status yet"}
           {!p.recent && ` · ${p.threadIds.length}${p.hasMore ? "+" : ""}`}
           {!p.recent && p.sortedCount > 0 && ` · ${p.sortedCount} in statuses`}
           {p.newReplies > 0 && (
