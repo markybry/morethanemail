@@ -739,7 +739,7 @@ function UnsortedColumn(p: {
           <p className="text-xs text-muted">
             Your workflow, showing only this label&apos;s cards.{" "}
             <Link href="/l/INBOX" className="font-semibold text-terracotta hover:underline">
-              Show everything
+              Back to Inbox
             </Link>
           </p>
         )}

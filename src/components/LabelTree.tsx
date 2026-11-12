@@ -92,7 +92,7 @@ export function MailNav() {
   return (
     <div>
       <NavRow href={hrefFor("INBOX")} active={activeId === "INBOX"} depth={0}>
-        <span className="truncate">Workflow</span>
+        <span className="truncate">Inbox</span>
       </NavRow>
       {tree.map((n) => (
         <TreeNode
