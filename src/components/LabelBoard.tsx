@@ -664,7 +664,7 @@ export function LabelBoard({
       <div className="flex h-full min-h-0 flex-col md:flex-row">
         <ColumnTabs
           columns={[
-            { id: "unsorted", name: isInbox ? "Inbox" : "Unsorted", count: shownUnsorted.length },
+            { id: "unsorted", name: isInbox ? "Inbox" : "To triage", count: shownUnsorted.length },
             ...shownLanes.map((l) => ({ id: l.id, name: l.name, count: l.threadIds.length })),
             { id: "add", name: "+ Status", count: null },
           ]}
@@ -1203,7 +1203,7 @@ function Lane({
       style={widthVar(width.width)}
     >
       <div className={`mx-6 mt-0 h-1.5 rounded-b-full ${colors.bar}`} />
-      <ResizeHandle width={width.width} onResize={width.setWidth} onDone={width.save} onReset={width.reset} label="Resize lanes" />
+      <ResizeHandle width={width.width} onResize={width.setWidth} onDone={width.save} onReset={width.reset} label="Resize statuses" />
       <div className="group flex items-center gap-1 px-3 pt-2.5 pb-1">
         <ThemeIcon icon={icon} size={20} className="cursor-default text-lg hover:animate-wiggle" />
         <InlineEdit value={lane.name} onSave={onRename} className={`font-display text-base font-semibold ${colors.text}`} />

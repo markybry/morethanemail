@@ -41,7 +41,7 @@ export function QuickAddTask() {
         value={title}
         disabled={busy}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder="Add a task…"
+        placeholder="Add a next action…"
         className="field min-w-0 flex-1 rounded-xl px-2.5 py-1.5 text-sm"
       />
       <input
@@ -115,7 +115,7 @@ export function TaskRow({ task }: { task: TaskRowData }) {
               />
             </label>
             <div className="ml-auto">
-              <ConfirmButton label="Delete" confirmLabel="Delete task?" onConfirm={() => deleteTask(t.id)} small />
+              <ConfirmButton label="Delete" confirmLabel="Delete action?" onConfirm={() => deleteTask(t.id)} small />
             </div>
           </div>
         </div>

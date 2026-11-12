@@ -16,7 +16,7 @@ const jetbrains = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["lati
 
 export const metadata: Metadata = {
   title: "More Than Email",
-  description: "Every Gmail label is a workspace; every email is a ticket.",
+  description: "One workflow for your Gmail: cards hold the emails, notes and next actions for each piece of work.",
 };
 
 export const viewport: Viewport = {

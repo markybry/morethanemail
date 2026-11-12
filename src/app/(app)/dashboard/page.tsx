@@ -4,38 +4,23 @@ import { requireUser } from "@/lib/session";
 import { dueLabel, isOverdue, timeAgo } from "@/lib/format";
 import { TaskCheckbox } from "@/components/TaskCheckbox";
 
-const boardLink = (labelId: string | undefined, threadId?: string) =>
-  `/l/${encodeURIComponent(labelId ?? "INBOX")}${threadId ? `?thread=${encodeURIComponent(threadId)}` : ""}`;
+const STALE_DAYS = 7;
+const cardLink = (threadId: string) => `/l/INBOX?thread=${encodeURIComponent(threadId)}`;
 
-// Everything at a glance: how each workspace's lanes stand, what's due, which
-// sorted emails have new replies, and what changed recently.
-export default async function DashboardPage() {
+// Today: what to do next, what has new replies, what has waited too long, and
+// what changed recently. Every card lives in the one workflow, so links open it there.
+export default async function TodayPage() {
   const user = await requireUser();
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
+  const staleBefore = new Date(Date.now() - STALE_DAYS * 86_400_000);
+  const card = { threadId: true, subject: true, title: true } as const;
 
-  const [workspaces, openTasks, replies, activity] = await Promise.all([
-    db.workspace.findMany({
-      where: { userId: user.id },
-      orderBy: { name: "asc" },
-      include: {
-        lanes: { orderBy: { position: "asc" }, include: { _count: { select: { placements: true } } } },
-        _count: { select: { tickets: true } },
-      },
-    }),
+  const [openTasks, replies, stale, activity] = await Promise.all([
     db.task.findMany({
       where: { done: false, userId: user.id },
       orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
-      include: {
-        email: {
-          select: {
-            threadId: true,
-            subject: true,
-            workspace: { select: { labelId: true } },
-            placements: { take: 1, select: { workspace: { select: { labelId: true } } } },
-          },
-        },
-      },
+      include: { email: { select: card } },
     }),
     // Stored dates are as of the last time the app looked at Gmail.
     db.email.findMany({
@@ -48,79 +33,50 @@ export default async function DashboardPage() {
       },
       orderBy: { date: "desc" },
       take: 8,
-      select: {
-        threadId: true,
-        subject: true,
-        date: true,
-        placements: { take: 1, select: { workspace: { select: { labelId: true, name: true } } } },
-        parent: { select: { placements: { take: 1, select: { workspace: { select: { labelId: true, name: true } } } } } },
-      },
+      select: { ...card, date: true, parent: { select: card } },
+    }),
+    // Waiting (a status that reopens on reply) for a week or more.
+    db.placement.findMany({
+      where: { workspace: { userId: user.id }, movedAt: { lt: staleBefore }, lane: { reopenOnReply: true, finished: false } },
+      orderBy: { movedAt: "asc" },
+      take: 10,
+      select: { movedAt: true, lane: { select: { name: true } }, email: { select: card } },
     }),
     db.activity.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
       take: 25,
-      include: {
-        email: { select: { threadId: true, subject: true, placements: { take: 1, select: { workspace: { select: { labelId: true } } } } } },
-        workspace: { select: { labelId: true, name: true } },
-      },
+      include: { email: { select: card } },
     }),
   ]);
 
   const overdue = openTasks.filter((t) => t.dueDate && t.dueDate < startOfToday).length;
-  const sorted = workspaces.reduce((n, w) => n + w.lanes.reduce((m, l) => m + l._count.placements, 0), 0);
-  const boards = workspaces.filter((w) => w.lanes.length > 0 || w._count.tickets > 0);
+  const titleOf = (e: { title: string | null; subject: string }) => e.title || e.subject;
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
-        <h1 className="text-xl font-semibold text-walnut">Dashboard</h1>
+        <h1 className="text-xl font-semibold text-walnut">Today</h1>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Stat label="Open tasks" value={openTasks.length} href="/tasks" />
+          <Stat label="Next actions" value={openTasks.length} href="/tasks" />
           <Stat label="Overdue" value={overdue} href="/tasks" alert={overdue > 0} />
-          <Stat label="New replies in lanes" value={replies.length} alert={replies.length > 0} />
-          <Stat label="Sorted into lanes" value={sorted} />
+          <Stat label="New replies" value={replies.length} alert={replies.length > 0} />
+          <Stat label={`Waiting ${STALE_DAYS}+ days`} value={stale.length} alert={stale.length > 0} />
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
-          <Panel title="Workspaces">
-            {boards.length === 0 && <Empty>No lanes yet. Open a label and add some.</Empty>}
-            <ul className="space-y-3">
-              {boards.map((w) => (
-                <li key={w.id}>
-                  <Link href={boardLink(w.labelId)} className="font-semibold text-walnut hover:text-terracotta">
-                    {w.name.split("/").join(" › ")}
-                  </Link>
-                  <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
-                    {w.lanes.map((l) => (
-                      <span key={l.id} className="rounded-full border border-line bg-paper px-2 py-0.5 text-bark">
-                        {l.name} <b className="text-walnut">{l._count.placements}</b>
-                      </span>
-                    ))}
-                    {w._count.tickets > 0 && (
-                      <span className="rounded-full bg-info-bg px-2 py-0.5 text-info-ink">✎ {w._count.tickets} tickets</span>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-
-          <Panel title="Due next">
-            {openTasks.length === 0 && <Empty>No open tasks.</Empty>}
+          <Panel title="Next actions">
+            {openTasks.length === 0 && <Empty>No next actions. Add them on a card.</Empty>}
             <ul className="divide-y divide-line">
-              {openTasks.slice(0, 8).map((t) => (
+              {openTasks.slice(0, 10).map((t) => (
                 <li key={t.id} className="flex items-center gap-3 py-1.5">
                   <TaskCheckbox taskId={t.id} done={t.done} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm text-walnut">{t.title}</div>
                     {t.email && (
-                      <Link
-                        href={boardLink(t.email.placements[0]?.workspace.labelId ?? t.email.workspace?.labelId, t.email.threadId)}
-                        className="block truncate text-xs text-muted hover:text-terracotta"
-                      >
-                        {t.email.subject}
+                      <Link href={cardLink(t.email.threadId)} className="block truncate text-xs text-muted hover:text-terracotta">
+                        {titleOf(t.email)}
                       </Link>
                     )}
                   </div>
@@ -134,18 +90,19 @@ export default async function DashboardPage() {
             </ul>
           </Panel>
 
-          <Panel title="New replies on sorted emails">
-            {replies.length === 0 && <Empty>Nothing new on the emails in your lanes.</Empty>}
+          <Panel title="New replies">
+            {replies.length === 0 && <Empty>Nothing new on the cards in your statuses.</Empty>}
             <ul className="divide-y divide-line">
               {replies.map((e) => {
-                const where = (e.placements[0] ?? e.parent?.placements[0])?.workspace;
+                const c = e.parent ?? e;
                 return (
                   <li key={e.threadId} className="py-1.5">
-                    <Link href={boardLink(where?.labelId, e.threadId)} className="block truncate text-sm text-walnut hover:text-terracotta">
-                      {e.subject}
+                    <Link href={cardLink(c.threadId)} className="block truncate text-sm text-walnut hover:text-terracotta">
+                      {titleOf(c)}
                     </Link>
                     <div className="truncate text-xs text-muted">
-                      {where?.name} · {timeAgo(e.date.toISOString())}
+                      {e.parent ? `${e.subject} · ` : ""}
+                      {timeAgo(e.date.toISOString())}
                     </div>
                   </li>
                 );
@@ -153,22 +110,34 @@ export default async function DashboardPage() {
             </ul>
           </Panel>
 
+          <Panel title={`Waiting ${STALE_DAYS} days or more`}>
+            {stale.length === 0 && <Empty>Nothing has been waiting too long.</Empty>}
+            <ul className="divide-y divide-line">
+              {stale.map((p) => (
+                <li key={p.email.threadId} className="flex gap-2 py-1.5">
+                  <Link href={cardLink(p.email.threadId)} className="min-w-0 flex-1 truncate text-sm text-walnut hover:text-terracotta">
+                    {titleOf(p.email)}
+                  </Link>
+                  <span className="shrink-0 text-xs text-bad-ink">
+                    {Math.floor((Date.now() - p.movedAt.getTime()) / 86_400_000)} days in {p.lane.name}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+
           <Panel title="Recent activity">
-            {activity.length === 0 && <Empty>Moves, tasks and notes will show up here.</Empty>}
+            {activity.length === 0 && <Empty>Moves, actions and notes will show up here.</Empty>}
             <ul className="divide-y divide-line">
               {activity.map((a) => (
                 <li key={a.id} className="flex gap-2 py-1.5 text-sm">
                   <span className="min-w-0 flex-1 text-bark">
                     {describe(a.kind, a.detail)}{" "}
                     {a.email && (
-                      <Link
-                        href={boardLink(a.workspace?.labelId ?? a.email.placements[0]?.workspace.labelId, a.email.threadId)}
-                        className="font-semibold text-walnut hover:text-terracotta"
-                      >
-                        {a.email.subject}
+                      <Link href={cardLink(a.email.threadId)} className="font-semibold text-walnut hover:text-terracotta">
+                        {titleOf(a.email)}
                       </Link>
                     )}
-                    {a.workspace && <span className="text-muted"> in {a.workspace.name.split("/").join(" › ")}</span>}
                   </span>
                   <span className="shrink-0 text-xs text-muted">{timeAgo(a.createdAt.toISOString())}</span>
                 </li>
@@ -184,11 +153,11 @@ export default async function DashboardPage() {
 function describe(kind: string, detail: string) {
   switch (kind) {
     case "moved":
-      return detail ? `Moved to ${detail}:` : "Back to Unsorted:";
+      return detail ? `Moved to ${detail}:` : "Back to the first column:";
     case "ticket":
       return "New ticket:";
     case "task":
-      return `Task “${detail}” added to`;
+      return `Next action “${detail}” added to`;
     case "taskDone":
       return `Done “${detail}” on`;
     case "note":

@@ -211,7 +211,7 @@ function AddToCard({ email, choices, onAdd }: { email: BoardEmail; choices: Card
     );
   return (
     <Section title="Add to a card" action={<button onClick={() => setOpen(false)} className="text-xs text-muted hover:text-bark">Cancel</button>}>
-      <p className="mb-2 text-xs text-muted">This card&apos;s email, notes and tasks move into the card you pick, and it gets that card&apos;s labels.</p>
+      <p className="mb-2 text-xs text-muted">This card&apos;s email, notes and next actions move into the card you pick, and it gets that card&apos;s labels.</p>
       <input
         autoFocus
         value={query}

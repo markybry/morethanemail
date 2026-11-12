@@ -50,10 +50,10 @@ export default async function TasksPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl p-4 md:p-6">
-        <h1 className="text-xl font-semibold">My tasks</h1>
+        <h1 className="text-xl font-semibold">Next actions</h1>
         <p className="mt-1 text-sm text-muted">{open.length} open, on emails, tickets and on their own.</p>
         <QuickAddTask />
-        {tasks.length === 0 && <p className="mt-8 text-muted">No tasks yet. Add one above, or open an email and add tasks to it.</p>}
+        {tasks.length === 0 && <p className="mt-8 text-muted">No next actions yet. Add one above, or open a card and add them there.</p>}
         {groups
           .filter((g) => g.items.length)
           .map((g) => (

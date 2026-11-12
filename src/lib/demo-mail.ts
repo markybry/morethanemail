@@ -4,6 +4,8 @@ import type { MailLabel, ThreadDetail, ThreadSummary } from "./mail";
 const SEED_LABELS: MailLabel[] = [
   { id: "Label_clients", name: "Clients", unread: 1 },
   { id: "Label_acme", name: "Clients/Acme", unread: 1 },
+  { id: "Label_acme_web", name: "Clients/Acme/Website", unread: 0 },
+  { id: "Label_acme_retainer", name: "Clients/Acme/Retainer", unread: 0 },
   { id: "Label_studio9", name: "Clients/Studio 9", unread: 0 },
   { id: "Label_finance", name: "Finance", unread: 0 },
   { id: "Label_home", name: "Home", unread: 1 },
@@ -21,7 +23,7 @@ type DemoThread = {
 };
 
 const SEED_THREADS: DemoThread[] = [
-  { id: "demo-1", from: "Sarah Chen <sarah@acme.co>", subject: "Q4 website redesign - kickoff", hoursAgo: 2, unread: true, labels: ["INBOX", "CATEGORY_PERSONAL", "Label_clients", "Label_acme"],
+  { id: "demo-1", from: "Sarah Chen <sarah@acme.co>", subject: "Q4 website redesign - kickoff", hoursAgo: 2, unread: true, labels: ["INBOX", "CATEGORY_PERSONAL", "Label_clients", "Label_acme", "Label_acme_web"],
     body: "Hi,\n\nThanks for the call earlier. Attached is the brief for the Q4 redesign. Could you send over a rough timeline and quote by Friday?\n\nKey asks:\n- New homepage\n- Pricing page refresh\n- Blog migration\n\nCheers,\nSarah" },
   { id: "demo-2", from: "Accounts <billing@hostly.io>", subject: "Invoice #4821 is due in 7 days", hoursAgo: 5, labels: ["INBOX", "CATEGORY_UPDATES", "Label_finance"],
     body: "Your invoice #4821 for £49.00 is due on the 30th. Pay online from your account dashboard." },
@@ -41,6 +43,11 @@ const SEED_THREADS: DemoThread[] = [
     body: "Our biggest sale of the season. Don't miss out!" },
   { id: "demo-10", from: "Old Client <ops@oldclient.com>", subject: "Thanks for wrapping up the migration", hoursAgo: 400, labels: ["Label_clients"],
     body: "All done on our side. Thanks again!" },
+  // Archived under labels: found through the label, Recent or search. Shows quoted text folding.
+  { id: "demo-11", from: "Dev Rao <dev@acme.co>", subject: "Website redesign - hosting questions", hoursAgo: 26, labels: ["Label_clients", "Label_acme", "Label_acme_web"],
+    body: "Hi,\n\nSarah asked me to pick up the hosting side. Can we keep the current CDN, and who owns the DNS change?\n\nThanks,\nDev\n\nOn Mon, Sarah Chen <sarah@acme.co> wrote:\n> Looping in Dev for hosting.\n> Thanks for the call earlier." },
+  { id: "demo-12", from: "Sarah Chen <sarah@acme.co>", subject: "Retainer renewal for next year", hoursAgo: 220, labels: ["Label_clients", "Label_acme", "Label_acme_retainer"],
+    body: "Hi,\n\nOur retainer ends next month. Could you send the renewal terms when you get a chance?\n\nSarah" },
 ];
 
 // The demo mailbox is edited in memory (labels applied, labels created). Next.js

@@ -43,7 +43,7 @@ export function Sidebar({ user, mobileOpen, onClose }: Props) {
             pathname === "/dashboard" ? "bg-side-strong/15 text-side-strong shadow-[inset_0_1px_3px_rgb(0_0_0/0.3)]" : ""
           }`}
         >
-          <ThemeIcon icon={theme.icons.dashboard} size={16} /> Dashboard
+          <ThemeIcon icon={theme.icons.dashboard} size={16} /> Today
         </Link>
         <Link
           href="/tasks"
@@ -51,7 +51,7 @@ export function Sidebar({ user, mobileOpen, onClose }: Props) {
             pathname === "/tasks" ? "bg-side-strong/15 text-side-strong shadow-[inset_0_1px_3px_rgb(0_0_0/0.3)]" : ""
           }`}
         >
-          <ThemeIcon icon={theme.icons.tasks} size={16} /> My tasks
+          <ThemeIcon icon={theme.icons.tasks} size={16} /> Next actions
         </Link>
 
         <p className="mt-5 px-5 pb-1 text-xs font-bold tracking-widest text-side-muted uppercase">Labels</p>

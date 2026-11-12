@@ -1,5 +1,7 @@
 # Roadmap: one workflow, labels as lenses
 
+**Status, 12 November 2026:** steps 1 to 6 are built and live. What's left is under "Later", plus the few items marked *later* in the steps.
+
 _Written 12 November 2026, fifth pass. Nothing here is built yet._
 
 ## The idea in one line
@@ -158,7 +160,7 @@ Done when: you can get the Inbox column to empty, and stale waiting cards are ob
 - On a phone, every card has a "Move to…" menu, and Inbox cards an Archive button, so nothing needs press-and-drag. (Swipe gestures were dropped: they clash with swiping between statuses.)
 - Pinned labels and the label tree in the slide-in menu, as now.
 
-### Step 6: tidy the edges
+### Step 6: tidy the edges (done)
 
 - The dashboard becomes **Today**: due tasks, new replies, stale waiting cards, recent activity. The per-workspace panel goes, because the workflow already shows it.
 - README and demo data rewritten around the workflow, lenses and one pinned label with several cards.
