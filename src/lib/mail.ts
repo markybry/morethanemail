@@ -55,20 +55,27 @@ export async function labelWithSubLabels(user: User, labelId: string): Promise<{
 // Gmail's Primary tab. A query narrows the list. Gmail leaves out spam and trash.
 export async function listThreads(
   user: User,
-  opts: { labels?: { id: string; name: string }[]; primaryOnly?: boolean; query?: string; pageToken?: string },
+  opts: { labels?: { id: string; name: string }[]; inboxOrLabelled?: boolean; primaryOnly?: boolean; query?: string; pageToken?: string },
 ): Promise<{ threads: ThreadSummary[]; nextPageToken?: string }> {
   const query = opts.query?.trim();
   const labels = opts.labels ?? [];
   const primaryOnly = labels.length === 1 && labels[0].id === INBOX && !!opts.primaryOnly;
   if (user.isDemo) {
     const ids = labels.map((l) => l.id);
-    const threads = ids.length ? demoThreads(undefined, primaryOnly, query).filter((t) => t.labelIds.some((l) => ids.includes(l))) : demoThreads(undefined, false, query);
+    const all = demoThreads(undefined, false, query);
+    const threads = ids.length
+      ? all.filter((t) => t.labelIds.some((l) => ids.includes(l)))
+      : opts.inboxOrLabelled
+        ? all.filter((t) => t.labelIds.some((l) => l === INBOX || l.startsWith("Label_")))
+        : all;
     return { threads: primaryOnly ? demoThreads(INBOX, true, query) : threads };
   }
 
   // One label filters by id; several (with sub-labels) become an OR search.
   const anyOf = labels.length > 1 ? `{${labels.map((l) => `label:${searchName(l.name)}`).join(" ")}}` : "";
-  const q = [primaryOnly ? "category:primary" : "", anyOf, query ?? ""].filter(Boolean).join(" ");
+  // "Recent": the Inbox plus anything filed under one of the user's labels.
+  const scope = opts.inboxOrLabelled ? "{in:inbox has:userlabels}" : "";
+  const q = [primaryOnly ? "category:primary" : "", anyOf, scope, query ?? ""].filter(Boolean).join(" ");
   const gmail = gmailFor(user);
   const res = await gmail.users.threads.list({
     userId: "me",

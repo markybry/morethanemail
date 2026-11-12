@@ -6,8 +6,13 @@ import { dueLabel, isOverdue, senderName, shortDate } from "@/lib/format";
 import { useMail } from "./MailContext";
 import { cardLabelIds, latestThread } from "@/lib/cards";
 
-// Lets a card tick off its next actions without opening it (provided by the board).
-export const CardTaskContext = createContext<((cardId: string, taskId: string, done: boolean) => void) | null>(null);
+// What the board offers its cards: ticking off next actions without opening
+// the card, and how long the card has sat in its status.
+export type CardAge = { text: string; stale: boolean };
+export const CardBoardContext = createContext<{
+  toggleTask: (cardId: string, taskId: string, done: boolean) => void;
+  ageOf: (threadId: string) => CardAge | null;
+} | null>(null);
 
 const NEXT_SHOWN = 4;
 
@@ -23,7 +28,9 @@ const nextActions = (tasks: TaskDTO[]) =>
 // is (title, and its summary or newest message) and what needs to happen next.
 export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; hideLabelId?: string; dragging?: boolean }) {
   const { labelNames, colorOf } = useMail();
-  const toggleTask = useContext(CardTaskContext);
+  const board = useContext(CardBoardContext);
+  const toggleTask = board?.toggleTask;
+  const age = board?.ageOf(email.threadId) ?? null;
   const accent = (hideLabelId && colorOf(hideLabelId)) || "var(--color-terracotta)";
   const next = nextActions(email.tasks);
   const done = email.tasks.length - next.length;
@@ -43,7 +50,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
   return (
     <div
       className={`card-tactile group/card animate-rise relative cursor-grab overflow-hidden rounded-2xl p-3 pl-4 transition duration-200 hover:-translate-y-0.5 active:translate-y-px ${
-        email.newReply ? "ring-2 ring-mustard/70" : ""
+        email.newReply ? "ring-2 ring-mustard/70" : age?.stale ? "ring-2 ring-bad-ink/40" : ""
       } ${dragging ? "w-68 rotate-2 cursor-grabbing" : ""}`}
     >
       <span className="absolute inset-y-2 left-1.5 w-1 rounded-full transition-all group-hover/card:w-1.5" style={{ background: accent }} />
@@ -88,7 +95,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
           {next.length > NEXT_SHOWN && <li className="pl-5 text-xs text-muted">+{next.length - NEXT_SHOWN} more</li>}
         </ul>
       )}
-      {(email.newReply || chips.length > 0 || email.threads.length > 1 || email.tasks.length > 0 || email.notes.length > 0 || email.links.length > 0) && (
+      {(email.newReply || !!age || chips.length > 0 || email.threads.length > 1 || email.tasks.length > 0 || email.notes.length > 0 || email.links.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
           {email.newReply && (
             <Badge tone="blue">
@@ -99,6 +106,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
               New reply
             </Badge>
           )}
+          {age && <Badge tone={age.stale ? "red" : undefined}>⏳ {age.text}</Badge>}
           {email.threads.length > 1 && <Badge>✉ {email.threads.length}</Badge>}
           {email.tasks.length > 0 && (
             <Badge tone={done === email.tasks.length ? "green" : undefined}>

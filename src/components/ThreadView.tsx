@@ -65,14 +65,17 @@ export function ThreadView({ threadId, onLoaded }: { threadId: string; onLoaded?
         <article key={m.id} className="rounded-lg border border-line">
           <button
             onClick={() => toggle(m.id)}
-            className={`flex w-full gap-2 px-3 py-2 text-left text-xs text-muted ${open.has(m.id) ? "border-b border-line" : "hover:bg-oat"}`}
+            className={`block w-full px-3 py-2 text-left text-xs text-muted ${open.has(m.id) ? "border-b border-line" : "hover:bg-oat"}`}
             aria-expanded={open.has(m.id)}
           >
-            <span className="shrink-0 font-medium text-bark" title={m.from}>
-              {senderName(m.from)}
+            <span className="flex gap-2">
+              <span className="min-w-0 flex-1 truncate font-medium text-bark" title={m.from}>
+                {senderName(m.from)}
+              </span>
+              <span className="shrink-0">{new Date(m.date).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
             </span>
-            <span className="min-w-0 flex-1 truncate">{open.has(m.id) ? "" : preview(m)}</span>
-            <span className="shrink-0">{new Date(m.date).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
+            {/* Folded: the first few lines of what this message says, so most can be read without opening. */}
+            {!open.has(m.id) && <span className="mt-1 line-clamp-3 text-sm leading-snug text-ink">{preview(m)}</span>}
           </button>
           {open.has(m.id) && (
             <>
@@ -89,7 +92,7 @@ export function ThreadView({ threadId, onLoaded }: { threadId: string; onLoaded?
 // The first words of a message's own text, for its folded line.
 function preview(m: MessageDetail) {
   const text = m.text ?? (m.html ?? "").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ");
-  return ownText(text).replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim().slice(0, 140);
+  return ownText(text).replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim().slice(0, 400);
 }
 
 // Where the quoted copy of earlier messages starts in a plain-text reply.

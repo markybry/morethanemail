@@ -23,6 +23,7 @@ import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from "@dnd-kit/utilities";
 import {
   addThreadToCard,
+  archiveThreads,
   applyLaneTemplate,
   arrangeEmails,
   createLane,
@@ -37,12 +38,13 @@ import {
   reorderLanes,
   saveLaneTemplate,
   setEmailLabels,
+  setLaneFinished,
   setLaneReopenOnReply,
   updateTask,
 } from "@/app/actions";
 import type { BoardEmail, LaneDTO, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "@/lib/types";
 import { GROUP_BY, GROUP_BY_NAMES, groupThreads, isGroupBy, type GroupBy } from "@/lib/grouping";
-import { CardFace, CardTaskContext } from "./CardFace";
+import { CardFace, CardBoardContext, type CardAge } from "./CardFace";
 import { EmailPanel, UNSORTED, type CardChoice } from "./EmailPanel";
 import { cardLabelIds, senderAddress } from "@/lib/cards";
 import { useMail } from "./MailContext";
@@ -68,6 +70,7 @@ const T = "t:"; // draggable email ids
 const LANE = "lane:"; // droppable column ids; "lane:<id>#<row>" for one row of a column
 const fromId = (id: string) => id.slice(T.length);
 const GENERAL = "__general"; // the row for cards with no sub-label
+const STALE_DAYS = 7; // a card waiting this long is flagged
 
 // A row of the board: one sub-label of the label being looked through.
 type Row = { key: string; labelId: string | null; name: string; path: string };
@@ -293,6 +296,18 @@ export function LabelBoard({
   const persist = async (threadId: string, from: string | undefined, to: string, cols: Columns, before: Columns) => {
     if (from === to && to === UNSORTED) return;
     reopened.current.add(threadId);
+    if (from !== to && to !== UNSORTED) {
+      const now = new Date().toISOString();
+      setLanes((prev) => prev.map((l) => (l.id === to ? { ...l, since: { ...l.since, [threadId]: now } } : l)));
+      // A finished status archives the card in Gmail (done on the server); show it here too.
+      if (lanes.find((l) => l.id === to)?.finished)
+        setEmails((prev) => {
+          const e = prev[threadId];
+          if (!e) return prev;
+          const out = (ids: string[]) => ids.filter((x) => x !== "INBOX");
+          return { ...prev, [threadId]: { ...e, labelIds: out(e.labelIds), threads: e.threads.map((t) => ({ ...t, labelIds: out(t.labelIds) })) } };
+        });
+    }
     const affected = new Set([from, to].filter((x): x is string => !!x && x !== UNSORTED));
     const email = emails[threadId];
     await save(
@@ -541,6 +556,75 @@ export function LabelBoard({
     [save],
   );
 
+  // How long a card has been in its status; a long wait in a waiting status is flagged.
+  const ageOf = useCallback(
+    (threadId: string): CardAge | null => {
+      const lane = lanes.find((l) => l.threadIds.includes(threadId));
+      const since = lane?.since[threadId];
+      if (!lane || lane.finished || !since) return null;
+      const days = Math.floor((Date.now() - Date.parse(since)) / 86_400_000);
+      if (days < 1) return null;
+      return { text: `${days} day${days === 1 ? "" : "s"} in ${lane.name}`, stale: lane.reopenOnReply && days >= STALE_DAYS };
+    },
+    [lanes],
+  );
+  const cardBoard = useMemo(() => ({ toggleTask, ageOf }), [toggleTask, ageOf]);
+
+  // ----- triage: archive, and keys to file the open email -----
+  // After filing or archiving the open email, open the next one in the first column.
+  const openNext = (threadId: string) => {
+    const list = recent ? shownRecent : shownUnsorted;
+    const i = list.indexOf(threadId);
+    if (i < 0) return;
+    setSelected(list[i + 1] ?? list[i - 1] ?? null);
+  };
+
+  const archive = async (threadId: string, advance: boolean) => {
+    const e = emails[threadId];
+    const ids = (e?.threads ?? []).map((t) => t.threadId).filter((t) => !t.startsWith("local:"));
+    if (!e || ids.length === 0) return;
+    if (advance) openNext(threadId);
+    const before = unsorted;
+    if (isInbox) setUnsorted((prev) => prev.filter((x) => x !== threadId));
+    const res = await archiveThreads(ids);
+    if (res.error || !res.labelIds) {
+      setUnsorted(before);
+      setSaveError(res.error ?? "Couldn't archive that email.");
+      return;
+    }
+    const labels = res.labelIds;
+    setEmails((prev) => {
+      const cur = prev[threadId];
+      if (!cur) return prev;
+      return {
+        ...prev,
+        [threadId]: {
+          ...cur,
+          labelIds: labels[cur.threadId] ?? cur.labelIds,
+          threads: cur.threads.map((t) => ({ ...t, labelIds: labels[t.threadId] ?? t.labelIds })),
+        },
+      };
+    });
+  };
+
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.metaKey || ev.ctrlKey || ev.altKey || !selected) return;
+      if ((ev.target as HTMLElement | null)?.closest?.("input, textarea, select, [contenteditable='true']")) return;
+      const fromFirst = !lanes.some((l) => l.threadIds.includes(selected));
+      if (ev.key === "e" && isInbox && fromFirst) {
+        ev.preventDefault();
+        void archive(selected, true);
+      } else if (/^[1-9]$/.test(ev.key) && lanes[Number(ev.key) - 1]) {
+        ev.preventDefault();
+        if (fromFirst) openNext(selected);
+        void place(selected, lanes[Number(ev.key) - 1].id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   // Opening a thread on a card marks that thread seen.
   const seenThread = (cardId: string, threadId: string) =>
     setEmails((prev) => {
@@ -554,7 +638,7 @@ export function LabelBoard({
   const activeEmail = activeId ? emails[activeId] : undefined;
 
   return (
-    <CardTaskContext.Provider value={toggleTask}>
+    <CardBoardContext.Provider value={cardBoard}>
     <DndContext
       id="label-board" // stable id avoids an SSR/client hydration mismatch in dnd-kit's aria ids
       sensors={sensors}
@@ -597,6 +681,8 @@ export function LabelBoard({
           state={listState}
           error={listError}
           hasMore={!!nextPage}
+          laneCount={lanes.length}
+          onArchive={isInbox && !recent ? (id) => void archive(id, selected === id) : undefined}
           selected={selected}
           onQueryChange={setQuery}
           onSearch={() => {
@@ -636,6 +722,11 @@ export function LabelBoard({
                 const set = (v: boolean) => setLanes((prev) => prev.map((l) => (l.id === lane.id ? { ...l, reopenOnReply: v } : l)));
                 set(on);
                 await save(() => setLaneReopenOnReply(lane.id, on), () => set(!on));
+              }}
+              onFinishedChange={async (on) => {
+                const set = (v: boolean) => setLanes((prev) => prev.map((l) => (l.id === lane.id ? { ...l, finished: v } : l)));
+                set(on);
+                await save(() => setLaneFinished(lane.id, on), () => set(!on));
               }}
               onOpen={setSelected}
               rows={rows}
@@ -769,13 +860,15 @@ export function LabelBoard({
         />
       )}
     </DndContext>
-    </CardTaskContext.Provider>
+    </CardBoardContext.Provider>
   );
 }
 
 // ---------- columns ----------
 
 function UnsortedColumn(p: {
+  laneCount: number;
+  onArchive?: (threadId: string) => void;
   title: string;
   labelId: string;
   isLens: boolean;
@@ -857,12 +950,18 @@ function UnsortedColumn(p: {
               key={String(v)}
               onClick={() => p.onRecentChange(v)}
               className={`flex-1 px-2.5 py-0.5 transition ${p.recent === v ? "bg-moss text-cream" : "text-bark hover:bg-oat"}`}
-              title={v ? "Everything, newest first, including cards already in a status" : "Emails not yet in a status"}
+              title={v ? "Inbox and labelled mail, newest first, including cards already in a status" : "Emails not yet in a status"}
             >
               {v ? "Recent" : "To triage"}
             </button>
           ))}
         </div>
+        {p.onArchive && p.laneCount > 0 && (
+          <p className="text-xs text-muted" title="Keyboard shortcuts while an email is open">
+            Open an email, then <kbd className="font-semibold">1</kbd>–<kbd className="font-semibold">{Math.min(p.laneCount, 9)}</kbd> files it
+            into a status, <kbd className="font-semibold">e</kbd> archives it.
+          </p>
+        )}
         {p.isLens && (
           <p className="text-xs text-muted">
             Your workflow, showing only this label&apos;s cards.{" "}
@@ -930,7 +1029,8 @@ function UnsortedColumn(p: {
           </select>
         </label>
         <p className="text-xs font-semibold text-muted">
-          {p.searching ? "Search results" : p.recent ? (p.isInbox ? "All mail, newest first" : "Newest first") : "Not in a status yet"}
+          {p.searching ? "Search results" : p.recent ? (p.isInbox ? "Inbox and labelled mail, newest first" : "Newest first") : "Not in a status yet"}
+          {!p.recent && ` · ${p.threadIds.length}${p.hasMore ? "+" : ""}`}
           {!p.recent && p.sortedCount > 0 && ` · ${p.sortedCount} in statuses`}
           {p.newReplies > 0 && (
             <span className="text-accent-ink">
@@ -963,7 +1063,14 @@ function UnsortedColumn(p: {
                     <CardFace email={p.emails[id]} hideLabelId={p.labelId} />
                   </button>
                 ) : (
-                  <DraggableEmail key={id} email={p.emails[id]} labelId={p.labelId} selected={p.selected === id} onOpen={() => p.onOpen(id)} />
+                  <DraggableEmail
+                    key={id}
+                    email={p.emails[id]}
+                    labelId={p.labelId}
+                    selected={p.selected === id}
+                    onOpen={() => p.onOpen(id)}
+                    onArchive={p.onArchive && !p.emails[id].local ? () => p.onArchive!(id) : undefined}
+                  />
                 )
               ) : null,
             )}
@@ -999,7 +1106,19 @@ function UnsortedColumn(p: {
   );
 }
 
-function DraggableEmail({ email, labelId, selected, onOpen }: { email: BoardEmail; labelId: string; selected: boolean; onOpen: () => void }) {
+function DraggableEmail({
+  email,
+  labelId,
+  selected,
+  onOpen,
+  onArchive,
+}: {
+  email: BoardEmail;
+  labelId: string;
+  selected: boolean;
+  onOpen: () => void;
+  onArchive?: () => void;
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `${T}${email.threadId}` });
   return (
     <div
@@ -1007,9 +1126,22 @@ function DraggableEmail({ email, labelId, selected, onOpen }: { email: BoardEmai
       {...attributes}
       {...listeners}
       onClick={onOpen}
-      className={`touch-manipulation ${isDragging ? "opacity-30" : ""} ${selected ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper" : ""}`}
+      className={`group/drag relative touch-manipulation ${isDragging ? "opacity-30" : ""} ${selected ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper" : ""}`}
     >
       <CardFace email={email} hideLabelId={labelId} />
+      {onArchive && (
+        <button
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onArchive();
+          }}
+          className="btn-press absolute right-2 bottom-2 rounded-lg bg-oat px-2 py-0.5 text-xs font-semibold text-bark opacity-0 transition group-hover/drag:opacity-100 hover:text-terracotta max-md:opacity-100"
+          title="Archive: needs nothing (e)"
+        >
+          Archive
+        </button>
+      )}
     </div>
   );
 }
@@ -1024,6 +1156,7 @@ function Lane({
   onRename,
   onDelete,
   onReopenChange,
+  onFinishedChange,
   onOpen,
   rows,
   rowOf,
@@ -1040,6 +1173,7 @@ function Lane({
   onRename: (name: string) => Promise<void>;
   onDelete: () => Promise<void>;
   onReopenChange: (on: boolean) => Promise<void>;
+  onFinishedChange: (on: boolean) => Promise<void>;
   onOpen: (threadId: string) => void;
   rows: Row[] | null;
   rowOf: (e: BoardEmail | undefined) => string;
@@ -1069,6 +1203,11 @@ function Lane({
             ↩
           </span>
         )}
+        {lane.finished && (
+          <span className="text-xs text-muted" title="Finished: cards here are archived in Gmail and drop off after two weeks">
+            ✓
+          </span>
+        )}
         <div className="ml-auto flex items-center opacity-0 transition group-hover:opacity-100 max-md:opacity-100">
           <button
             onClick={() => onReopenChange(!lane.reopenOnReply)}
@@ -1081,6 +1220,18 @@ function Lane({
             aria-pressed={lane.reopenOnReply}
           >
             ↩
+          </button>
+          <button
+            onClick={() => onFinishedChange(!lane.finished)}
+            className={`px-1 text-xs ${lane.finished ? "font-bold text-terracotta" : "text-muted"}`}
+            title={
+              lane.finished
+                ? "Finished: cards moved here are archived in Gmail and drop off after two weeks. Click to stop."
+                : "Mark as finished: cards moved here are archived in Gmail and drop off after two weeks"
+            }
+            aria-pressed={lane.finished}
+          >
+            ✓
           </button>
           <button disabled={isFirst} onClick={() => onMove(-1)} className="px-1 text-muted disabled:opacity-30" title="Move left">
             ‹

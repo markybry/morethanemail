@@ -38,8 +38,17 @@ export type BoardEmail = ThreadSnapshot & {
 };
 
 // reopenOnReply: a new reply sends the email back to unsorted for triage.
-// finished: work here is done; its cards don't count as open.
-export type LaneDTO = { id: string; name: string; reopenOnReply: boolean; finished: boolean; threadIds: string[] };
+// finished: work here is done; its cards don't count as open, moving a card
+// here archives it in Gmail, and it drops off after two weeks.
+// since: when each card came into this status (ISO), by threadId.
+export type LaneDTO = {
+  id: string;
+  name: string;
+  reopenOnReply: boolean;
+  finished: boolean;
+  threadIds: string[];
+  since: Record<string, string>;
+};
 
 export type TemplateLane = { name: string; reopenOnReply: boolean; finished?: boolean };
 export type LaneTemplateDTO = { id: string; name: string; builtIn: boolean; lanes: TemplateLane[] };

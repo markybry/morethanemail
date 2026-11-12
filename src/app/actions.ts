@@ -50,8 +50,8 @@ const revalidateBoards = () => revalidatePath("/l/[labelId]", "page");
 
 type ListResult = { emails: BoardEmail[]; nextPageToken?: string; error?: string };
 
-// One page of a label's emails, its sub-labels' included; "ALL" for all mail,
-// newest first. Errors come back as readable text because production hides the
+// One page of a label's emails, its sub-labels' included; "ALL" for the Inbox
+// plus everything labelled, newest first. Errors come back as readable text because production hides the
 // message of anything thrown from a server action.
 export async function fetchLabelEmails(
   labelId: string,
@@ -60,7 +60,7 @@ export async function fetchLabelEmails(
   const user = await requireUser();
   try {
     const labels = labelId === "ALL" ? undefined : await labelWithSubLabels(user, labelId);
-    const res = await listThreads(user, { labels, ...opts });
+    const res = await listThreads(user, { labels, inboxOrLabelled: labelId === "ALL", ...opts });
     return { emails: await withStoredMeta(user.id, res.threads), nextPageToken: res.nextPageToken };
   } catch (e) {
     console.error("fetchLabelEmails failed", e);
@@ -231,7 +231,7 @@ export async function createLane(workspaceId: string, name: string): Promise<Lan
   const count = await db.lane.count({ where: { workspaceId } });
   const lane = await db.lane.create({ data: { workspaceId, name: name.trim() || "New lane", position: count } });
   revalidateBoards();
-  return { id: lane.id, name: lane.name, reopenOnReply: lane.reopenOnReply, finished: lane.finished, threadIds: [] };
+  return { id: lane.id, name: lane.name, reopenOnReply: lane.reopenOnReply, finished: lane.finished, threadIds: [], since: {} };
 }
 
 export async function renameLane(laneId: string, name: string) {
@@ -244,6 +244,34 @@ export async function setLaneReopenOnReply(laneId: string, reopenOnReply: boolea
   await ownLane(laneId);
   await db.lane.update({ where: { id: laneId }, data: { reopenOnReply } });
   revalidateBoards();
+}
+
+// A finished status: moving a card there archives it, and it drops off later.
+export async function setLaneFinished(laneId: string, finished: boolean) {
+  await ownLane(laneId);
+  await db.lane.update({ where: { id: laneId }, data: { finished } });
+  revalidateBoards();
+}
+
+// Archive threads in Gmail (take them out of the Inbox). Returns each thread's labels after.
+export async function archiveThreads(threadIds: string[]): Promise<{ labelIds?: Record<string, string[]>; error?: string }> {
+  const user = await requireUser();
+  try {
+    return { labelIds: await archiveFor(user, threadIds) };
+  } catch (e) {
+    console.error("archiveThreads failed", e);
+    return { error: mailErrorMessage(e) };
+  }
+}
+
+async function archiveFor(user: Awaited<ReturnType<typeof requireUser>>, threadIds: string[]) {
+  const out: Record<string, string[]> = {};
+  for (const t of threadIds.filter((t) => !isLocalThread(t))) {
+    const labelIds = await modifyThreadLabels(user, t, [], ["INBOX"]);
+    await db.email.updateMany({ where: { userId: user.id, threadId: t }, data: { labelIds } });
+    out[t] = labelIds;
+  }
+  return out;
 }
 
 // Deleting a lane sends its emails back to unsorted (their placements go with it).
@@ -410,7 +438,7 @@ export async function applyLaneTemplate(workspaceId: string, lanes: TemplateLane
     ),
   );
   revalidateBoards();
-  return created.map((l) => ({ id: l.id, name: l.name, reopenOnReply: l.reopenOnReply, finished: l.finished, threadIds: [] }));
+  return created.map((l) => ({ id: l.id, name: l.name, reopenOnReply: l.reopenOnReply, finished: l.finished, threadIds: [], since: {} }));
 }
 
 export async function saveLaneTemplate(name: string, lanes: TemplateLane[]): Promise<LaneTemplateDTO> {
@@ -483,12 +511,37 @@ export async function arrangeEmails(
           db.placement.upsert({
             where: { emailId: idOf.get(t)! },
             create: { workspaceId, laneId: l.laneId, emailId: idOf.get(t)!, position },
-            update: { workspaceId, laneId: l.laneId, position },
+            update: {
+              workspaceId,
+              laneId: l.laneId,
+              position,
+              ...(laneBefore.get(idOf.get(t)!) !== l.laneId ? { movedAt: new Date() } : {}),
+            },
           }),
         ),
     ),
     db.activity.createMany({ data: moves.map((m) => ({ userId: user.id, workspaceId, kind: "moved", ...m })) }),
   ]);
+  // Cards that just reached a finished status are archived in Gmail, every thread.
+  const finishedLanes = new Set(
+    (await db.lane.findMany({ where: { id: { in: laneIds }, finished: true }, select: { id: true } })).map((l) => l.id),
+  );
+  const finishedIds = change.lanes
+    .filter((l) => finishedLanes.has(l.laneId))
+    .flatMap((l) => l.threadIds)
+    .filter((t) => idOf.has(t) && laneBefore.get(idOf.get(t)!) !== change.lanes.find((x) => x.threadIds.includes(t))?.laneId);
+  if (finishedIds.length) {
+    const cards = await db.email.findMany({
+      where: { userId: user.id, threadId: { in: finishedIds } },
+      select: { threadId: true, labelIds: true, threads: { select: { threadId: true, labelIds: true } } },
+    });
+    const inInbox = cards.flatMap((c) => [c, ...c.threads]).filter((t) => t.labelIds.includes("INBOX")).map((t) => t.threadId);
+    try {
+      await archiveFor(user, inInbox);
+    } catch (e) {
+      console.error("Archiving finished cards failed", e);
+    }
+  }
   revalidateBoards();
 }
 

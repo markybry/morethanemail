@@ -116,6 +116,9 @@ export function upsertEmail(userId: string, t: ThreadSnapshot) {
   });
 }
 
+// How long a finished card stays on the board.
+export const FINISHED_SHOWN_DAYS = 14;
+
 // The statuses a new main workflow starts with. Waiting and Done send a card
 // back to the Inbox column when a reply arrives.
 const DEFAULT_STATUSES = [
@@ -177,23 +180,32 @@ export async function loadWorkspace(
       },
     },
   });
+  // Finished cards drop off the board two weeks after they got there (they're
+  // still found through their labels, Recent and search).
+  const cutoff = Date.now() - FINISHED_SHOWN_DAYS * 86_400_000;
+  const lanes = ws.lanes.map((l) => ({
+    ...l,
+    shown: l.placements.filter((p) => !(l.finished && p.movedAt.getTime() < cutoff)),
+  }));
+  const placedIds = new Set(ws.lanes.flatMap((l) => l.placements.map((p) => p.email.threadId)));
   const emails: Record<string, BoardEmail> = {};
-  for (const l of ws.lanes) for (const p of l.placements) emails[p.email.threadId] = toBoardEmail(p.email);
+  for (const l of lanes) for (const p of l.shown) emails[p.email.threadId] = toBoardEmail(p.email);
   // Tickets with no email: Gmail doesn't list them, so unplaced ones come from here.
   const tickets = await db.email.findMany({ where: { userId, workspaceId }, include: emailInclude, orderBy: { date: "desc" } });
-  const ticketIds = tickets.filter((t) => !emails[t.threadId]).map((t) => t.threadId);
-  for (const t of tickets) emails[t.threadId] = toBoardEmail(t);
+  const ticketIds = tickets.filter((t) => !placedIds.has(t.threadId)).map((t) => t.threadId);
+  for (const t of tickets) if (!placedIds.has(t.threadId) || emails[t.threadId]) emails[t.threadId] = toBoardEmail(t);
   return {
     workspace: {
       id: ws.id,
       labelId: ws.labelId,
       name: ws.name,
-      lanes: ws.lanes.map((l) => ({
+      lanes: lanes.map((l) => ({
         id: l.id,
         name: l.name,
         reopenOnReply: l.reopenOnReply,
         finished: l.finished,
-        threadIds: l.placements.map((p) => p.email.threadId),
+        threadIds: l.shown.map((p) => p.email.threadId),
+        since: Object.fromEntries(l.shown.map((p) => [p.email.threadId, p.movedAt.toISOString()])),
       })),
       ticketIds,
       lens,

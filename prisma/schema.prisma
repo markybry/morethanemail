@@ -114,6 +114,7 @@ model Placement {
   emailId     String
   email       Email     @relation(fields: [emailId], references: [id], onDelete: Cascade)
   position    Int       @default(0)
+  movedAt     DateTime  @default(now()) // when it came into this status
 
   @@unique([emailId])
   @@index([laneId])
