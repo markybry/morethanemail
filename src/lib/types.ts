@@ -8,8 +8,20 @@ export type LinkDTO = { id: string; url: string; title: string };
 // labelIds, when known, is saved so label views can filter without asking Gmail.
 export type ThreadSnapshot = { threadId: string; subject: string; from: string; snippet: string; date: string; labelIds?: string[] };
 
-// An email as the board shows it. The email is the ticket: notes and tasks
-// belong to it directly.
+// One email thread on a card, as last seen.
+export type CardThread = {
+  threadId: string;
+  subject: string;
+  from: string;
+  snippet: string;
+  date: string;
+  newReply: boolean;
+  labelIds: string[];
+};
+
+// A card as the board shows it. The top-level thread fields are the card's
+// first thread (the one it started from). `threads` is every thread on the
+// card, newest first, that first one included.
 export type BoardEmail = ThreadSnapshot & {
   unread: boolean;
   labelIds: string[];
@@ -19,6 +31,10 @@ export type BoardEmail = ThreadSnapshot & {
   newReply: boolean; // has messages newer than the user last opened
   local: boolean; // a ticket with no email: subject is its title, snippet its description
   homeId: string | null; // the workflow it sits in a status of, if any (a card has one home)
+  title: string; // the card's title: its own, or the first thread's subject
+  summary: string; // where things stand and what was decided
+  threads: CardThread[];
+  partOf: string | null; // for a thread added to another card: that card's threadId
 };
 
 // reopenOnReply: a new reply sends the email back to unsorted for triage.

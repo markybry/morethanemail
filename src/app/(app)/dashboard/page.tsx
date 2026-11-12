@@ -39,7 +39,13 @@ export default async function DashboardPage() {
     }),
     // Stored dates are as of the last time the app looked at Gmail.
     db.email.findMany({
-      where: { userId: user.id, lastSeenAt: { not: null }, date: { gt: db.email.fields.lastSeenAt }, placements: { some: {} } },
+      // On a card in a status, or on a thread added to one.
+      where: {
+        userId: user.id,
+        lastSeenAt: { not: null },
+        date: { gt: db.email.fields.lastSeenAt },
+        OR: [{ placements: { some: {} } }, { parent: { placements: { some: {} } } }],
+      },
       orderBy: { date: "desc" },
       take: 8,
       select: {
@@ -47,6 +53,7 @@ export default async function DashboardPage() {
         subject: true,
         date: true,
         placements: { take: 1, select: { workspace: { select: { labelId: true, name: true } } } },
+        parent: { select: { placements: { take: 1, select: { workspace: { select: { labelId: true, name: true } } } } } },
       },
     }),
     db.activity.findMany({
@@ -130,19 +137,19 @@ export default async function DashboardPage() {
           <Panel title="New replies on sorted emails">
             {replies.length === 0 && <Empty>Nothing new on the emails in your lanes.</Empty>}
             <ul className="divide-y divide-line">
-              {replies.map((e) => (
-                <li key={e.threadId} className="py-1.5">
-                  <Link
-                    href={boardLink(e.placements[0]?.workspace.labelId, e.threadId)}
-                    className="block truncate text-sm text-walnut hover:text-terracotta"
-                  >
-                    {e.subject}
-                  </Link>
-                  <div className="truncate text-xs text-muted">
-                    {e.placements[0]?.workspace.name} · {timeAgo(e.date.toISOString())}
-                  </div>
-                </li>
-              ))}
+              {replies.map((e) => {
+                const where = (e.placements[0] ?? e.parent?.placements[0])?.workspace;
+                return (
+                  <li key={e.threadId} className="py-1.5">
+                    <Link href={boardLink(where?.labelId, e.threadId)} className="block truncate text-sm text-walnut hover:text-terracotta">
+                      {e.subject}
+                    </Link>
+                    <div className="truncate text-xs text-muted">
+                      {where?.name} · {timeAgo(e.date.toISOString())}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           </Panel>
 
@@ -186,6 +193,8 @@ function describe(kind: string, detail: string) {
       return `Done “${detail}” on`;
     case "note":
       return "Note on";
+    case "thread":
+      return `Email “${detail}” added to`;
     default:
       return "";
   }

@@ -6,35 +6,97 @@ import { getLabelName, INBOX, type ThreadSummary } from "./mail";
 import { BUILT_IN_TEMPLATES, parseTemplateLanes } from "./laneTemplates";
 import type { BoardEmail, LaneTemplateDTO, Lens, ThreadSnapshot, WorkspaceDTO } from "./types";
 
+const threadFields = { threadId: true, subject: true, from: true, snippet: true, date: true, lastSeenAt: true, labelIds: true } as const;
+
 export const emailInclude = {
   notes: { orderBy: { createdAt: "desc" } },
   tasks: { orderBy: { position: "asc" } },
   links: { orderBy: { createdAt: "asc" } },
   placements: { select: { workspaceId: true } },
+  threads: { select: threadFields },
+  parent: { select: { threadId: true } },
 } as const;
 
-type EmailWithMeta = Email & { notes: Note[]; tasks: Task[]; links: TicketLink[]; placements?: { workspaceId: string }[] };
+type StoredThread = { threadId: string; subject: string; from: string; snippet: string; date: Date; lastSeenAt: Date | null; labelIds: string[] };
+type EmailWithMeta = Email & {
+  notes: Note[];
+  tasks: Task[];
+  links: TicketLink[];
+  placements?: { workspaceId: string }[];
+  threads?: StoredThread[];
+  parent?: { threadId: string } | null;
+};
+
+// A thread has a new reply when its latest message is newer than the one last opened.
+const isNewer = (date: string, seen: Date | null | undefined) => !!seen && new Date(date).getTime() > seen.getTime() + 1000;
 
 // Combine what Gmail says now (if known) with what the app has stored.
 export function toBoardEmail(stored: EmailWithMeta | undefined, live?: ThreadSummary): BoardEmail {
   const date = live?.date ?? stored!.date.toISOString();
-  const lastSeen = stored?.lastSeenAt?.getTime();
-  return {
+  const first = {
     threadId: live?.threadId ?? stored!.threadId,
     subject: live?.subject ?? stored!.subject,
     from: live?.from ?? stored!.from,
     snippet: live?.snippet ?? stored!.snippet,
     date,
-    unread: live?.unread ?? false,
+    newReply: isNewer(date, stored?.lastSeenAt),
     labelIds: live?.labelIds ?? stored?.labelIds ?? [],
+  };
+  const threads = [
+    first,
+    ...(stored?.threads ?? []).map((t) => ({
+      threadId: t.threadId,
+      subject: t.subject,
+      from: t.from,
+      snippet: t.snippet,
+      date: t.date.toISOString(),
+      newReply: isNewer(t.date.toISOString(), t.lastSeenAt),
+      labelIds: t.labelIds,
+    })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
+  return {
+    threadId: first.threadId,
+    subject: first.subject,
+    from: first.from,
+    snippet: first.snippet,
+    date,
+    unread: live?.unread ?? false,
+    labelIds: first.labelIds,
     notes: stored?.notes.map((n) => ({ id: n.id, body: n.body, createdAt: n.createdAt.toISOString() })) ?? [],
     tasks:
       stored?.tasks.map((t) => ({ id: t.id, title: t.title, notes: t.notes, done: t.done, dueDate: t.dueDate?.toISOString() ?? null })) ?? [],
     links: stored?.links.map((l) => ({ id: l.id, url: l.url, title: l.title })) ?? [],
-    newReply: lastSeen !== undefined && new Date(date).getTime() > lastSeen + 1000,
-    local: isLocalThread(live?.threadId ?? stored!.threadId),
+    newReply: threads.some((t) => t.newReply),
+    local: isLocalThread(first.threadId),
     homeId: stored?.placements?.[0]?.workspaceId ?? null,
+    title: stored?.title || first.subject,
+    summary: stored?.summary ?? "",
+    threads,
+    partOf: stored?.parent?.threadId ?? null,
   };
+}
+
+// Cards for Gmail threads (with what Gmail says now), plus any other cards by
+// threadId from what's stored (tickets with no email, for example).
+export async function boardEmailsFor(userId: string, live: ThreadSummary[], storedOnly: string[] = []): Promise<BoardEmail[]> {
+  const ids = [...live.map((t) => t.threadId), ...storedOnly];
+  const stored = await db.email.findMany({ where: { userId, threadId: { in: ids } }, include: emailInclude });
+  const byThread = new Map(stored.map((e) => [e.threadId, e]));
+  const out = live.map((t) => toBoardEmail(byThread.get(t.threadId), t));
+  for (const id of storedOnly) {
+    const s = byThread.get(id);
+    if (s && !live.some((t) => t.threadId === id)) out.push(toBoardEmail(s));
+  }
+  return out;
+}
+
+// The card a thread belongs to: itself, or the card it was added to.
+export async function cardThreadIdOf(userId: string, threadId: string): Promise<string> {
+  const row = await db.email.findUnique({
+    where: { userId_threadId: { userId, threadId } },
+    select: { parent: { select: { threadId: true } } },
+  });
+  return row?.parent?.threadId ?? threadId;
 }
 
 export const snapshotData = (t: ThreadSnapshot) => ({

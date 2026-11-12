@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -11,18 +11,24 @@ import {
   deleteLink,
   deleteNote,
   deleteTask,
+  searchMail,
   setEmailLabels,
+  updateCard,
   updateTask,
   updateTicket,
 } from "@/app/actions";
 import type { BoardEmail, LaneDTO, TaskDTO, ThreadSnapshot } from "@/lib/types";
-import { dueLabel, fromDateInput, gmailLink, isOverdue, senderName, toDateInput } from "@/lib/format";
+import { dueLabel, fromDateInput, gmailLink, isLocalThread, isOverdue, senderName, shortDate, toDateInput } from "@/lib/format";
+import { cardLabelIds, latestThread, senderAddress } from "@/lib/cards";
 import { Drawer, DrawerHeader } from "./Drawer";
 import { ThreadView } from "./ThreadView";
 import { ConfirmButton, InlineEdit, Section } from "./ui";
 import { useMail } from "./MailContext";
 
 export const UNSORTED = "__unsorted";
+
+// Another card this one could be added to, with what's needed to rank it.
+export type CardChoice = { threadId: string; title: string; status: string; labelIds: string[]; senders: string[] };
 
 type Props = {
   email: BoardEmail;
@@ -32,7 +38,11 @@ type Props = {
   laneId: string; // UNSORTED when not in a lane
   onPlace: (laneId: string) => void;
   onChange: (email: BoardEmail) => void;
-  onSeen: () => void;
+  onSeenThread: (threadId: string) => void;
+  cardChoices: CardChoice[];
+  onAddToCard: (cardThreadId: string) => Promise<string | undefined>; // returns an error, if any
+  onAddThread: (thread: ThreadSnapshot) => Promise<string | undefined>;
+  onRemoveThread: (threadId: string) => Promise<string | undefined>;
   onDelete: () => Promise<void>; // only for tickets with no email
   onClose: () => void;
 };
@@ -46,45 +56,53 @@ const snapshot = (e: BoardEmail): ThreadSnapshot => ({
   labelIds: e.labelIds,
 });
 
-// One card: its status, labels, tasks and notes, and the email thread itself.
-export function EmailPanel({ email, workspaceLabelId, onLabelsChange, lanes, laneId, onPlace, onChange, onSeen, onDelete, onClose }: Props) {
+// One card: its title and summary, status, labels, tasks, notes and links, and
+// every email thread on it.
+export function EmailPanel(p: Props) {
+  const { email, onChange, onClose } = p;
+  const latest = latestThread(email);
+  const emailCount = email.threads.filter((t) => !isLocalThread(t.threadId)).length;
   return (
     <Drawer onClose={onClose}>
       <DrawerHeader onClose={onClose}>
-        {email.local ? (
-          <InlineEdit
-            value={email.subject}
-            onSave={async (subject) => {
-              onChange({ ...email, subject });
-              await updateTicket(email.threadId, { subject });
-            }}
-            className="w-full text-xl font-semibold text-walnut"
-          />
-        ) : (
-          <h2 className="text-xl font-semibold text-walnut">{email.subject}</h2>
-        )}
+        <InlineEdit
+          value={email.title}
+          onSave={async (title) => {
+            if (email.local) {
+              onChange({ ...email, subject: title, title });
+              await updateTicket(email.threadId, { subject: title });
+            } else {
+              onChange({ ...email, title: title.trim() || email.subject });
+              await updateCard(email.threadId, { title });
+            }
+          }}
+          className="w-full text-xl font-semibold text-walnut"
+        />
         <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
-          {email.local ? (
+          {email.local && emailCount === 0 ? (
             <>
               <span>Ticket · no email</span>
-              <ConfirmButton label="Delete ticket" confirmLabel="Delete for good?" onConfirm={onDelete} small />
+              <ConfirmButton label="Delete ticket" confirmLabel="Delete for good?" onConfirm={p.onDelete} small />
             </>
           ) : (
             <>
-              <span>{senderName(email.from)}</span>
-              <a href={gmailLink(email.threadId)} target="_blank" rel="noreferrer" className="hover:text-terracotta">
-                Open in Gmail ↗
-              </a>
+              <span>{senderName(latest.from)}</span>
+              {emailCount > 1 && <span>· {emailCount} emails</span>}
+              {emailCount === 1 && !email.local && (
+                <a href={gmailLink(email.threadId)} target="_blank" rel="noreferrer" className="hover:text-terracotta">
+                  Open in Gmail ↗
+                </a>
+              )}
             </>
           )}
           <select
-            value={laneId}
-            onChange={(e) => onPlace(e.target.value)}
+            value={p.laneId}
+            onChange={(e) => p.onPlace(e.target.value)}
             className="field ml-auto rounded-xl px-2 py-1 text-bark"
             aria-label="Status"
           >
             <option value={UNSORTED}>Not in a status</option>
-            {lanes.map((l) => (
+            {p.lanes.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.name}
               </option>
@@ -94,56 +112,293 @@ export function EmailPanel({ email, workspaceLabelId, onLabelsChange, lanes, lan
       </DrawerHeader>
 
       {email.local ? (
-        <Description email={email} onChange={onChange} />
+        <TextBlock
+          title="Description"
+          value={email.snippet}
+          placeholder="Details, links, anything to remember…"
+          onSave={async (snippet) => {
+            await updateTicket(email.threadId, { snippet });
+            onChange({ ...email, snippet });
+          }}
+        />
       ) : (
-        <Labels email={email} here={workspaceLabelId} onLabelsChange={onLabelsChange} />
+        <TextBlock
+          title="Summary"
+          value={email.summary}
+          placeholder="Where things stand and what was decided…"
+          onSave={async (summary) => {
+            await updateCard(email.threadId, { summary });
+            onChange({ ...email, summary });
+          }}
+        />
       )}
+      {!email.local && <AddToCard email={email} choices={p.cardChoices} onAdd={p.onAddToCard} />}
+      {!email.local && <Labels email={email} here={p.workspaceLabelId} onLabelsChange={p.onLabelsChange} />}
       <Tasks email={email} onChange={onChange} />
       <Links email={email} onChange={onChange} />
       <Notes email={email} onChange={onChange} />
-      {!email.local && (
-        <Section title="Thread">
-          <ThreadView threadId={email.threadId} onLoaded={onSeen} />
-        </Section>
-      )}
+      <Emails email={email} onSeenThread={p.onSeenThread} onAddThread={p.onAddThread} onRemoveThread={p.onRemoveThread} />
     </Drawer>
   );
 }
 
-// A ticket with no email keeps its own description (stored as the snippet the card shows).
-function Description({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmail) => void }) {
-  const [draft, setDraft] = useState(email.snippet);
+// A block of text kept on the card: a ticket's description, or a card's summary.
+function TextBlock({ title, value, placeholder, onSave }: { title: string; value: string; placeholder: string; onSave: (v: string) => Promise<void> }) {
+  const [draft, setDraft] = useState(value);
   const [state, setState] = useState<"idle" | "saving" | "error">("idle");
-  const dirty = draft !== email.snippet;
+  const dirty = draft !== value;
   return (
-    <Section title="Description">
+    <Section title={title}>
       <textarea
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        rows={4}
-        placeholder="Details, links, anything to remember…"
+        rows={draft ? 4 : 2}
+        placeholder={placeholder}
         className="field w-full rounded-xl px-2.5 py-1.5 text-sm"
       />
-      <div className="mt-1 flex items-center gap-2">
-        <button
-          disabled={!dirty || state === "saving"}
-          onClick={async () => {
-            setState("saving");
-            try {
-              await updateTicket(email.threadId, { snippet: draft });
-              onChange({ ...email, snippet: draft });
-              setState("idle");
-            } catch {
-              setState("error");
-            }
-          }}
-          className="btn-press rounded-xl bg-moss px-3 py-1 text-sm font-bold text-cream disabled:opacity-50"
-        >
-          {state === "saving" ? "Saving…" : "Save"}
-        </button>
-        {state === "error" && <span className="text-sm text-red-600">Couldn&apos;t save. Try again.</span>}
-      </div>
+      {(dirty || state === "error") && (
+        <div className="mt-1 flex items-center gap-2">
+          <button
+            disabled={!dirty || state === "saving"}
+            onClick={async () => {
+              setState("saving");
+              try {
+                await onSave(draft);
+                setState("idle");
+              } catch {
+                setState("error");
+              }
+            }}
+            className="btn-press rounded-xl bg-moss px-3 py-1 text-sm font-bold text-cream disabled:opacity-50"
+          >
+            {state === "saving" ? "Saving…" : "Save"}
+          </button>
+          {state === "error" && <span className="text-sm text-red-600">Couldn&apos;t save. Try again.</span>}
+        </div>
+      )}
     </Section>
+  );
+}
+
+// Put this card's email(s) inside another card. Cards sharing a label or a
+// sender with this one are listed first.
+function AddToCard({ email, choices, onAdd }: { email: BoardEmail; choices: CardChoice[]; onAdd: (cardThreadId: string) => Promise<string | undefined> }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const ranked = useMemo(() => {
+    const mine = new Set(cardLabelIds(email).filter((id) => id.startsWith("Label_")));
+    const senders = new Set(email.threads.map((t) => senderAddress(t.from)));
+    const q = query.trim().toLowerCase();
+    return choices
+      .filter((c) => c.threadId !== email.threadId)
+      .filter((c) => !q || c.title.toLowerCase().includes(q))
+      .map((c) => ({ c, score: c.labelIds.filter((id) => mine.has(id)).length * 2 + (c.senders.some((s) => senders.has(s)) ? 1 : 0) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+      .map((x) => x.c);
+  }, [choices, email, query]);
+
+  if (choices.length === 0) return null;
+  if (!open)
+    return (
+      <div className="px-5 pt-3">
+        <button onClick={() => setOpen(true)} className="text-sm font-semibold text-terracotta hover:underline">
+          ⊕ Add to another card…
+        </button>
+      </div>
+    );
+  return (
+    <Section title="Add to a card" action={<button onClick={() => setOpen(false)} className="text-xs text-muted hover:text-bark">Cancel</button>}>
+      <p className="mb-2 text-xs text-muted">This card&apos;s email, notes and tasks move into the card you pick, and it gets that card&apos;s labels.</p>
+      <input
+        autoFocus
+        value={query}
+        disabled={busy}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Find a card…"
+        className="field w-full rounded-xl px-2.5 py-1.5 text-sm"
+      />
+      <div className="mt-2 space-y-1">
+        {ranked.map((c) => (
+          <button
+            key={c.threadId}
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError("");
+              const err = await onAdd(c.threadId);
+              setBusy(false);
+              if (err) setError(err);
+            }}
+            className="flex w-full items-baseline gap-2 rounded-lg px-2 py-1 text-left text-sm hover:bg-oat disabled:opacity-50"
+          >
+            <span className="min-w-0 flex-1 truncate text-walnut">{c.title}</span>
+            <span className="shrink-0 text-xs text-muted">{c.status}</span>
+          </button>
+        ))}
+        {ranked.length === 0 && <p className="text-sm text-muted">No cards match.</p>}
+      </div>
+      {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+    </Section>
+  );
+}
+
+// Every email thread on the card, newest first. The newest is open; the rest
+// fold away. Older emails can be found and added from here.
+function Emails({
+  email,
+  onSeenThread,
+  onAddThread,
+  onRemoveThread,
+}: {
+  email: BoardEmail;
+  onSeenThread: (threadId: string) => void;
+  onAddThread: (thread: ThreadSnapshot) => Promise<string | undefined>;
+  onRemoveThread: (threadId: string) => Promise<string | undefined>;
+}) {
+  const threads = email.threads.filter((t) => !isLocalThread(t.threadId));
+  const [open, setOpen] = useState<Set<string>>(() => new Set(threads.slice(0, 1).map((t) => t.threadId)));
+  const [error, setError] = useState("");
+  const toggle = (id: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  return (
+    <Section title={threads.length > 1 ? `Emails · ${threads.length}` : "Email"}>
+      {threads.length === 0 && <p className="mb-2 text-sm text-muted">No emails on this card yet.</p>}
+      {threads.length === 1 ? (
+        <ThreadView threadId={threads[0].threadId} onLoaded={() => onSeenThread(threads[0].threadId)} />
+      ) : (
+        <div className="space-y-2">
+          {threads.map((t) => (
+            <div key={t.threadId} className="rounded-lg border border-line">
+              <div className="flex items-baseline gap-2 px-3 py-2 text-sm">
+                <button onClick={() => toggle(t.threadId)} className="min-w-0 flex-1 text-left" aria-expanded={open.has(t.threadId)}>
+                  <span className="mr-1 text-muted">{open.has(t.threadId) ? "▾" : "▸"}</span>
+                  <span className={t.newReply ? "font-bold text-walnut" : "font-semibold text-ink"}>{t.subject}</span>
+                  <span className="block truncate pl-4 text-xs text-muted">
+                    {senderName(t.from)} · {shortDate(t.date)}
+                    {t.newReply && <span className="text-accent-ink"> · new reply</span>}
+                  </span>
+                </button>
+                <a href={gmailLink(t.threadId)} target="_blank" rel="noreferrer" className="shrink-0 text-xs text-muted hover:text-terracotta">
+                  Gmail ↗
+                </a>
+                {t.threadId !== email.threadId && (
+                  <ConfirmButton
+                    label="Take off"
+                    confirmLabel="Take off card?"
+                    small
+                    onConfirm={async () => {
+                      const err = await onRemoveThread(t.threadId);
+                      if (err) setError(err);
+                    }}
+                  />
+                )}
+              </div>
+              {open.has(t.threadId) && (
+                <div className="border-t border-line p-2">
+                  <ThreadView threadId={t.threadId} onLoaded={() => onSeenThread(t.threadId)} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+      <AddEmail onCard={new Set(threads.map((t) => t.threadId))} onAdd={onAddThread} />
+    </Section>
+  );
+}
+
+// Search all mail for an email that belongs on this card.
+function AddEmail({ onCard, onAdd }: { onCard: Set<string>; onAdd: (thread: ThreadSnapshot) => Promise<string | undefined> }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<BoardEmail[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  if (!open)
+    return (
+      <button onClick={() => setOpen(true)} className="mt-2 text-sm font-semibold text-terracotta hover:underline">
+        + Add an email to this card
+      </button>
+    );
+  return (
+    <div className="mt-3 space-y-2">
+      <form
+        className="flex gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setError("");
+          const res = await searchMail(query);
+          setBusy(false);
+          if (res.error) setError(res.error);
+          setResults(res.emails);
+        }}
+      >
+        <input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search all mail (sender, subject, words)…"
+          className="field min-w-0 flex-1 rounded-xl px-2.5 py-1.5 text-sm"
+        />
+        <button disabled={busy || !query.trim()} className="btn-press rounded-xl bg-oat px-3 text-sm font-semibold text-bark disabled:opacity-50">
+          {busy ? "…" : "Search"}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="text-sm text-muted">
+          Cancel
+        </button>
+      </form>
+      {results && (
+        <div className="space-y-1">
+          {results.length === 0 && <p className="text-sm text-muted">Nothing found.</p>}
+          {results.map((r) => {
+            const here = onCard.has(r.threadId);
+            const elsewhere = !here && (!!r.partOf || r.threads.length > 1);
+            return (
+              <div key={r.threadId} className="flex items-baseline gap-2 rounded-lg px-2 py-1 text-sm hover:bg-oat">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-walnut">{r.subject}</span>
+                  <span className="block truncate text-xs text-muted">
+                    {senderName(r.from)} · {shortDate(r.date)}
+                    {elsewhere && " · on another card"}
+                  </span>
+                </span>
+                {here ? (
+                  <span className="shrink-0 text-xs text-muted">On this card</span>
+                ) : (
+                  <button
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      setError("");
+                      const err = await onAdd(snapshot(r));
+                      setBusy(false);
+                      if (err) setError(err);
+                      else setResults((prev) => prev?.filter((x) => x.threadId !== r.threadId) ?? null);
+                    }}
+                    className="btn-press shrink-0 rounded-lg bg-moss px-2 py-0.5 text-xs font-bold text-cream disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {error && <p className="text-sm text-red-600">{error}</p>}
+    </div>
   );
 }
 

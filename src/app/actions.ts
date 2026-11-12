@@ -20,7 +20,7 @@ import type { BoardEmail, LaneDTO, LaneTemplateDTO, LinkDTO, NoteDTO, TaskDTO, T
 import { parseTemplateLanes } from "@/lib/laneTemplates";
 import { isLocalThread, LOCAL_PREFIX } from "@/lib/format";
 import { randomUUID } from "crypto";
-import { emailInclude, snapshotData, toBoardEmail, upsertEmail } from "@/lib/board";
+import { boardEmailsFor, emailInclude, snapshotData, toBoardEmail, upsertEmail } from "@/lib/board";
 
 // ---------- ownership guards ----------
 
@@ -39,14 +39,7 @@ async function ownLane(laneId: string) {
 }
 
 // Gmail's live metadata merged with the app's notes, tasks and "seen" state.
-async function withStoredMeta(userId: string, live: Awaited<ReturnType<typeof summarizeThreads>>) {
-  const stored = await db.email.findMany({
-    where: { userId, threadId: { in: live.map((t) => t.threadId) } },
-    include: emailInclude,
-  });
-  const byThread = new Map(stored.map((e) => [e.threadId, e]));
-  return live.map((t) => toBoardEmail(byThread.get(t.threadId), t));
-}
+const withStoredMeta = (userId: string, live: Awaited<ReturnType<typeof summarizeThreads>>) => boardEmailsFor(userId, live);
 
 // Board pages are cached in the browser's router; after a lane or placement
 // change, drop that cache so going back to a board shows what was saved.
@@ -72,22 +65,52 @@ export async function fetchLabelEmails(
   }
 }
 
-// Fresh Gmail state for emails already on the board (placed in lanes), so new
-// replies show even when the thread isn't on the first page of the label.
+// Fresh Gmail state for cards already on the board (placed in lanes), and every
+// thread on them, so new replies show even when a thread isn't on the first page
+// of the label. A thread that was added to a card comes back as that card.
 export async function refreshEmails(threadIds: string[]): Promise<{ emails: BoardEmail[]; error?: string }> {
   const user = await requireUser();
-  threadIds = threadIds.filter((t) => !isLocalThread(t));
   if (threadIds.length === 0) return { emails: [] };
   try {
-    const live = await summarizeThreads(user, threadIds);
+    const rows = await db.email.findMany({
+      where: { userId: user.id, threadId: { in: threadIds } },
+      select: { threadId: true, parent: { select: { threadId: true } } },
+    });
+    const parentOf = new Map(rows.map((r) => [r.threadId, r.parent?.threadId]));
+    const cardIds = [...new Set(threadIds.map((t) => parentOf.get(t) ?? t))];
+    const cards = await db.email.findMany({
+      where: { userId: user.id, threadId: { in: cardIds } },
+      select: { threadId: true, threads: { select: { threadId: true } } },
+    });
+    const all = [...new Set([...cardIds, ...cards.flatMap((c) => c.threads.map((t) => t.threadId))])].filter((t) => !isLocalThread(t));
+    const live = all.length ? await summarizeThreads(user, all) : [];
     await Promise.all(
       live.map((t) =>
         db.email.updateMany({ where: { userId: user.id, threadId: t.threadId }, data: { ...snapshotData(t), labelIds: t.labelIds } }),
       ),
     );
-    return { emails: await withStoredMeta(user.id, live) };
+    return {
+      emails: await boardEmailsFor(
+        user.id,
+        live.filter((t) => cardIds.includes(t.threadId)),
+        cardIds.filter((t) => isLocalThread(t)),
+      ),
+    };
   } catch (e) {
     console.error("refreshEmails failed", e);
+    return { emails: [], error: mailErrorMessage(e) };
+  }
+}
+
+// Search all mail, for adding an older email to a card.
+export async function searchMail(query: string): Promise<ListResult> {
+  const user = await requireUser();
+  if (!query.trim()) return { emails: [] };
+  try {
+    const res = await listThreads(user, { query: query.trim() });
+    return { emails: await withStoredMeta(user.id, res.threads) };
+  } catch (e) {
+    console.error("searchMail failed", e);
     return { emails: [], error: mailErrorMessage(e) };
   }
 }
@@ -271,6 +294,83 @@ export async function deleteTicket(threadId: string) {
   await db.email.deleteMany({ where: { userId: user.id, threadId } });
   revalidateBoards();
   revalidatePath("/tasks");
+}
+
+// ---------- cards with several threads ----------
+
+const cardOf = async (userId: string, threadId: string) => (await boardEmailsFor(userId, [], [threadId]))[0];
+
+// Add an email thread to a card. Its notes, tasks and links (and any threads it
+// already held) move to the card, it leaves its own status, and it gets the
+// card's labels in Gmail so the two stay together there too.
+export async function addThreadToCard(cardThreadId: string, thread: ThreadSnapshot): Promise<{ card?: BoardEmail; error?: string }> {
+  const user = await requireUser();
+  if (isLocalThread(thread.threadId)) return { error: "A ticket with no email can't be added to a card." };
+  if (thread.threadId === cardThreadId) return { error: "That's this card's own email." };
+  const card = await db.email.findUnique({
+    where: { userId_threadId: { userId: user.id, threadId: cardThreadId } },
+    include: { placements: true },
+  });
+  if (!card) return { error: "That card no longer exists." };
+  if (card.parentId) return { error: "That email is part of another card." };
+  try {
+    const existing = await db.email.findUnique({ where: { userId_threadId: { userId: user.id, threadId: thread.threadId } } });
+    const have = existing?.labelIds ?? thread.labelIds ?? [];
+    const add = card.labelIds.filter((id) => id.startsWith("Label_") && !have.includes(id));
+    const labelIds = add.length ? await modifyThreadLabels(user, thread.threadId, add, []) : undefined;
+    const child = await upsertEmail(user.id, { ...thread, ...(labelIds ? { labelIds } : {}) });
+    const childPlacement = await db.placement.findUnique({ where: { emailId: child.id } });
+    await db.$transaction([
+      db.email.updateMany({ where: { parentId: child.id }, data: { parentId: card.id } }),
+      db.email.update({ where: { id: child.id }, data: { parentId: card.id } }),
+      db.note.updateMany({ where: { emailId: child.id }, data: { emailId: card.id } }),
+      db.task.updateMany({ where: { emailId: child.id }, data: { emailId: card.id } }),
+      db.ticketLink.updateMany({ where: { emailId: child.id }, data: { emailId: card.id } }),
+      db.activity.updateMany({ where: { emailId: child.id }, data: { emailId: card.id } }),
+      // A card has one status: the card's own, or this email's if the card had none.
+      ...(childPlacement
+        ? [
+            card.placements.length
+              ? db.placement.delete({ where: { id: childPlacement.id } })
+              : db.placement.update({ where: { id: childPlacement.id }, data: { emailId: card.id } }),
+          ]
+        : []),
+      db.activity.create({ data: { userId: user.id, emailId: card.id, kind: "thread", detail: thread.subject.slice(0, 120) } }),
+    ]);
+    revalidateBoards();
+    revalidatePath("/dashboard");
+    return { card: await cardOf(user.id, cardThreadId) };
+  } catch (e) {
+    console.error("addThreadToCard failed", e);
+    return { error: mailErrorMessage(e) };
+  }
+}
+
+// Take a thread off its card again; it becomes a card of its own, not in a status.
+export async function removeThreadFromCard(threadId: string): Promise<{ card?: BoardEmail; thread?: BoardEmail; error?: string }> {
+  const user = await requireUser();
+  const row = await db.email.findUnique({
+    where: { userId_threadId: { userId: user.id, threadId } },
+    select: { id: true, parent: { select: { threadId: true } } },
+  });
+  if (!row?.parent) return { error: "That email isn't part of a card." };
+  await db.email.update({ where: { id: row.id }, data: { parentId: null } });
+  revalidateBoards();
+  const [card, thread] = await Promise.all([cardOf(user.id, row.parent.threadId), cardOf(user.id, threadId)]);
+  return { card, thread };
+}
+
+// A card's own title (empty goes back to the first email's subject) and summary.
+export async function updateCard(threadId: string, patch: { title?: string; summary?: string }) {
+  const user = await requireUser();
+  await db.email.updateMany({
+    where: { userId: user.id, threadId },
+    data: {
+      ...(patch.title !== undefined ? { title: patch.title.trim().slice(0, 200) || null } : {}),
+      ...(patch.summary !== undefined ? { summary: patch.summary.slice(0, 5000) } : {}),
+    },
+  });
+  revalidateBoards();
 }
 
 // ---------- lane templates ----------

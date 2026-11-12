@@ -3,9 +3,10 @@
 import type { BoardEmail } from "@/lib/types";
 import { dueLabel, isOverdue, senderName, shortDate } from "@/lib/format";
 import { useMail } from "./MailContext";
+import { cardLabelIds, latestThread } from "@/lib/cards";
 
-// An email on the board. The same card is used in the unsorted column and in
-// lanes, because the email is the ticket.
+// A card on the board, in the first column or in a status. It shows the card's
+// title and its newest message, whichever of its threads that is in.
 export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; hideLabelId?: string; dragging?: boolean }) {
   const { labelNames, colorOf } = useMail();
   const accent = (hideLabelId && colorOf(hideLabelId)) || "var(--color-terracotta)";
@@ -19,7 +20,8 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
   // Other labels on the email, most specific only ("Clients/Acme" implies "Clients").
   // The workspace's own label and its parents go without saying.
   const here = hideLabelId ? labelNames.get(hideLabelId) : undefined;
-  const named = email.labelIds
+  const latest = latestThread(email);
+  const named = cardLabelIds(email)
     .map((id) => ({ id, name: labelNames.get(id) }))
     .filter((l): l is { id: string; name: string } => !!l.name && l.name !== here && !(here && here.startsWith(`${l.name}/`)));
   const chips = named
@@ -35,15 +37,15 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
       <span className="absolute inset-y-2 left-1.5 w-1 rounded-full transition-all group-hover/card:w-1.5" style={{ background: accent }} />
       <div className="flex items-baseline gap-2 text-xs">
         <span className={`min-w-0 flex-1 truncate ${email.unread ? "font-bold text-walnut" : "text-bark"}`}>
-          {email.local ? "✎ Ticket" : senderName(email.from)}
+          {email.local && email.threads.length <= 1 ? "✎ Ticket" : senderName(latest.from)}
         </span>
-        <span className="shrink-0 text-muted">{shortDate(email.date)}</span>
+        <span className="shrink-0 text-muted">{shortDate(latest.date)}</span>
       </div>
       <div className={`mt-0.5 text-sm leading-snug ${email.unread ? "font-extrabold text-walnut" : "font-semibold text-ink"}`}>
-        {email.subject}
+        {email.title}
       </div>
-      <div className="mt-0.5 truncate text-xs text-muted">{email.snippet}</div>
-      {(email.newReply || chips.length > 0 || email.tasks.length > 0 || email.notes.length > 0 || email.links.length > 0) && (
+      <div className="mt-0.5 truncate text-xs text-muted">{latest.snippet}</div>
+      {(email.newReply || chips.length > 0 || email.threads.length > 1 || email.tasks.length > 0 || email.notes.length > 0 || email.links.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
           {email.newReply && (
             <Badge tone="blue">
@@ -54,6 +56,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
               New reply
             </Badge>
           )}
+          {email.threads.length > 1 && <Badge>✉ {email.threads.length}</Badge>}
           {email.tasks.length > 0 && (
             <Badge tone={done === email.tasks.length ? "green" : undefined}>
               ☑ {done}/{email.tasks.length}

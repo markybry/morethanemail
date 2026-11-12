@@ -67,9 +67,10 @@ model LaneTemplate {
   @@index([userId])
 }
 
-// An email thread the app knows about: the ticket itself. Notes and tasks hang
-// off it and follow it into every workspace it appears in.
-// A ticket with no email has a "local:" threadId and lives in one workspace.
+// An email thread the app knows about. A card is an Email with no parent: it has
+// the status, title, summary, notes, tasks and links. More threads can join a
+// card (parentId set); they then show inside it rather than as cards of their own.
+// A card with no email (a ticket) has a "local:" threadId.
 model Email {
   id          String       @id @default(cuid())
   userId      String
@@ -81,7 +82,12 @@ model Email {
   from        String
   snippet     String
   date        DateTime // latest message when last refreshed
-  labelIds    String[]  @default([]) // Gmail labels when last seen (or chosen, for a ticket with no email)
+  labelIds    String[]     @default([]) // Gmail labels when last seen (or chosen, for a ticket with no email)
+  parentId    String? // the card this thread belongs to, if it was added to one
+  parent      Email?       @relation("CardThreads", fields: [parentId], references: [id], onDelete: SetNull)
+  threads     Email[]      @relation("CardThreads")
+  title       String? // the card's own title; the first email's subject when unset
+  summary     String       @default("") // where things stand and what was decided
   lastSeenAt  DateTime? // latest message the user has opened; newer means a new reply
   createdAt   DateTime     @default(now())
   notes       Note[]
@@ -92,6 +98,7 @@ model Email {
 
   @@unique([userId, threadId])
   @@index([workspaceId])
+  @@index([parentId])
 }
 
 // Where a card sits: one status in one workflow. A card has at most one.

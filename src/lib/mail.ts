@@ -34,11 +34,12 @@ export type ThreadDetail = { threadId: string; subject: string; messages: Messag
 
 export const INBOX = "INBOX";
 
-// One page of a label's threads. For the inbox, primaryOnly matches Gmail's
-// Primary tab. A query narrows within the label. Gmail leaves out spam and trash.
+// One page of a label's threads (or of all mail, with no label). For the inbox,
+// primaryOnly matches Gmail's Primary tab. A query narrows the list. Gmail leaves
+// out spam and trash.
 export async function listThreads(
   user: User,
-  opts: { labelId: string; primaryOnly?: boolean; query?: string; pageToken?: string },
+  opts: { labelId?: string; primaryOnly?: boolean; query?: string; pageToken?: string },
 ): Promise<{ threads: ThreadSummary[]; nextPageToken?: string }> {
   const query = opts.query?.trim();
   const primaryOnly = opts.labelId === INBOX && !!opts.primaryOnly;
@@ -48,7 +49,7 @@ export async function listThreads(
   const gmail = gmailFor(user);
   const res = await gmail.users.threads.list({
     userId: "me",
-    labelIds: [opts.labelId],
+    labelIds: opts.labelId ? [opts.labelId] : undefined,
     q: q || undefined,
     maxResults: 30,
     pageToken: opts.pageToken,

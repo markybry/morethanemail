@@ -1,5 +1,6 @@
 import type { BoardEmail } from "./types";
 import { senderName } from "./format";
+import { cardLabelIds } from "./cards";
 
 // Ways to group the unsorted column. Grouping only changes how cards are shown;
 // lanes stay the place where emails are actually sorted.
@@ -49,7 +50,7 @@ export function groupThreads(
       add(title, title, rank, id);
     } else {
       // The email's most specific other label, as on its card.
-      const names = e.labelIds
+      const names = cardLabelIds(e)
         .map((l) => opts.labelNames.get(l))
         .filter((n): n is string => !!n && n !== here && !(here && here.startsWith(`${n}/`)));
       const name = names.filter((n) => !names.some((o) => o.startsWith(`${n}/`))).sort()[0];

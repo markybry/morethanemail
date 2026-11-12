@@ -102,7 +102,7 @@ Each step is one pull request that leaves the app working and better than before
 
 Not needed: nothing was in live use, so step 1 simply clears the old label workspaces.
 
-### Step 1: one workflow, labels as lenses (built, on branch `one-workflow`)
+### Step 1: one workflow, labels as lenses (done)
 
 This is the whole change of model in one go.
 
@@ -116,11 +116,11 @@ This is the whole change of model in one go.
 
 Done when: a card shows the same status from every label, and opening a label creates nothing.
 
-### Step 2: a card holds a whole stream
+### Step 2: a card holds a whole stream (done, except the two drag items marked *later*)
 
-- Add a thread to an existing card: drop an Inbox email onto a card in a status, or pick "Add to a card" in the email panel, which lists likely cards first (same label, same people).
+- Add a thread to an existing card: pick "Add to another card" in the email panel, which lists likely cards first (same label, same people). *Later:* drop an Inbox email onto a card.
 - The card panel shows all its threads, newest open, the rest folded. Each has "Open in Gmail".
-- Add several at once: tick emails in the Inbox column, then drop them on a card or make one new card from them.
+- *Later:* add several at once: tick emails in the Inbox column, then drop them on a card or make one new card from them.
 - From inside a card, "Add an email" searches your mail for older threads that belong with it.
 - Take a thread off a card again if it was added by mistake. It becomes its own card.
 - A card title you can edit, and a summary at the top of the card.

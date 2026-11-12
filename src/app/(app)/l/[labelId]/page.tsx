@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { loadLaneTemplates, loadWorkspace, resolveLabelView } from "@/lib/board";
+import { cardThreadIdOf, loadLaneTemplates, loadWorkspace, resolveLabelView } from "@/lib/board";
 import { mailErrorMessage } from "@/lib/mail";
 import { requireUser } from "@/lib/session";
 import { LabelBoard } from "@/components/LabelBoard";
@@ -25,13 +25,18 @@ export default async function LabelPage({
   }
   if (!view) notFound();
 
-  const [board, templates] = await Promise.all([loadWorkspace(user.id, view.workspaceId, view.lens), loadLaneTemplates(user.id)]);
+  // A link to a thread that was added to a card opens that card.
+  const [board, templates, openThread] = await Promise.all([
+    loadWorkspace(user.id, view.workspaceId, view.lens),
+    loadLaneTemplates(user.id),
+    thread ? cardThreadIdOf(user.id, thread) : undefined,
+  ]);
   return (
     <LabelBoard
       key={labelId}
       workspace={board.workspace}
       initialEmails={board.emails}
-      initialThreadId={thread}
+      initialThreadId={openThread}
       templates={templates}
     />
   );

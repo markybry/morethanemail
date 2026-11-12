@@ -22,6 +22,7 @@ import {
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  addThreadToCard,
   applyLaneTemplate,
   arrangeEmails,
   createLane,
@@ -31,6 +32,7 @@ import {
   deleteLane,
   fetchLabelEmails,
   refreshEmails,
+  removeThreadFromCard,
   renameLane,
   reorderLanes,
   saveLaneTemplate,
@@ -39,7 +41,8 @@ import {
 import type { BoardEmail, LaneDTO, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "@/lib/types";
 import { GROUP_BY, GROUP_BY_NAMES, groupThreads, isGroupBy, type GroupBy } from "@/lib/grouping";
 import { CardFace } from "./CardFace";
-import { EmailPanel, UNSORTED } from "./EmailPanel";
+import { EmailPanel, UNSORTED, type CardChoice } from "./EmailPanel";
+import { cardLabelIds, senderAddress } from "@/lib/cards";
 import { useMail } from "./MailContext";
 import { ConfirmButton, InlineEdit } from "./ui";
 import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
@@ -101,7 +104,7 @@ export function LabelBoard({
       if (!lens) return true;
       if (!e) return false;
       const prefix = `${labelNames.get(lens.labelId) ?? lens.name}/`;
-      return e.labelIds.some((id) => id === lens.labelId || !!labelNames.get(id)?.startsWith(prefix));
+      return cardLabelIds(e).some((id) => id === lens.labelId || !!labelNames.get(id)?.startsWith(prefix));
     },
     [lens, labelNames],
   );
@@ -159,9 +162,9 @@ export function LabelBoard({
         return;
       }
       mergeEmails(res.emails);
-      // Cards already in a status aren't unsorted.
+      // Cards already in a status, and emails added to a card, aren't unsorted.
       const ids = res.emails
-        .filter((e) => !placedRef.current.has(e.threadId) && !(e.homeId && e.homeId !== workspace.id))
+        .filter((e) => !placedRef.current.has(e.threadId) && !(e.homeId && e.homeId !== workspace.id) && !e.partOf)
         .map((e) => e.threadId);
       // Tickets with no email aren't in Gmail's list; keep the unsorted ones (matching a search).
       const needle = q.toLowerCase();
@@ -394,6 +397,57 @@ export function LabelBoard({
     await save(() => deleteLane(lane.id), () => apply(before));
   }
 
+  // ----- cards holding several emails -----
+  // Cards in a status, for "Add to another card".
+  const cardChoices = useMemo<CardChoice[]>(
+    () =>
+      lanes.flatMap((l) =>
+        l.threadIds
+          .map((t) => emails[t])
+          .filter((e): e is BoardEmail => !!e)
+          .map((e) => ({
+            threadId: e.threadId,
+            title: e.title,
+            status: l.name,
+            labelIds: cardLabelIds(e),
+            senders: e.threads.map((t) => senderAddress(t.from)),
+          })),
+      ),
+    [lanes, emails],
+  );
+
+  // An email (or card) went into `card`: it leaves the columns. If the card had
+  // no status, it takes the email's.
+  const absorb = (card: BoardEmail, childId: string) => {
+    const childLane = lanes.find((l) => l.threadIds.includes(childId));
+    const cardPlaced = lanes.some((l) => l.threadIds.includes(card.threadId));
+    mergeEmails([card]);
+    setLanes((prev) =>
+      prev.map((l) => ({
+        ...l,
+        threadIds:
+          childLane && !cardPlaced ? l.threadIds.map((x) => (x === childId ? card.threadId : x)) : l.threadIds.filter((x) => x !== childId),
+      })),
+    );
+    setUnsorted((prev) => prev.filter((x) => x !== childId && !(childLane && !cardPlaced && x === card.threadId)));
+  };
+
+  const addToCard = async (child: BoardEmail, cardThreadId: string) => {
+    const res = await addThreadToCard(cardThreadId, snapshotOf(child));
+    if (res.error || !res.card) return res.error ?? "Couldn't add it to that card.";
+    absorb(res.card, child.threadId);
+    return undefined;
+  };
+
+  // Opening a thread on a card marks that thread seen.
+  const seenThread = (cardId: string, threadId: string) =>
+    setEmails((prev) => {
+      const e = prev[cardId];
+      if (!e) return prev;
+      const threads = e.threads.map((t) => (t.threadId === threadId ? { ...t, newReply: false } : t));
+      return { ...prev, [cardId]: { ...e, threads, newReply: threads.some((t) => t.newReply), unread: threadId === cardId ? false : e.unread } };
+    });
+
   const selectedEmail = selected ? emails[selected] : undefined;
   const activeEmail = activeId ? emails[activeId] : undefined;
 
@@ -572,7 +626,26 @@ export function LabelBoard({
           laneId={containerOf(selectedEmail.threadId, { lanes, unsorted }) ?? UNSORTED}
           onPlace={(laneId) => place(selectedEmail.threadId, laneId)}
           onChange={(e) => mergeEmails([e])}
-          onSeen={() => mergeEmails([{ ...selectedEmail, newReply: false, unread: false }])}
+          onSeenThread={(t) => seenThread(selectedEmail.threadId, t)}
+          cardChoices={cardChoices}
+          onAddToCard={async (cardThreadId) => {
+            const err = await addToCard(selectedEmail, cardThreadId);
+            if (!err) setSelected(cardThreadId);
+            return err;
+          }}
+          onAddThread={async (thread) => {
+            const res = await addThreadToCard(selectedEmail.threadId, thread);
+            if (res.error || !res.card) return res.error ?? "Couldn't add that email.";
+            absorb(res.card, thread.threadId);
+            return undefined;
+          }}
+          onRemoveThread={async (threadId) => {
+            const res = await removeThreadFromCard(threadId);
+            if (res.error || !res.card) return res.error ?? "Couldn't take that email off.";
+            mergeEmails([res.card, ...(res.thread ? [res.thread] : [])]);
+            setUnsorted((prev) => byDate([...prev.filter((x) => x !== threadId), threadId]));
+            return undefined;
+          }}
           onDelete={async () => {
             const t = selectedEmail.threadId;
             const before = { lanes, unsorted };
