@@ -959,7 +959,7 @@ function UnsortedColumn(p: {
               key={String(v)}
               onClick={() => p.onRecentChange(v)}
               className={`flex-1 px-2.5 py-0.5 transition ${p.recent === v ? "bg-moss text-cream" : "text-bark hover:bg-oat"}`}
-              title={v ? "Inbox and labelled mail, newest first, including cards already in a status" : "Emails not yet in a status"}
+              title={v ? "Primary inbox and labelled mail, newest first, including cards already in a status" : "Emails not yet in a status"}
             >
               {v ? "Recent" : "To triage"}
             </button>
@@ -1038,7 +1038,7 @@ function UnsortedColumn(p: {
           </select>
         </label>
         <p className="text-xs font-semibold text-muted">
-          {p.searching ? "Search results" : p.recent ? (p.isInbox ? "Inbox and labelled mail, newest first" : "Newest first") : "Not in a status yet"}
+          {p.searching ? "Search results" : p.recent ? (p.isInbox ? "Primary inbox and labelled mail, newest first" : "Newest first") : "Not in a status yet"}
           {!p.recent && ` · ${p.threadIds.length}${p.hasMore ? "+" : ""}`}
           {!p.recent && p.sortedCount > 0 && ` · ${p.sortedCount} in statuses`}
           {p.newReplies > 0 && (

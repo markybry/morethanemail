@@ -136,7 +136,7 @@ Done when: a case that has moved across three email threads is one card with one
 
 - **Rows per sub-label:** a label with sub-labels shows one row for each, across the same statuses. Dragging a card to another row swaps its sub-label in Gmail.
 - **Pick the label when a card is made:** dragging an email into a row gives it that sub-label, and emails picked up in a label's view already carry it. *Later:* a quick label picker on the unfiltered workflow.
-- **Recent** (added at the user's request): the first column switches between "To triage" and "Recent", which is the Inbox plus everything labelled, newest first, with cards already in a status marked. A label's first column includes its sub-labels' emails.
+- **Recent** (added at the user's request): the first column switches between "To triage" and "Recent", which is the Primary inbox plus everything labelled, newest first, with cards already in a status marked. A label's first column includes its sub-labels' emails.
 - **Pin a label** to the top of the sidebar, with a count of its cards that are not finished.
 - **New label for this card** in the card panel (a nested label, as now), for when one card turns into several.
 - **Split a card:** "Split off" moves a thread off a card into its own card, in the same status, keeping its labels.
