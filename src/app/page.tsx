@@ -21,8 +21,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
         <div className="animate-pop mb-2 text-5xl hover:animate-wiggle">🦊</div>
         <h1 className="text-3xl font-semibold tracking-tight text-walnut">More Than Email</h1>
         <p className="mt-2 text-bark">
-          Every Gmail label is a workspace. Sort its emails into lanes, and add notes and tasks to them. The email is
-          the ticket.
+          One workflow for your email. Move each piece of work through your statuses, keep notes and tasks on it, and
+          use your Gmail labels to see just one client or project.
         </p>
         {error && <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         <div className="mt-6 space-y-3">

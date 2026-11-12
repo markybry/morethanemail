@@ -2,17 +2,18 @@ import "server-only";
 import type { Email, Note, Task, TicketLink, User } from "@prisma/client";
 import { db } from "./db";
 import { isLocalThread } from "./format";
-import { getLabelName, type ThreadSummary } from "./mail";
+import { getLabelName, INBOX, type ThreadSummary } from "./mail";
 import { BUILT_IN_TEMPLATES, parseTemplateLanes } from "./laneTemplates";
-import type { BoardEmail, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "./types";
+import type { BoardEmail, LaneTemplateDTO, Lens, ThreadSnapshot, WorkspaceDTO } from "./types";
 
 export const emailInclude = {
   notes: { orderBy: { createdAt: "desc" } },
   tasks: { orderBy: { position: "asc" } },
   links: { orderBy: { createdAt: "asc" } },
+  placements: { select: { workspaceId: true } },
 } as const;
 
-type EmailWithMeta = Email & { notes: Note[]; tasks: Task[]; links: TicketLink[] };
+type EmailWithMeta = Email & { notes: Note[]; tasks: Task[]; links: TicketLink[]; placements?: { workspaceId: string }[] };
 
 // Combine what Gmail says now (if known) with what the app has stored.
 export function toBoardEmail(stored: EmailWithMeta | undefined, live?: ThreadSummary): BoardEmail {
@@ -25,13 +26,14 @@ export function toBoardEmail(stored: EmailWithMeta | undefined, live?: ThreadSum
     snippet: live?.snippet ?? stored!.snippet,
     date,
     unread: live?.unread ?? false,
-    labelIds: live?.labelIds ?? [],
+    labelIds: live?.labelIds ?? stored?.labelIds ?? [],
     notes: stored?.notes.map((n) => ({ id: n.id, body: n.body, createdAt: n.createdAt.toISOString() })) ?? [],
     tasks:
       stored?.tasks.map((t) => ({ id: t.id, title: t.title, notes: t.notes, done: t.done, dueDate: t.dueDate?.toISOString() ?? null })) ?? [],
     links: stored?.links.map((l) => ({ id: l.id, url: l.url, title: l.title })) ?? [],
     newReply: lastSeen !== undefined && new Date(date).getTime() > lastSeen + 1000,
     local: isLocalThread(live?.threadId ?? stored!.threadId),
+    homeId: stored?.placements?.[0]?.workspaceId ?? null,
   };
 }
 
@@ -40,6 +42,7 @@ export const snapshotData = (t: ThreadSnapshot) => ({
   from: t.from,
   snippet: t.snippet,
   date: new Date(t.date),
+  ...(t.labelIds ? { labelIds: t.labelIds } : {}),
 });
 
 // Find or create the Email record for a thread the user is acting on.
@@ -51,18 +54,41 @@ export function upsertEmail(userId: string, t: ThreadSnapshot) {
   });
 }
 
-// A label's workspace, created the first time the label is opened.
-// Returns null if the user has no such Gmail label.
-export async function ensureWorkspace(user: User, labelId: string) {
-  const existing = await db.workspace.findUnique({ where: { userId_labelId: { userId: user.id, labelId } } });
-  if (existing) return existing;
-  const name = await getLabelName(user, labelId);
-  if (name === null) return null;
-  return db.workspace.upsert({
-    where: { userId_labelId: { userId: user.id, labelId } },
-    create: { userId: user.id, labelId, name },
+// The statuses a new main workflow starts with. Waiting and Done send a card
+// back to the Inbox column when a reply arrives.
+const DEFAULT_STATUSES = [
+  { name: "To do", reopenOnReply: false },
+  { name: "WIP", reopenOnReply: false },
+  { name: "Waiting", reopenOnReply: true },
+  { name: "Blocked", reopenOnReply: false },
+  { name: "Done", reopenOnReply: true },
+];
+
+// The main workflow (stored as the Inbox workspace), with default statuses the
+// first time it is opened.
+export async function ensureMainWorkflow(user: User) {
+  const ws = await db.workspace.upsert({
+    where: { userId_labelId: { userId: user.id, labelId: INBOX } },
+    create: { userId: user.id, labelId: INBOX, name: "Inbox" },
     update: {},
+    include: { _count: { select: { lanes: true } } },
   });
+  if (ws._count.lanes === 0) {
+    await db.lane.createMany({ data: DEFAULT_STATUSES.map((s, position) => ({ workspaceId: ws.id, position, ...s })) });
+  }
+  return ws;
+}
+
+// What opening a label shows: the workflow, seen through that label (Inbox shows
+// it unfiltered). Nothing is created for the label. Null if there's no such label.
+export async function resolveLabelView(
+  user: User,
+  labelId: string,
+): Promise<{ workspaceId: string; lens: Lens | null } | null> {
+  const name = labelId === INBOX ? "Inbox" : await getLabelName(user, labelId);
+  if (name === null) return null;
+  const main = await ensureMainWorkflow(user);
+  return { workspaceId: main.id, lens: labelId === INBOX ? null : { labelId, name } };
 }
 
 // Built-in lane templates followed by the user's saved ones.
@@ -78,6 +104,7 @@ export async function loadLaneTemplates(userId: string): Promise<LaneTemplateDTO
 export async function loadWorkspace(
   userId: string,
   workspaceId: string,
+  lens: Lens | null = null,
 ): Promise<{ workspace: WorkspaceDTO; emails: Record<string, BoardEmail> }> {
   const ws = await db.workspace.findFirstOrThrow({
     where: { id: workspaceId, userId },
@@ -101,6 +128,7 @@ export async function loadWorkspace(
       name: ws.name,
       lanes: ws.lanes.map((l) => ({ id: l.id, name: l.name, reopenOnReply: l.reopenOnReply, threadIds: l.placements.map((p) => p.email.threadId) })),
       ticketIds,
+      lens,
     },
     emails,
   };

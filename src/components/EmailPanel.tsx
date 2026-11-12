@@ -43,9 +43,10 @@ const snapshot = (e: BoardEmail): ThreadSnapshot => ({
   from: e.from,
   snippet: e.snippet,
   date: e.date,
+  labelIds: e.labelIds,
 });
 
-// One email: where it sits in this workspace, its tasks and notes, and the thread itself.
+// One card: its status, labels, tasks and notes, and the email thread itself.
 export function EmailPanel({ email, workspaceLabelId, onLabelsChange, lanes, laneId, onPlace, onChange, onSeen, onDelete, onClose }: Props) {
   return (
     <Drawer onClose={onClose}>
@@ -80,9 +81,9 @@ export function EmailPanel({ email, workspaceLabelId, onLabelsChange, lanes, lan
             value={laneId}
             onChange={(e) => onPlace(e.target.value)}
             className="field ml-auto rounded-xl px-2 py-1 text-bark"
-            aria-label="Lane"
+            aria-label="Status"
           >
-            <option value={UNSORTED}>Unsorted</option>
+            <option value={UNSORTED}>Not in a status</option>
             {lanes.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.name}
@@ -95,7 +96,7 @@ export function EmailPanel({ email, workspaceLabelId, onLabelsChange, lanes, lan
       {email.local ? (
         <Description email={email} onChange={onChange} />
       ) : (
-        <Workspaces email={email} here={workspaceLabelId} onLabelsChange={onLabelsChange} />
+        <Labels email={email} here={workspaceLabelId} onLabelsChange={onLabelsChange} />
       )}
       <Tasks email={email} onChange={onChange} />
       <Links email={email} onChange={onChange} />
@@ -146,9 +147,9 @@ function Description({ email, onChange }: { email: BoardEmail; onChange: (e: Boa
   );
 }
 
-// The email's workspaces are its Gmail labels: add or remove one here and it's
+// The card's Gmail labels: add or remove one here and it's
 // applied in Gmail. Inbox counts too; removing it archives the email.
-function Workspaces({
+function Labels({
   email,
   here,
   onLabelsChange,
@@ -160,7 +161,7 @@ function Workspaces({
   const { labels, labelNames, reloadLabels } = useMail();
   const router = useRouter();
   const [query, setQuery] = useState("");
-  // "Make this its own workspace": a new label nested under this workspace's label.
+  // "New label for this card": nested under the label being looked through.
   const parent = here === "INBOX" ? "" : (labelNames.get(here) ?? "");
   const [ownName, setOwnName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -187,7 +188,7 @@ function Workspaces({
   }
 
   return (
-    <Section title="Workspaces">
+    <Section title="Labels">
       <div className="flex flex-wrap gap-1.5">
         {current.map((id) => (
           <span
@@ -209,14 +210,14 @@ function Workspaces({
             </button>
           </span>
         ))}
-        {current.length === 0 && <span className="text-sm text-muted">Not in any workspace.</span>}
+        {current.length === 0 && <span className="text-sm text-muted">No labels.</span>}
       </div>
       <div className="relative mt-2">
         <input
           value={query}
           disabled={busy}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Add to workspace… (type to search or create a label)"
+          placeholder="Add a label… (type to search or create one)"
           className="w-full field rounded-xl px-2.5 py-1.5 text-sm"
         />
         {q && (
@@ -245,9 +246,9 @@ function Workspaces({
         <button
           onClick={() => setOwnName(email.subject.split("/").join("-").slice(0, 80))}
           className="mt-2 text-sm font-semibold text-terracotta hover:underline"
-          title="Create a new Gmail label for this email and open it as its own workspace"
+          title="Create a new Gmail label for this card and look at it through that label"
         >
-          ⇪ Make this its own workspace
+          ⇪ New label for this card
         </button>
       ) : (
         <form

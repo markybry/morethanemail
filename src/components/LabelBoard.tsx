@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   DndContext,
   DragOverlay,
@@ -69,10 +70,12 @@ const snapshotOf = (e: BoardEmail): ThreadSnapshot => ({
   from: e.from,
   snippet: e.snippet,
   date: e.date,
+  labelIds: e.labelIds,
 });
 
-// A Gmail label's workspace: the label's emails, unsorted, plus any lanes the
-// user has added to sort them. Every card is an email; there are no other tickets.
+// A workflow: a first column of emails not yet in a status (the Inbox, or the
+// label being looked through), then the statuses. Seen through a label (a lens),
+// only that label's cards show, including its sub-labels'. A card has one status.
 export function LabelBoard({
   workspace,
   initialEmails,
@@ -84,9 +87,24 @@ export function LabelBoard({
   initialThreadId?: string;
   templates: LaneTemplateDTO[];
 }) {
-  const { reloadLabels } = useMail();
+  const { reloadLabels, labelNames } = useMail();
   const { theme: look } = useTheme();
-  const isInbox = workspace.labelId === "INBOX";
+  const lens = workspace.lens;
+  // The label whose Gmail emails fill the first column.
+  const sourceLabelId = lens?.labelId ?? workspace.labelId;
+  const isInbox = sourceLabelId === "INBOX";
+  const title = lens?.name ?? workspace.name;
+
+  // Does a card belong in this view? With a lens: it carries the label or one of its sub-labels.
+  const inLens = useCallback(
+    (e: BoardEmail | undefined) => {
+      if (!lens) return true;
+      if (!e) return false;
+      const prefix = `${labelNames.get(lens.labelId) ?? lens.name}/`;
+      return e.labelIds.some((id) => id === lens.labelId || !!labelNames.get(id)?.startsWith(prefix));
+    },
+    [lens, labelNames],
+  );
   const [lanes, setLanes] = useState<LaneDTO[]>(workspace.lanes);
   const [emails, setEmails] = useState<Record<string, BoardEmail>>(initialEmails);
   const [unsorted, setUnsorted] = useState<string[]>(workspace.ticketIds);
@@ -134,14 +152,17 @@ export function LabelBoard({
   const load = useCallback(
     async (q: string, pageToken?: string) => {
       setListState("loading");
-      const res = await fetchLabelEmails(workspace.labelId, { primaryOnly, query: q, pageToken });
+      const res = await fetchLabelEmails(sourceLabelId, { primaryOnly, query: q, pageToken });
       if (res.error) {
         setListError(res.error);
         setListState("error");
         return;
       }
       mergeEmails(res.emails);
-      const ids = res.emails.map((e) => e.threadId).filter((id) => !placedRef.current.has(id));
+      // Cards already in a status aren't unsorted.
+      const ids = res.emails
+        .filter((e) => !placedRef.current.has(e.threadId) && !(e.homeId && e.homeId !== workspace.id))
+        .map((e) => e.threadId);
       // Tickets with no email aren't in Gmail's list; keep the unsorted ones (matching a search).
       const needle = q.toLowerCase();
       const tickets = Object.values(emailsRef.current)
@@ -153,7 +174,7 @@ export function LabelBoard({
       setLoadedQuery(q);
       setListState("idle");
     },
-    [workspace.labelId, primaryOnly, mergeEmails],
+    [sourceLabelId, workspace.id, primaryOnly, mergeEmails],
   );
 
   useEffect(() => {
@@ -288,7 +309,14 @@ export function LabelBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when emails or lanes change
   }, [emails, lanes, activeId]);
 
-  const newReplies = lanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply).length;
+  // What this view shows: only cards in the lens. Moves still work on the full lanes.
+  const shownLanes = useMemo(
+    () => lanes.map((l) => ({ ...l, threadIds: l.threadIds.filter((t) => inLens(emails[t])) })),
+    [lanes, emails, inLens],
+  );
+  const shownUnsorted = useMemo(() => unsorted.filter((t) => inLens(emails[t])), [unsorted, emails, inLens]);
+  const shownPlaced = shownLanes.reduce((n, l) => n + l.threadIds.length, 0);
+  const newReplies = shownLanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply).length;
 
 
   const collision: CollisionDetection = (args) => {
@@ -386,22 +414,23 @@ export function LabelBoard({
       <div className="flex h-full min-h-0 flex-col md:flex-row">
         <ColumnTabs
           columns={[
-            { id: "unsorted", name: "Unsorted", count: unsorted.length },
-            ...lanes.map((l) => ({ id: l.id, name: l.name, count: l.threadIds.length })),
-            { id: "add", name: "+ Lane", count: null },
+            { id: "unsorted", name: isInbox ? "Inbox" : "Unsorted", count: shownUnsorted.length },
+            ...shownLanes.map((l) => ({ id: l.id, name: l.name, count: l.threadIds.length })),
+            { id: "add", name: "+ Status", count: null },
           ]}
         />
         {/* On phones this row scrolls sideways, one column per screen; on desktop it dissolves. */}
         <div className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] md:contents">
         <UnsortedColumn
-          title={workspace.name}
-          labelId={workspace.labelId}
+          title={title}
+          labelId={sourceLabelId}
+          isLens={!!lens}
           isInbox={isInbox}
           primaryOnly={primaryOnly}
           onPrimaryOnlyChange={changePrimaryOnly}
-          threadIds={unsorted}
+          threadIds={shownUnsorted}
           emails={emails}
-          sortedCount={placed.size}
+          sortedCount={shownPlaced}
           newReplies={newReplies}
           query={query}
           searching={!!loadedQuery}
@@ -417,7 +446,7 @@ export function LabelBoard({
           onLoadMore={() => load(loadedQuery, nextPage)}
           onNewTicket={(title) =>
             save(async () => {
-              const ticket = await createTicket(workspace.id, title);
+              const ticket = await createTicket(workspace.id, title, lens?.labelId);
               mergeEmails([ticket]);
               setUnsorted((prev) => [ticket.threadId, ...prev]);
               setSelected(ticket.threadId);
@@ -428,12 +457,12 @@ export function LabelBoard({
         />
 
         <section className="board-bg flex min-w-0 flex-1 gap-4 overflow-x-auto p-4 max-md:flex-none max-md:gap-3 max-md:overflow-visible max-md:p-3">
-          {lanes.map((lane, i) => (
+          {shownLanes.map((lane, i) => (
             <Lane
               key={lane.id}
               lane={lane}
               emails={emails}
-              labelId={workspace.labelId}
+              labelId={sourceLabelId}
               isFirst={i === 0}
               isLast={i === lanes.length - 1}
               onMove={(dir) => moveLane(i, dir)}
@@ -474,14 +503,14 @@ export function LabelBoard({
               <input
                 value={newLane}
                 onChange={(e) => setNewLane(e.target.value)}
-                placeholder="Add lane"
+                placeholder="Add status"
                 className="w-full rounded-2xl border-2 border-dashed border-faint bg-cream/85 py-2 pr-3 pl-9 text-sm font-semibold text-bark outline-none transition placeholder:text-muted hover:border-terracotta/60 hover:bg-cream focus:border-terracotta focus:bg-cream"
               />
             </form>
             {lanes.length === 0 && (
               <p className="card-tactile animate-rise rounded-2xl px-3 py-2 text-xs leading-relaxed text-bark">
                 <ThemeIcon icon={look.icons.hint} size={16} className="mr-1" />
-                Add lanes to sort this label&apos;s emails, for example To do, Waiting and Done, then drag emails into them.
+                Add statuses for your work to move through, for example To do, Waiting and Done, then drag emails into them.
               </p>
             )}
             <LaneTemplates
@@ -522,24 +551,22 @@ export function LabelBoard({
       )}
 
       <DragOverlay dropAnimation={null}>
-        {activeEmail ? <CardFace email={activeEmail} hideLabelId={workspace.labelId} dragging /> : null}
+        {activeEmail ? <CardFace email={activeEmail} hideLabelId={sourceLabelId} dragging /> : null}
       </DragOverlay>
 
       {selectedEmail && (
         <EmailPanel
           key={selectedEmail.threadId}
           email={selectedEmail}
-          workspaceLabelId={workspace.labelId}
+          workspaceLabelId={sourceLabelId}
           onLabelsChange={(labelIds) => {
+            const t = selectedEmail.threadId;
             mergeEmails([{ ...selectedEmail, labelIds }]);
-            // Took it out of this label: it leaves this workspace's columns.
-            if (!labelIds.includes(workspace.labelId)) {
-              setUnsorted((prev) => prev.filter((t) => t !== selectedEmail.threadId));
-              setLanes((prev) => prev.map((l) => ({ ...l, threadIds: l.threadIds.filter((t) => t !== selectedEmail.threadId) })));
-            } else if (!containerOf(selectedEmail.threadId, { lanes, unsorted })) {
-              // Added to this label: it joins the unsorted column.
-              setUnsorted((prev) => byDate([...prev, selectedEmail.threadId]));
-            }
+            // Labels never move a card out of its status. An unsorted email that
+            // loses this column's label (archived, for the Inbox) leaves the column;
+            // one that gains it joins.
+            if (!labelIds.includes(sourceLabelId)) setUnsorted((prev) => prev.filter((x) => x !== t));
+            else if (!containerOf(t, { lanes, unsorted })) setUnsorted((prev) => byDate([...prev, t]));
           }}
           lanes={lanes}
           laneId={containerOf(selectedEmail.threadId, { lanes, unsorted }) ?? UNSORTED}
@@ -565,6 +592,7 @@ export function LabelBoard({
 function UnsortedColumn(p: {
   title: string;
   labelId: string;
+  isLens: boolean;
   isInbox: boolean;
   primaryOnly: boolean;
   onPrimaryOnlyChange: (v: boolean) => void;
@@ -634,6 +662,14 @@ function UnsortedColumn(p: {
             </div>
           )}
         </div>
+        {p.isLens && (
+          <p className="text-xs text-muted">
+            Your workflow, showing only this label&apos;s cards.{" "}
+            <Link href="/l/INBOX" className="font-semibold text-terracotta hover:underline">
+              Show everything
+            </Link>
+          </p>
+        )}
         <form
           className="flex gap-2"
           onSubmit={(e) => {
@@ -693,12 +729,12 @@ function UnsortedColumn(p: {
           </select>
         </label>
         <p className="text-xs font-semibold text-muted">
-          {p.searching ? "Search results" : "Unsorted"}
-          {p.sortedCount > 0 && ` · ${p.sortedCount} sorted into lanes`}
+          {p.searching ? "Search results" : "Not in a status yet"}
+          {p.sortedCount > 0 && ` · ${p.sortedCount} in statuses`}
           {p.newReplies > 0 && (
             <span className="text-accent-ink">
               {" · "}
-              {p.newReplies} new {p.newReplies === 1 ? "reply" : "replies"} in lanes
+              {p.newReplies} new {p.newReplies === 1 ? "reply" : "replies"} in statuses
             </span>
           )}
         </p>
@@ -812,7 +848,7 @@ function Lane({
           {lane.threadIds.length}
         </span>
         {lane.reopenOnReply && (
-          <span className="text-xs text-muted" title="A new reply sends an email back to Unsorted">
+          <span className="text-xs text-muted" title="A new reply sends a card back to the first column">
             ↩
           </span>
         )}
@@ -822,8 +858,8 @@ function Lane({
             className={`px-1 text-xs ${lane.reopenOnReply ? "font-bold text-terracotta" : "text-muted"}`}
             title={
               lane.reopenOnReply
-                ? "New replies send emails back to Unsorted. Click to stop."
-                : "Send emails back to Unsorted when a new reply arrives"
+                ? "New replies send cards back to the first column. Click to stop."
+                : "Send cards back to the first column when a new reply arrives"
             }
             aria-pressed={lane.reopenOnReply}
           >
@@ -835,7 +871,7 @@ function Lane({
           <button disabled={isLast} onClick={() => onMove(1)} className="px-1 text-muted disabled:opacity-30" title="Move right">
             ›
           </button>
-          <ConfirmButton label="✕" confirmLabel="Delete lane?" onConfirm={onDelete} small />
+          <ConfirmButton label="✕" confirmLabel="Delete status?" onConfirm={onDelete} small />
         </div>
       </div>
       <div ref={setNodeRef} className={`flex min-h-24 flex-1 flex-col gap-2.5 overflow-y-auto px-2.5 pb-2.5 ${isOver ? "rounded-2xl bg-cream/50" : ""}`}>
@@ -894,7 +930,7 @@ function LaneTemplates({
       {hasLanes && (
         <div className="flex gap-3 px-1 font-semibold text-muted">
           <button onClick={() => setOpen((v) => !v)} className="hover:text-terracotta">
-            {open ? "Hide templates" : "Add lanes from a template"}
+            {open ? "Hide templates" : "Add statuses from a template"}
           </button>
           {naming === null && (
             <button onClick={() => setNaming("")} className="hover:text-terracotta">
