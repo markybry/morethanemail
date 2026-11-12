@@ -568,7 +568,16 @@ export function LabelBoard({
     },
     [lanes],
   );
-  const cardBoard = useMemo(() => ({ toggleTask, ageOf }), [toggleTask, ageOf]);
+  const cardBoard = {
+    toggleTask,
+    ageOf,
+    statuses: lanes.map((l) => ({ id: l.id, name: l.name })),
+    statusOf: (threadId: string) => lanes.find((l) => l.threadIds.includes(threadId))?.id ?? null,
+    moveTo: (threadId: string, statusId: string | null) => void place(threadId, statusId ?? UNSORTED),
+    canArchive: (threadId: string) =>
+      isInbox && !recent && !emails[threadId]?.local && !lanes.some((l) => l.threadIds.includes(threadId)),
+    archive: (threadId: string) => void archive(threadId, selected === threadId),
+  };
 
   // ----- triage: archive, and keys to file the open email -----
   // After filing or archiving the open email, open the next one in the first column.
@@ -1054,14 +1063,17 @@ function UnsortedColumn(p: {
               p.emails[id] ? (
                 p.statusOf(id) ? (
                   // Already in a status: shown for the record, opened with a click.
-                  <button
+                  <div
                     key={id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => p.onOpen(id)}
-                    className={`block w-full text-left ${p.selected === id ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper" : ""}`}
+                    onKeyDown={(e) => e.key === "Enter" && p.onOpen(id)}
+                    className={`block w-full cursor-pointer text-left ${p.selected === id ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper" : ""}`}
                   >
                     <span className="mb-1 block px-1 text-xs font-semibold text-muted">→ {p.statusOf(id)}</span>
                     <CardFace email={p.emails[id]} hideLabelId={p.labelId} />
-                  </button>
+                  </div>
                 ) : (
                   <DraggableEmail
                     key={id}
@@ -1136,7 +1148,7 @@ function DraggableEmail({
             e.stopPropagation();
             onArchive();
           }}
-          className="btn-press absolute right-2 bottom-2 rounded-lg bg-oat px-2 py-0.5 text-xs font-semibold text-bark opacity-0 transition group-hover/drag:opacity-100 hover:text-terracotta max-md:opacity-100"
+          className="btn-press absolute right-2 bottom-2 rounded-lg bg-oat px-2 py-0.5 text-xs font-semibold text-bark opacity-0 transition group-hover/drag:opacity-100 hover:text-terracotta max-md:hidden"
           title="Archive: needs nothing (e)"
         >
           Archive

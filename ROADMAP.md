@@ -152,10 +152,10 @@ The point of this step is that the Inbox column can actually be emptied.
 
 Done when: you can get the Inbox column to empty, and stale waiting cards are obvious.
 
-### Step 5: phone
+### Step 5: phone (done)
 
 - One status at a time, with tabs along the top and swipe between them.
-- On an Inbox card: swipe one way to archive, the other to choose a status. No dragging needed.
+- On a phone, every card has a "Move to…" menu, and Inbox cards an Archive button, so nothing needs press-and-drag. (Swipe gestures were dropped: they clash with swiping between statuses.)
 - Pinned labels and the label tree in the slide-in menu, as now.
 
 ### Step 6: tidy the edges

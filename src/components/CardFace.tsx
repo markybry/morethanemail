@@ -12,6 +12,12 @@ export type CardAge = { text: string; stale: boolean };
 export const CardBoardContext = createContext<{
   toggleTask: (cardId: string, taskId: string, done: boolean) => void;
   ageOf: (threadId: string) => CardAge | null;
+  // On a phone, cards are filed with a menu rather than by dragging.
+  statuses: { id: string; name: string }[];
+  statusOf: (threadId: string) => string | null;
+  moveTo: (threadId: string, statusId: string | null) => void;
+  canArchive: (threadId: string) => boolean;
+  archive: (threadId: string) => void;
 } | null>(null);
 
 const NEXT_SHOWN = 4;
@@ -94,6 +100,29 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
           ))}
           {next.length > NEXT_SHOWN && <li className="pl-5 text-xs text-muted">+{next.length - NEXT_SHOWN} more</li>}
         </ul>
+      )}
+      {board && !dragging && (
+        // Phone only: file or archive without press-and-drag.
+        <div className="mt-2 flex gap-1.5 md:hidden" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+          <select
+            value={board.statusOf(email.threadId) ?? ""}
+            onChange={(e) => board.moveTo(email.threadId, e.target.value || null)}
+            className="field min-w-0 flex-1 rounded-lg px-2 py-1 text-xs text-bark"
+            aria-label="Move to status"
+          >
+            <option value="">{board.statusOf(email.threadId) ? "Not in a status" : "Move to…"}</option>
+            {board.statuses.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          {board.canArchive(email.threadId) && (
+            <button onClick={() => board.archive(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-xs font-semibold text-bark">
+              Archive
+            </button>
+          )}
+        </div>
       )}
       {(email.newReply || !!age || chips.length > 0 || email.threads.length > 1 || email.tasks.length > 0 || email.notes.length > 0 || email.links.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
