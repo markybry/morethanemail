@@ -1,6 +1,6 @@
 # Roadmap: one workflow, labels as lenses
 
-**Status, 12 November 2026:** steps 1 to 6 are built and live. What's left is under "Later", plus the few items marked *later* in the steps.
+**Status, 13 November 2026:** steps 1 to 6 are built and live. Next is Part 2, other email providers (planned below). What's left of the first part is under "Later", plus the few items marked *later* in the steps.
 
 _Written 12 November 2026 (fifth pass)._
 
@@ -165,6 +165,47 @@ Done when: you can get the Inbox column to empty, and stale waiting cards are ob
 - The dashboard becomes **Today**: due tasks, new replies, stale waiting cards, recent activity. The per-workspace panel goes, because the workflow already shows it.
 - README and demo data rewritten around the workflow, lenses and one pinned label with several cards.
 - The word "workspace" removed from the app.
+
+## Part 2: other email providers (planned, not started)
+
+_Added 13 November 2026._
+
+**Goal:** stop relying on Gmail. Any mailbox that speaks IMAP (iCloud, Fastmail, a work or custom-domain server, Outlook, and Gmail itself) feeds the same workflow, several accounts at once.
+
+### What has to change, and why
+
+- **Labels become the app's own.** IMAP has folders, not labels: an email sits in one folder. So labels move into the app's database, where an email can carry several, nested as now. For a Gmail account they can still be kept in step with Gmail's labels; for any other account they live only in the app.
+- **The app keeps its own copy of the mail.** IMAP is too slow to ask on every page load, and the app can't hold a connection open to hear about new mail. A sync job checks each account every few minutes, saves new and changed messages to the database, and the board reads from there. That also gives fast search over everything.
+- **The app builds the threads.** IMAP has no conversations, so replies are grouped using each email's reply headers (Message-ID, In-Reply-To, References), falling back to subject.
+- **Each account signs in its own way.** iCloud, Fastmail and most others use an app password, stored encrypted. Outlook and Gmail need OAuth sign-in (Microsoft and Google no longer accept passwords).
+- **Archive and Trash** become "move to that account's Archive / Trash folder", found from the folder flags the server reports.
+- **Gmail-only extras go**, or work only for Gmail accounts: the Primary / Promotions tabs, and Gmail's search operators.
+
+### Steps
+
+Each step leaves the app working, Gmail included, before the next starts.
+
+1. **A mail provider interface.** Everything the app asks of a mailbox (list, read a thread, archive, trash, search) goes through one interface. Gmail becomes the first implementation. No visible change.
+2. **The app's own labels.** Labels, nesting and colours are stored in the app. Existing Gmail labels are imported, and Gmail stays in step both ways. The sidebar, lenses, rows and pins work from the app's labels.
+3. **Accounts.** An Account table, so one person can connect several mailboxes. Credentials are encrypted with a key held in Vercel's environment variables, never in the database in plain text.
+4. **The mail store and sync.** Messages and threads saved in Postgres, synced every few minutes by a scheduled job (only what changed since last time), with threading built from the headers. The board, Recent, search and Today read from the store.
+5. **IMAP accounts.** "Add an account" in Settings, with presets for iCloud and Fastmail plus host, port and app password for anything else. Archive, trash, read/unread and "done" all work on IMAP.
+6. **Outlook.** Microsoft OAuth sign-in for Outlook.com and Microsoft 365 over IMAP. Microsoft's own API is the alternative if IMAP proves unreliable there.
+7. **One workflow, several accounts.** One Inbox across all accounts. Each card shows which account it's from, and each account is also a lens in the sidebar.
+
+### Rough size
+
+The biggest pieces of work so far. Steps 1 to 3 are a few days. Steps 4 and 5 are the bulk: a couple of weeks between them, because sync and threading have many edge cases. Steps 6 and 7 are a few days each.
+
+### Decisions to confirm
+
+| Decision | Default |
+|---|---|
+| Which providers first? | Whichever you use. iCloud and Fastmail are the easiest (app passwords). Outlook needs OAuth. |
+| Labels for Gmail accounts: kept in step with Gmail, or app-only? | Kept in step, so Gmail's own apps still show them. |
+| How often to check for new mail? | Every 5 minutes, plus straight away when a page opens. |
+| How far back to sync on first connect? | 12 months (older mail is found through search, live). |
+| Can the app send mail? | Still no. Replies stay in your mail app. SMTP could come later. |
 
 ## Later, only if needed
 
