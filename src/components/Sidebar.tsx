@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { setTriageFrom } from "@/app/actions";
+import { toDateInput } from "@/lib/format";
 import { THEME_IDS, THEMES, type ThemeId } from "@/lib/themes";
 import { MailNav } from "./LabelTree";
 import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
 import { ThemeIcon, useTheme } from "./ThemeContext";
 
 type Props = {
-  user: { name: string; email: string; isDemo: boolean };
+  user: { name: string; email: string; isDemo: boolean; triageFrom: string | null };
   mobileOpen: boolean;
   onClose: () => void;
 };
@@ -74,6 +77,7 @@ export function Sidebar({ user, mobileOpen, onClose }: Props) {
               ))}
             </select>
           </label>
+          <DoneBefore value={user.triageFrom} />
           <div>
             <div className="truncate font-semibold text-side-strong">{user.name}</div>
             <div className="truncate text-side-muted">{user.isDemo ? "Demo mode · sample emails" : user.email}</div>
@@ -84,5 +88,36 @@ export function Sidebar({ user, mobileOpen, onClose }: Props) {
         </div>
       </nav>
     </>
+  );
+}
+
+// Setting: labelled mail from before this date counts as done, so it stays out
+// of the triage column and Recent. Applied on the next page load.
+function DoneBefore({ value }: { value: string | null }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const day = value ? toDateInput(value) : "";
+  const save = async (when: string | null) => {
+    setBusy(true);
+    await setTriageFrom(when);
+    setBusy(false);
+    router.refresh();
+  };
+  return (
+    <label className="flex items-center gap-2" title="Labelled mail from before this date counts as done: it stays out of the triage column and Recent">
+      <span className="shrink-0 text-side-muted">Done before</span>
+      <input
+        type="date"
+        value={day}
+        disabled={busy}
+        onChange={(e) => void save(e.target.value || null)}
+        className="min-w-0 flex-1 rounded-lg border border-side-strong/20 bg-black/20 px-2 py-0.5 text-xs text-side-strong outline-none"
+      />
+      {value && (
+        <button disabled={busy} onClick={() => void save(null)} className="text-side-muted hover:text-side-accent" title="Clear">
+          ✕
+        </button>
+      )}
+    </label>
   );
 }

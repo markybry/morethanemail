@@ -18,6 +18,7 @@ model User {
   tokenExpiry   DateTime?
   theme         String         @default("woodland") // woodland | georgian | pixel | dev | dark | light
   pinnedLabels  String[]       @default([]) // labels shown at the top of the sidebar, in order
+  triageFrom    DateTime? // labelled mail older than this counts as done: kept out of the triage column and Recent
   createdAt     DateTime       @default(now())
   workspaces    Workspace[]
   emails        Email[]

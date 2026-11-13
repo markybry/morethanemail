@@ -8,7 +8,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser();
   return (
     <AppShell
-      user={{ name: user.name ?? user.email, email: user.email, isDemo: user.isDemo }}
+      user={{ name: user.name ?? user.email, email: user.email, isDemo: user.isDemo, triageFrom: user.triageFrom?.toISOString() ?? null }}
       theme={isThemeId(user.theme) ? user.theme : "woodland"}
     >
       {children}

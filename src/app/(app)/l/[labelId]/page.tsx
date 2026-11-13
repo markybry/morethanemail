@@ -38,6 +38,7 @@ export default async function LabelPage({
       initialEmails={board.emails}
       initialThreadId={openThread}
       templates={templates}
+      triageFrom={user.triageFrom?.toISOString() ?? null}
     />
   );
 }

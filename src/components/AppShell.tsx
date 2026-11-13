@@ -7,7 +7,7 @@ import { MailProvider } from "./MailContext";
 import { Sidebar } from "./Sidebar";
 import { ThemeIcon, ThemeProvider, useTheme } from "./ThemeContext";
 
-type User = { name: string; email: string; isDemo: boolean };
+type User = { name: string; email: string; isDemo: boolean; triageFrom: string | null };
 
 // The signed-in frame: sidebar plus page. Phones get a top bar with a menu button.
 export function AppShell({ user, theme, children }: { user: User; theme: ThemeId; children: React.ReactNode }) {

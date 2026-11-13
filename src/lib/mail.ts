@@ -55,14 +55,21 @@ export async function labelWithSubLabels(user: User, labelId: string): Promise<{
 // Gmail's Primary tab. A query narrows the list. Gmail leaves out spam and trash.
 export async function listThreads(
   user: User,
-  opts: { labels?: { id: string; name: string }[]; inboxOrLabelled?: boolean; primaryOnly?: boolean; query?: string; pageToken?: string },
+  opts: {
+    labels?: { id: string; name: string }[];
+    inboxOrLabelled?: boolean;
+    after?: Date; // only threads with a message after this
+    primaryOnly?: boolean;
+    query?: string;
+    pageToken?: string;
+  },
 ): Promise<{ threads: ThreadSummary[]; nextPageToken?: string }> {
   const query = opts.query?.trim();
   const labels = opts.labels ?? [];
   const primaryOnly = labels.length === 1 && labels[0].id === INBOX && !!opts.primaryOnly;
   if (user.isDemo) {
     const ids = labels.map((l) => l.id);
-    const all = demoThreads(undefined, false, query);
+    const all = demoThreads(undefined, false, query).filter((t) => !opts.after || new Date(t.date) > opts.after);
     const threads = ids.length
       ? all.filter((t) => t.labelIds.some((l) => ids.includes(l)))
       : opts.inboxOrLabelled
@@ -76,7 +83,8 @@ export async function listThreads(
   // "Recent": what has been triaged, i.e. anything filed under one of the
   // user's labels (cards in a status are added by the board).
   const scope = opts.inboxOrLabelled ? "has:userlabels" : "";
-  const q = [primaryOnly ? "category:primary" : "", anyOf, scope, query ?? ""].filter(Boolean).join(" ");
+  const after = opts.after ? `after:${Math.floor(opts.after.getTime() / 1000)}` : "";
+  const q = [primaryOnly ? "category:primary" : "", anyOf, scope, after, query ?? ""].filter(Boolean).join(" ");
   const gmail = gmailFor(user);
   const res = await gmail.users.threads.list({
     userId: "me",

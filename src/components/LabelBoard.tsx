@@ -36,6 +36,7 @@ import {
   removeThreadFromCard,
   renameLane,
   setHidden,
+  setTriageFrom,
   trashCard,
   untrashCard,
   reorderLanes,
@@ -97,11 +98,13 @@ export function LabelBoard({
   initialEmails,
   initialThreadId,
   templates: initialTemplates,
+  triageFrom: initialTriageFrom,
 }: {
   workspace: WorkspaceDTO;
   initialEmails: Record<string, BoardEmail>;
   initialThreadId?: string;
   templates: LaneTemplateDTO[];
+  triageFrom: string | null;
 }) {
   const { reloadLabels, labelNames, labels } = useMail();
   const { theme: look } = useTheme();
@@ -183,6 +186,12 @@ export function LabelBoard({
   // first, cards already in a status included) so nothing active is out of sight.
   const [recent, setRecent] = useState(false);
   const [recentIds, setRecentIds] = useState<string[]>([]);
+  // Labelled mail older than this counts as done (not used for the Inbox itself).
+  const [triageFrom, setTriageFromState] = useState(initialTriageFrom);
+  // The setting can change from the sidebar; follow it.
+  useEffect(() => setTriageFromState(initialTriageFrom), [initialTriageFrom]);
+  const [showOlder, setShowOlder] = useState(false);
+  const cutoffApplies = !!triageFrom && !showOlder && (!isInbox || recent);
   const [prefsReady, setPrefsReady] = useState(false);
   const [query, setQuery] = useState("");
   const [loadedQuery, setLoadedQuery] = useState("");
@@ -193,7 +202,12 @@ export function LabelBoard({
   const load = useCallback(
     async (q: string, pageToken?: string) => {
       setListState("loading");
-      const res = await fetchLabelEmails(recent && isInbox ? "ALL" : sourceLabelId, { primaryOnly: primaryOnly && !recent, query: q, pageToken });
+      const res = await fetchLabelEmails(recent && isInbox ? "ALL" : sourceLabelId, {
+        primaryOnly: primaryOnly && !recent,
+        query: q,
+        pageToken,
+        includeOlder: showOlder,
+      });
       if (res.error) {
         setListError(res.error);
         setListState("error");
@@ -220,7 +234,9 @@ export function LabelBoard({
       setLoadedQuery(q);
       setListState("idle");
     },
-    [sourceLabelId, isInbox, recent, workspace.id, primaryOnly, mergeEmails],
+    // triageFrom: the server applies it, so a new cut-off must reload the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sourceLabelId, isInbox, recent, workspace.id, primaryOnly, showOlder, triageFrom, mergeEmails],
   );
 
   useEffect(() => {
@@ -299,6 +315,8 @@ export function LabelBoard({
   const persist = async (threadId: string, from: string | undefined, to: string, cols: Columns, before: Columns) => {
     if (from === to && to === UNSORTED) return;
     reopened.current.add(threadId);
+    // Taken back out of the workflow: it shows in the first column again, Recent included.
+    if (to === UNSORTED) setRecentIds((prev) => (prev.includes(threadId) ? prev : [threadId, ...prev]));
     if (from !== to && to !== UNSORTED) {
       const now = new Date().toISOString();
       setLanes((prev) => prev.map((l) => (l.id === to ? { ...l, since: { ...l.since, [threadId]: now } } : l)));
@@ -776,6 +794,14 @@ export function LabelBoard({
           error={listError}
           hasMore={!!nextPage}
           laneCount={lanes.length}
+          draggingFromStatus={!!activeId && lanes.some((l) => l.threadIds.includes(activeId)) && snapshot.current?.from !== UNSORTED}
+          cutoff={!isInbox || recent ? { from: triageFrom, applies: cutoffApplies } : null}
+          onShowOlder={setShowOlder}
+          onMarkOlderDone={async (clear) => {
+            const at = await setTriageFrom(clear ? null : "now");
+            setTriageFromState(at);
+            setShowOlder(false);
+          }}
           hiddenIds={hiddenIds}
           onHide={(id) => void hide(id, true)}
           onTrash={(id) => void trash(id)}
@@ -981,6 +1007,10 @@ export function LabelBoard({
 
 function UnsortedColumn(p: {
   laneCount: number;
+  draggingFromStatus: boolean;
+  cutoff: { from: string | null; applies: boolean } | null; // null in the Inbox's own triage column
+  onShowOlder: (v: boolean) => void;
+  onMarkOlderDone: (clear: boolean) => Promise<void>;
   hiddenIds: string[];
   onHide: (threadId: string) => void;
   onTrash: (threadId: string) => void;
@@ -1158,6 +1188,7 @@ function UnsortedColumn(p: {
         </p>
       </div>
       <div ref={setNodeRef} className={`min-h-0 flex-1 space-y-2.5 overflow-y-auto p-2.5 transition-colors ${isOver ? "bg-oat/60" : ""}`}>
+        {p.draggingFromStatus && <DropBack />}
         {p.state === "error" && <p className="p-2 text-sm text-red-600">{p.error}</p>}
         {groups.map((g) => (
           <div key={g.key} className="space-y-2.5">
@@ -1218,6 +1249,31 @@ function UnsortedColumn(p: {
             {p.sortedCount > 0 ? p.look.text.sorted : p.look.text.empty}
           </p>
         )}
+        {p.cutoff && p.state === "idle" && !p.searching && (
+          <div className="rounded-2xl border border-dashed border-line px-3 py-2 text-xs text-muted">
+            {p.cutoff.from ? (
+              <>
+                {p.cutoff.applies
+                  ? `Labelled mail from before ${new Date(p.cutoff.from).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })} counts as done. `
+                  : "Showing older mail too. "}
+                <button onClick={() => p.onShowOlder(p.cutoff!.applies)} className="font-semibold text-terracotta hover:underline">
+                  {p.cutoff.applies ? "Show older" : "Hide older"}
+                </button>
+                {" · "}
+                <button onClick={() => p.onMarkOlderDone(false)} className="font-semibold hover:text-terracotta hover:underline" title="Everything labelled until now counts as done">
+                  Mark all up to now as done
+                </button>
+              </>
+            ) : (
+              <>
+                Old labelled mail that needs nothing?{" "}
+                <button onClick={() => p.onMarkOlderDone(false)} className="font-semibold text-terracotta hover:underline" title="Everything labelled until now counts as done; new messages still show">
+                  Mark everything up to now as done
+                </button>
+              </>
+            )}
+          </div>
+        )}
         {p.hiddenIds.length > 0 && (
           <details className="rounded-2xl border border-dashed border-line px-3 py-2">
             <summary className="cursor-pointer text-xs font-semibold text-muted">
@@ -1244,6 +1300,22 @@ function UnsortedColumn(p: {
         )}
       </div>
     </aside>
+  );
+}
+
+// Shown while a card is dragged out of a status: drop it here to take it out
+// of the workflow and back into the first column.
+function DropBack() {
+  const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${UNSORTED}#back` });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`sticky top-0 z-[2] rounded-2xl border-2 border-dashed px-3 py-4 text-center text-sm font-semibold transition ${
+        isOver ? "border-terracotta bg-accent-soft text-accent-ink" : "border-faint bg-paper/95 text-bark"
+      }`}
+    >
+      ↩ Drop here to take it out of the workflow
+    </div>
   );
 }
 

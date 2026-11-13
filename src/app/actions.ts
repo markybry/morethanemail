@@ -54,14 +54,24 @@ type ListResult = { emails: BoardEmail[]; nextPageToken?: string; error?: string
 // One page of a label's emails, its sub-labels' included; "ALL" for the Inbox
 // plus everything labelled, newest first. Errors come back as readable text because production hides the
 // message of anything thrown from a server action.
+// Labelled mail from before the user's "done" cut-off is left out (not the
+// Inbox's), unless includeOlder; a search always looks at everything.
 export async function fetchLabelEmails(
   labelId: string,
-  opts: { primaryOnly?: boolean; query?: string; pageToken?: string } = {},
+  opts: { primaryOnly?: boolean; query?: string; pageToken?: string; includeOlder?: boolean } = {},
 ): Promise<ListResult> {
   const user = await requireUser();
   try {
     const labels = labelId === "ALL" ? undefined : await labelWithSubLabels(user, labelId);
-    const res = await listThreads(user, { labels, inboxOrLabelled: labelId === "ALL", ...opts });
+    const useCutoff = labelId !== "INBOX" && !opts.includeOlder && !opts.query?.trim() && !!user.triageFrom;
+    const res = await listThreads(user, {
+      labels,
+      inboxOrLabelled: labelId === "ALL",
+      after: useCutoff ? user.triageFrom! : undefined,
+      primaryOnly: opts.primaryOnly,
+      query: opts.query,
+      pageToken: opts.pageToken,
+    });
     return { emails: await withStoredMeta(user.id, res.threads), nextPageToken: res.nextPageToken };
   } catch (e) {
     console.error("fetchLabelEmails failed", e);
@@ -686,6 +696,21 @@ export async function untrashCard(threadIds: string[]): Promise<{ error?: string
     console.error("untrashCard failed", e);
     return { error: mailErrorMessage(e) };
   }
+}
+
+// ---------- marking older labelled mail as done ----------
+
+// Labelled mail from before this date counts as done: it stays out of the
+// triage column and Recent (until a new message arrives). "now" for this
+// moment, a yyyy-mm-dd date for the start of that day, null to clear it.
+export async function setTriageFrom(when: "now" | string | null): Promise<string | null> {
+  const user = await requireUser();
+  const parsed = when && when !== "now" ? new Date(`${when}T00:00:00`) : null;
+  const triageFrom = when === "now" ? new Date() : parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
+  await db.user.update({ where: { id: user.id }, data: { triageFrom } });
+  revalidateBoards();
+  revalidatePath("/", "layout");
+  return triageFrom?.toISOString() ?? null;
 }
 
 // ---------- hiding from the first column ----------
