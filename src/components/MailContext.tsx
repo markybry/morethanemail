@@ -13,6 +13,7 @@ type MailContextValue = {
   reloadLabels: () => void;
   pinned: string[]; // label ids pinned to the top of the sidebar
   togglePin: (labelId: string) => void;
+  setPins: (labelIds: string[]) => void; // a new order
   openCount: (labelId: string) => number; // open cards carrying the label or a sub-label
   reloadPins: () => void;
 };
@@ -50,6 +51,12 @@ export function MailProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
   }, []);
+  const setPins = useCallback((labelIds: string[]) => {
+    setPinned((prev) => {
+      void setPinnedLabels(labelIds).catch(() => setPinned(prev));
+      return labelIds;
+    });
+  }, []);
   const openCount = useCallback(
     (labelId: string) => {
       const name = labelNames.get(labelId);
@@ -69,7 +76,7 @@ export function MailProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <MailContext.Provider value={{ labels, labelNames, colorOfPath, colorOf, reloadLabels, pinned, togglePin, openCount, reloadPins }}>
+    <MailContext.Provider value={{ labels, labelNames, colorOfPath, colorOf, reloadLabels, pinned, togglePin, setPins, openCount, reloadPins }}>
       {children}
     </MailContext.Provider>
   );

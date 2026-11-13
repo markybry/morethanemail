@@ -1,11 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { setTriageFrom } from "@/app/actions";
-import { toDateInput } from "@/lib/format";
-import { THEME_IDS, THEMES, type ThemeId } from "@/lib/themes";
+import { usePathname } from "next/navigation";
 import { MailNav } from "./LabelTree";
 import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
 import { ThemeIcon, useTheme } from "./ThemeContext";
@@ -20,7 +16,7 @@ type Props = {
 export function Sidebar({ user, mobileOpen, onClose }: Props) {
   const pathname = usePathname();
   const w = useStoredWidth("mte.w.sidebar", 224, 160, 480);
-  const { theme, setTheme } = useTheme();
+  const { theme } = useTheme();
 
   return (
     <>
@@ -63,21 +59,14 @@ export function Sidebar({ user, mobileOpen, onClose }: Props) {
         </div>
 
         <div className="space-y-2 border-t border-dashed border-side-strong/20 px-4 py-3 text-xs">
-          <label className="flex items-center gap-2">
-            <span className="text-side-muted">Theme</span>
-            <select
-              value={theme.id}
-              onChange={(e) => setTheme(e.target.value as ThemeId)}
-              className="min-w-0 flex-1 rounded-lg border border-side-strong/20 bg-black/20 px-2 py-1 text-xs text-side-strong outline-none"
-            >
-              {THEME_IDS.map((id) => (
-                <option key={id} value={id} className="text-black">
-                  {THEMES[id].name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <DoneBefore value={user.triageFrom} />
+          <Link
+            href="/settings"
+            className={`-mx-2 flex items-center gap-2 rounded-xl px-2 py-1 text-sm font-semibold transition hover:bg-white/10 ${
+              pathname === "/settings" ? "bg-side-strong/15 text-side-strong" : ""
+            }`}
+          >
+            ⚙ Settings
+          </Link>
           <div>
             <div className="truncate font-semibold text-side-strong">{user.name}</div>
             <div className="truncate text-side-muted">{user.isDemo ? "Demo mode · sample emails" : user.email}</div>
@@ -88,36 +77,5 @@ export function Sidebar({ user, mobileOpen, onClose }: Props) {
         </div>
       </nav>
     </>
-  );
-}
-
-// Setting: labelled mail from before this date counts as done, so it stays out
-// of the triage column and Recent. Applied on the next page load.
-function DoneBefore({ value }: { value: string | null }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const day = value ? toDateInput(value) : "";
-  const save = async (when: string | null) => {
-    setBusy(true);
-    await setTriageFrom(when);
-    setBusy(false);
-    router.refresh();
-  };
-  return (
-    <label className="flex items-center gap-2" title="Labelled mail from before this date counts as done: it stays out of the triage column and Recent">
-      <span className="shrink-0 text-side-muted">Done before</span>
-      <input
-        type="date"
-        value={day}
-        disabled={busy}
-        onChange={(e) => void save(e.target.value || null)}
-        className="min-w-0 flex-1 rounded-lg border border-side-strong/20 bg-black/20 px-2 py-0.5 text-xs text-side-strong outline-none"
-      />
-      {value && (
-        <button disabled={busy} onClick={() => void save(null)} className="text-side-muted hover:text-side-accent" title="Clear">
-          ✕
-        </button>
-      )}
-    </label>
   );
 }
