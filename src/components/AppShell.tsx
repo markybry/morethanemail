@@ -13,7 +13,7 @@ type User = { name: string; email: string; isDemo: boolean; triageFrom: string |
 export function AppShell({ user, theme, children }: { user: User; theme: ThemeId; children: React.ReactNode }) {
   return (
     <ThemeProvider initial={theme}>
-      <MailProvider>
+      <MailProvider me={user.email}>
         <Frame user={user}>{children}</Frame>
       </MailProvider>
     </ThemeProvider>

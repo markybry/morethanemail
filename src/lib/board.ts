@@ -15,6 +15,8 @@ export const emailInclude = {
   placements: { select: { workspaceId: true } },
   threads: { select: threadFields },
   parent: { select: { threadId: true } },
+  // Notes are shown from notes themselves, so they're left out here.
+  activity: { where: { kind: { not: "note" } }, orderBy: { createdAt: "desc" }, take: 5, select: { kind: true, detail: true, createdAt: true } },
 } as const;
 
 type StoredThread = { threadId: string; subject: string; from: string; snippet: string; date: Date; lastSeenAt: Date | null; labelIds: string[] };
@@ -25,6 +27,7 @@ type EmailWithMeta = Email & {
   placements?: { workspaceId: string }[];
   threads?: StoredThread[];
   parent?: { threadId: string } | null;
+  activity?: { kind: string; detail: string; createdAt: Date }[];
 };
 
 // A thread has a new reply when its latest message is newer than the one last opened.
@@ -74,6 +77,7 @@ export function toBoardEmail(stored: EmailWithMeta | undefined, live?: ThreadSum
     threads,
     partOf: stored?.parent?.threadId ?? null,
     hidden: !!stored?.hiddenAt && new Date(threads[0].date).getTime() <= stored.hiddenAt.getTime(),
+    activity: stored?.activity?.map((a) => ({ kind: a.kind, detail: a.detail, at: a.createdAt.toISOString() })) ?? [],
   };
 }
 

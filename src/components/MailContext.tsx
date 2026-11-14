@@ -6,6 +6,7 @@ import type { MailLabel } from "@/lib/mail";
 import { makeLabelColorer } from "@/lib/labelColors";
 
 type MailContextValue = {
+  me: string; // the signed-in user's address, to tell their own messages apart
   labels: MailLabel[];
   labelNames: Map<string, string>;
   colorOfPath: (path: string) => string;
@@ -21,7 +22,7 @@ type MailContextValue = {
 const MailContext = createContext<MailContextValue | null>(null);
 
 // The user's Gmail labels, shared by the sidebar tree and the email cards' label chips.
-export function MailProvider({ children }: { children: React.ReactNode }) {
+export function MailProvider({ me, children }: { me: string; children: React.ReactNode }) {
   const [labels, setLabels] = useState<MailLabel[]>([]);
 
   const reloadLabels = useCallback(() => {
@@ -76,7 +77,7 @@ export function MailProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <MailContext.Provider value={{ labels, labelNames, colorOfPath, colorOf, reloadLabels, pinned, togglePin, setPins, openCount, reloadPins }}>
+    <MailContext.Provider value={{ me, labels, labelNames, colorOfPath, colorOf, reloadLabels, pinned, togglePin, setPins, openCount, reloadPins }}>
       {children}
     </MailContext.Provider>
   );

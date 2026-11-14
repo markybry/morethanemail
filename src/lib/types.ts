@@ -3,6 +3,8 @@
 export type TaskDTO = { id: string; title: string; notes: string; done: boolean; dueDate: string | null };
 export type NoteDTO = { id: string; body: string; createdAt: string };
 export type LinkDTO = { id: string; url: string; title: string };
+// Something the user did to a card, newest first. kind: moved | ticket | task | taskDone | thread (notes come from notes).
+export type ActivityDTO = { kind: string; detail: string; at: string };
 
 // Enough about a thread to show it and to create its Email record.
 // labelIds, when known, is saved so label views can filter without asking Gmail.
@@ -36,6 +38,7 @@ export type BoardEmail = ThreadSnapshot & {
   threads: CardThread[];
   partOf: string | null; // for a thread added to another card: that card's threadId
   hidden: boolean; // hidden from the first column until a newer message arrives
+  activity: ActivityDTO[]; // the card's latest few changes, newest first
 };
 
 // reopenOnReply: a new reply sends the email back to unsorted for triage.

@@ -2,9 +2,9 @@
 
 import { createContext, useContext } from "react";
 import type { BoardEmail, TaskDTO } from "@/lib/types";
-import { dueLabel, isOverdue, senderName, shortDate } from "@/lib/format";
+import { dueLabel, isOverdue, senderName, shortDate, timeAgo } from "@/lib/format";
 import { useMail } from "./MailContext";
-import { cardLabelIds, latestThread } from "@/lib/cards";
+import { cardLabelIds, latestThread, senderAddress } from "@/lib/cards";
 
 // What the board offers its cards: ticking off next actions without opening
 // the card, and how long the card has sat in its status.
@@ -24,6 +24,38 @@ export const CardBoardContext = createContext<{
 } | null>(null);
 
 const NEXT_SHOWN = 4;
+const LATEST_SHOWN = 3;
+
+type Happening = { key: string; at: string; icon: string; who?: string; text: string; fresh?: boolean };
+
+// What has happened on the card lately, newest first: the newest message in each
+// of its threads (yours or theirs), notes, and what was done to it.
+function latestHappenings(email: BoardEmail, me: string): Happening[] {
+  const mine = (from: string) => !!me && senderAddress(from) === me.toLowerCase();
+  const out: Happening[] = [];
+  if (!email.local)
+    for (const t of email.threads)
+      out.push({
+        key: `m:${t.threadId}`,
+        at: t.date,
+        icon: mine(t.from) ? "↗" : "✉",
+        who: mine(t.from) ? "You" : senderName(t.from),
+        text: email.threads.length > 1 ? `${t.subject} — ${t.snippet}` : t.snippet,
+        fresh: t.newReply,
+      });
+  for (const n of email.notes) out.push({ key: `n:${n.id}`, at: n.createdAt, icon: "✎", text: n.body });
+  email.activity.forEach((a, i) => {
+    const text = {
+      moved: a.detail ? `Moved to ${a.detail}` : "Back to the first column",
+      ticket: "Ticket created",
+      task: `Next action added: ${a.detail}`,
+      taskDone: `Done: ${a.detail}`,
+      thread: `Email added: ${a.detail}`,
+    }[a.kind];
+    if (text) out.push({ key: `a:${i}`, at: a.at, icon: a.kind === "taskDone" ? "✓" : a.kind === "moved" ? "→" : "•", text });
+  });
+  return out.sort((a, b) => b.at.localeCompare(a.at));
+}
 
 // Open actions, soonest due first, then in the order they were added.
 const nextActions = (tasks: TaskDTO[]) =>
@@ -36,7 +68,7 @@ const nextActions = (tasks: TaskDTO[]) =>
 // A card on the board, in the first column or in a status. At a glance: what it
 // is (title, and its summary or newest message) and what needs to happen next.
 export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; hideLabelId?: string; dragging?: boolean }) {
-  const { labelNames, colorOf } = useMail();
+  const { labelNames, colorOf, me } = useMail();
   const board = useContext(CardBoardContext);
   const toggleTask = board?.toggleTask;
   const age = board?.ageOf(email.threadId) ?? null;
@@ -49,6 +81,8 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
   // The workspace's own label and its parents go without saying.
   const here = hideLabelId ? labelNames.get(hideLabelId) : undefined;
   const latest = latestThread(email);
+  const happenings = latestHappenings(email, me);
+  const lastChange = happenings[0]?.at ?? latest.date;
   const named = cardLabelIds(email)
     .map((id) => ({ id, name: labelNames.get(id) }))
     .filter((l): l is { id: string; name: string } => !!l.name && l.name !== here && !(here && here.startsWith(`${l.name}/`)));
@@ -67,15 +101,33 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
         <span className={`min-w-0 flex-1 truncate ${email.unread ? "font-bold text-walnut" : "text-bark"}`}>
           {email.local && email.threads.length <= 1 ? "✎ Ticket" : senderName(latest.from)}
         </span>
-        <span className="shrink-0 text-muted">{shortDate(latest.date)}</span>
+        <span className="shrink-0 text-muted" title={`Last change ${new Date(lastChange).toLocaleString()}`}>
+          {timeAgo(lastChange)}
+        </span>
       </div>
       <div className={`mt-0.5 text-sm leading-snug ${email.unread ? "font-extrabold text-walnut" : "font-semibold text-ink"}`}>
         {email.title}
       </div>
-      {summary ? (
-        <div className="mt-0.5 line-clamp-2 text-xs text-bark">{summary}</div>
+      {summary && <div className="mt-0.5 line-clamp-3 text-xs text-bark">{summary}</div>}
+      {happenings.length > 0 ? (
+        <ul className="mt-2 space-y-1 border-t border-dashed border-line pt-1.5">
+          {happenings.slice(0, LATEST_SHOWN).map((h) => (
+            <li key={h.key} className="flex items-start gap-1.5 text-xs leading-snug">
+              <span className="w-3.5 shrink-0 text-center text-muted" aria-hidden>
+                {h.icon}
+              </span>
+              <span className={`line-clamp-2 min-w-0 flex-1 ${h.fresh ? "text-ink" : "text-bark"}`}>
+                {h.who && <span className={`font-semibold ${h.fresh ? "text-walnut" : "text-ink"}`}>{h.who}: </span>}
+                {h.text}
+              </span>
+              <span className="shrink-0 text-muted" title={new Date(h.at).toLocaleString()}>
+                {shortDate(h.at)}
+              </span>
+            </li>
+          ))}
+        </ul>
       ) : (
-        <div className="mt-0.5 truncate text-xs text-muted">{latest.snippet}</div>
+        !summary && <div className="mt-0.5 truncate text-xs text-muted">{latest.snippet}</div>
       )}
       {next.length > 0 && (
         <ul className="mt-2 space-y-1 border-t border-dashed border-line pt-1.5">

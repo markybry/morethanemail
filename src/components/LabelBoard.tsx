@@ -523,7 +523,7 @@ export function LabelBoard({
   // ----- lanes -----
   const [newLane, setNewLane] = useState("");
   const [templates, setTemplates] = useState(initialTemplates);
-  const laneWidth = useStoredWidth("mte.w.lane", 320, 200, 640);
+  const laneWidth = useStoredWidth("mte.w.lane", 360, 200, 720);
 
   async function moveLane(index: number, dir: -1 | 1) {
     const target = index + dir;
@@ -591,7 +591,14 @@ export function LabelBoard({
       const set = (v: boolean) =>
         setEmails((prev) => {
           const e = prev[cardId];
-          return e ? { ...prev, [cardId]: { ...e, tasks: e.tasks.map((t) => (t.id === taskId ? { ...t, done: v } : t)) } } : prev;
+          if (!e) return prev;
+          const task = e.tasks.find((t) => t.id === taskId);
+          // Show the tick in the card's Latest straight away (and take it back on undo).
+          const activity =
+            v && task
+              ? [{ kind: "taskDone", detail: task.title, at: new Date().toISOString() }, ...e.activity]
+              : e.activity.filter((a, i) => !(i === 0 && a.kind === "taskDone" && a.detail === task?.title));
+          return { ...prev, [cardId]: { ...e, activity, tasks: e.tasks.map((t) => (t.id === taskId ? { ...t, done: v } : t)) } };
         });
       set(done);
       void save(() => updateTask(taskId, { done }), () => set(!done));
