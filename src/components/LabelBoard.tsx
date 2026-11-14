@@ -55,6 +55,7 @@ import { useMail } from "./MailContext";
 import { ConfirmButton, InlineEdit } from "./ui";
 import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
 import { ThemeIcon, useTheme } from "./ThemeContext";
+import { InSidebar } from "./SidebarSlot";
 
 const PRIMARY_KEY = "mte.inboxPrimaryOnly";
 const RECENT_KEY = "mte.firstColumnRecent";
@@ -781,7 +782,10 @@ export function LabelBoard({
         />
         {/* On phones this row scrolls sideways, one column per screen; on desktop it dissolves. */}
         <div className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] md:contents">
+        <InSidebar>
+        {(docked) => (
         <UnsortedColumn
+          docked={docked}
           title={recent && isInbox ? "Recent" : title}
           labelId={sourceLabelId}
           isLens={!!lens}
@@ -832,6 +836,8 @@ export function LabelBoard({
           onOpen={setSelected}
           look={look}
         />
+        )}
+        </InSidebar>
 
         <section className="board-bg flex min-w-0 flex-1 gap-4 overflow-x-auto p-4 max-md:flex-none max-md:gap-3 max-md:overflow-visible max-md:p-3">
           {shownLanes.map((lane, i) => (
@@ -1013,6 +1019,7 @@ export function LabelBoard({
 // ---------- columns ----------
 
 function UnsortedColumn(p: {
+  docked: boolean; // shown at the bottom of the sidebar rather than as the board's first column
   laneCount: number;
   draggingFromStatus: boolean;
   cutoff: { from: string | null; applies: boolean } | null; // null in the Inbox's own triage column
@@ -1073,10 +1080,14 @@ function UnsortedColumn(p: {
   return (
     <aside
       id="col-unsorted"
-      className="paper relative flex shrink-0 snap-start flex-col border-r border-line max-md:w-screen md:w-[var(--w)]"
-      style={widthVar(w.width)}
+      className={
+        p.docked
+          ? "paper relative flex min-h-0 flex-1 flex-col"
+          : "paper relative flex shrink-0 snap-start flex-col border-r border-line max-md:w-screen md:w-[var(--w)]"
+      }
+      style={p.docked ? undefined : widthVar(w.width)}
     >
-      <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} label="Resize email column" />
+      {!p.docked && <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} label="Resize email column" />}
       <div className="space-y-2 border-b border-dashed border-line-strong p-3">
         <div className="flex items-center gap-2">
           <h1 className="min-w-0 flex-1 truncate text-xl font-semibold text-walnut" title={p.title}>
