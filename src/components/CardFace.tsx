@@ -4,6 +4,7 @@ import { createContext, useContext } from "react";
 import type { BoardEmail, TaskDTO } from "@/lib/types";
 import { dueLabel, isOverdue, senderName, shortDate, timeAgo } from "@/lib/format";
 import { useMail } from "./MailContext";
+import { useTheme } from "./ThemeContext";
 import { cardLabelIds, latestThread, senderAddress } from "@/lib/cards";
 
 // What the board offers its cards: ticking off next actions without opening
@@ -69,6 +70,7 @@ const nextActions = (tasks: TaskDTO[]) =>
 // is (title, and its summary or newest message) and what needs to happen next.
 export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; hideLabelId?: string; dragging?: boolean }) {
   const { labelNames, colorOf, me } = useMail();
+  const compact = useTheme().density === "compact";
   const board = useContext(CardBoardContext);
   const toggleTask = board?.toggleTask;
   const age = board?.ageOf(email.threadId) ?? null;
@@ -92,7 +94,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
 
   return (
     <div
-      className={`card-tactile group/card animate-rise relative cursor-grab overflow-hidden rounded-2xl p-3 pl-4 transition duration-200 hover:-translate-y-0.5 active:translate-y-px ${
+      className={`card-tactile group/card animate-rise relative cursor-grab overflow-hidden rounded-2xl ${compact ? "p-2.5 pl-4" : "p-3 pl-4"} transition duration-200 hover:-translate-y-0.5 active:translate-y-px ${
         email.newReply ? "ring-2 ring-mustard/70" : age?.stale ? "ring-2 ring-bad-ink/40" : ""
       } ${dragging ? "w-68 rotate-2 cursor-grabbing" : ""}`}
     >
@@ -105,11 +107,14 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
           {timeAgo(lastChange)}
         </span>
       </div>
-      <div className={`mt-0.5 text-sm leading-snug ${email.unread ? "font-extrabold text-walnut" : "font-semibold text-ink"}`}>
+      <div
+        className={`mt-0.5 text-sm leading-snug ${compact ? "line-clamp-2" : ""} ${email.unread ? "font-extrabold text-walnut" : "font-semibold text-ink"}`}
+        title={compact ? summary || latest.snippet : undefined}
+      >
         {email.title}
       </div>
-      {summary && <div className="mt-0.5 line-clamp-3 text-xs text-bark">{summary}</div>}
-      {happenings.length > 0 ? (
+      {!compact && summary && <div className="mt-0.5 line-clamp-3 text-xs text-bark">{summary}</div>}
+      {compact ? null : happenings.length > 0 ? (
         <ul className="mt-2 space-y-1 border-t border-dashed border-line pt-1.5">
           {happenings.slice(0, LATEST_SHOWN).map((h) => (
             <li key={h.key} className="flex items-start gap-1.5 text-xs leading-snug">
@@ -130,8 +135,8 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
         !summary && <div className="mt-0.5 truncate text-xs text-muted">{latest.snippet}</div>
       )}
       {next.length > 0 && (
-        <ul className="mt-2 space-y-1 border-t border-dashed border-line pt-1.5">
-          {next.slice(0, NEXT_SHOWN).map((t) => (
+        <ul className={`space-y-1 ${compact ? "mt-1.5" : "mt-2 border-t border-dashed border-line pt-1.5"}`}>
+          {next.slice(0, compact ? 1 : NEXT_SHOWN).map((t) => (
             <li key={t.id} className="flex items-start gap-1.5 text-xs leading-snug">
               {toggleTask ? (
                 <input
@@ -147,13 +152,13 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
               ) : (
                 <span className="text-muted">○</span>
               )}
-              <span className="min-w-0 flex-1 text-ink">{t.title}</span>
+              <span className={`min-w-0 flex-1 text-ink ${compact ? "truncate" : ""}`}>{t.title}</span>
               {t.dueDate && (
                 <span className={`shrink-0 font-semibold ${isOverdue(t.dueDate) ? "text-bad-ink" : "text-muted"}`}>{dueLabel(t.dueDate)}</span>
               )}
             </li>
           ))}
-          {next.length > NEXT_SHOWN && <li className="pl-5 text-xs text-muted">+{next.length - NEXT_SHOWN} more</li>}
+          {!compact && next.length > NEXT_SHOWN && <li className="pl-5 text-xs text-muted">+{next.length - NEXT_SHOWN} more</li>}
         </ul>
       )}
       {board && !dragging && (
@@ -190,7 +195,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
         </div>
       )}
       {(email.newReply || !!age || chips.length > 0 || email.threads.length > 1 || email.tasks.length > 0 || email.notes.length > 0 || email.links.length > 0) && (
-        <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+        <div className={`flex flex-wrap text-xs ${compact ? "mt-1.5 gap-1 [&>span]:py-0 [&>span]:text-[11px]" : "mt-2 gap-1.5"}`}>
           {email.newReply && (
             <Badge tone="blue">
               <span className="relative mr-1 inline-flex h-1.5 w-1.5 align-middle">
@@ -207,9 +212,9 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
               {done === email.tasks.length ? "✓ All done" : `☑ ${done}/${email.tasks.length}`}
             </Badge>
           )}
-          {email.notes.length > 0 && <Badge>✎ {email.notes.length}</Badge>}
-          {email.links.length > 0 && <Badge>🔗 {email.links.length}</Badge>}
-          {chips.slice(0, 3).map((c) => (
+          {!compact && email.notes.length > 0 && <Badge>✎ {email.notes.length}</Badge>}
+          {!compact && email.links.length > 0 && <Badge>🔗 {email.links.length}</Badge>}
+          {chips.slice(0, compact ? 2 : 3).map((c) => (
             <Badge key={c.key} tone="label">
               <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: c.color }} />
               {c.text}

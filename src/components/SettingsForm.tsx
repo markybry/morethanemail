@@ -40,9 +40,28 @@ function Card({ title, children, hint }: { title: string; children: React.ReactN
 }
 
 function Appearance() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, density, setDensity } = useTheme();
   return (
     <Card title="Appearance">
+      <div className="mb-4">
+        <span className="text-sm font-semibold text-walnut">Cards show</span>
+        <div className="mt-1 flex w-fit overflow-hidden rounded-full border border-line-strong bg-cream text-xs font-semibold">
+          {(["compact", "detailed"] as const).map((d) => (
+            <button
+              key={d}
+              onClick={() => setDensity(d)}
+              aria-pressed={density === d}
+              className={`px-3 py-1 transition ${density === d ? "bg-moss text-cream" : "text-bark hover:bg-oat"}`}
+            >
+              {d === "compact" ? "Compact" : "Detailed"}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          Compact shows the title, the next action and small markers. Detailed adds the summary and latest activity. Saved on this
+          device.
+        </p>
+      </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {THEME_IDS.map((id) => (
           <button

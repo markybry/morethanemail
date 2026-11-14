@@ -1435,8 +1435,8 @@ function Lane({
   return (
     <div
       id={`col-${lane.id}`}
-      className={`animate-rise relative flex max-h-full shrink-0 snap-start flex-col overflow-visible rounded-3xl shadow-[inset_0_2px_6px_rgb(80_55_25/0.08)] ring-1 transition max-md:w-[calc(100vw-1.5rem)] md:w-[var(--w)] ${colors.box} ${
-        isOver ? "scale-[1.01] shadow-lg" : ""
+      className={`lane animate-rise relative flex max-h-full shrink-0 snap-start flex-col overflow-visible rounded-3xl shadow-[inset_0_2px_6px_rgb(80_55_25/0.08)] ring-1 transition max-md:w-[calc(100vw-1.5rem)] md:w-[var(--w)] ${colors.box} ${
+        isOver ? "lane-over scale-[1.01] shadow-lg" : ""
       }`}
       style={widthVar(width.width)}
     >

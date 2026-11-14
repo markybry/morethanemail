@@ -618,8 +618,8 @@ html[data-theme="dark"] {
   --color-walnut: #f1f3f7; /* strongest text */
   --color-bark: #c3c8d2; /* secondary text */
   --color-ink: #e4e7ec; /* body text */
-  --color-muted: #8a91a0; /* dates, snippets */
-  --color-faint: #4a505d;
+  --color-muted: #a1a8b6; /* dates, snippets */
+  --color-faint: #5a6170;
   --color-line: #2a2e38;
   --color-line-strong: #363b47;
   --color-moss: #6cc98f;
@@ -630,7 +630,7 @@ html[data-theme="dark"] {
   --color-accent-ink: #a9c4ff;
   --color-shadow: #000000;
   --color-side-text: #c3c8d2;
-  --color-side-muted: #7d8494;
+  --color-side-muted: #969dac;
   --color-side-strong: #f1f3f7;
   --color-side-accent: #7ea6f8;
   --color-ok-bg: #173325;
@@ -866,9 +866,27 @@ html[data-theme="light"] .animate-float {
   animation: none;
 }
 
+/* Scrollbars stay out of sight until you hover the area that scrolls. */
 * {
   scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+*:hover {
   scrollbar-color: var(--color-faint) transparent;
+}
+
+/* The clean themes: statuses sit straight on the board, no box around each one.
+   Colour stays in the bar on top and the count. */
+html[data-theme="dark"] .lane,
+html[data-theme="light"] .lane,
+html[data-theme="dev"] .lane {
+  background: transparent;
+  box-shadow: none;
+}
+html[data-theme="dark"] .lane.lane-over,
+html[data-theme="light"] .lane.lane-over,
+html[data-theme="dev"] .lane.lane-over {
+  background: var(--color-oat);
 }
 
 @media (prefers-reduced-motion: reduce) {
