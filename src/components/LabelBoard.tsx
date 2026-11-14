@@ -868,6 +868,7 @@ export function LabelBoard({
               onOpen={setSelected}
               rows={orderedRows}
               rowOf={rowOf}
+              showEmptyRows={!!activeId}
               width={laneWidth}
               colors={LANE_THEMES[i % LANE_THEMES.length]}
               icon={look.icons.lanes[i % look.icons.lanes.length]}
@@ -1406,6 +1407,7 @@ function Lane({
   onFinishedChange,
   onOpen,
   rows,
+  showEmptyRows,
   rowOf,
   width,
   colors,
@@ -1423,6 +1425,7 @@ function Lane({
   onFinishedChange: (on: boolean) => Promise<void>;
   onOpen: (threadId: string) => void;
   rows: Row[] | null;
+  showEmptyRows: boolean; // empty sub-labels stay hidden except while a card is being dragged
   rowOf: (e: BoardEmail | undefined) => string;
   width: ReturnType<typeof useStoredWidth>;
   colors: (typeof LANE_THEMES)[number];
@@ -1491,17 +1494,11 @@ function Lane({
       </div>
       <div ref={setNodeRef} className={`flex min-h-24 flex-1 flex-col gap-2.5 overflow-y-auto px-2.5 pb-2.5 ${isOver && !rows ? "rounded-2xl bg-cream/50" : ""}`}>
         {rows ? (
-          rows.map((r) => (
-            <RowGroup
-              key={r.key}
-              laneId={lane.id}
-              row={r}
-              threadIds={lane.threadIds.filter((t) => rowOf(emails[t]) === r.key)}
-              emails={emails}
-              labelId={labelId}
-              onOpen={onOpen}
-            />
-          ))
+          rows.map((r) => {
+            const ids = lane.threadIds.filter((t) => rowOf(emails[t]) === r.key);
+            if (!ids.length && !showEmptyRows) return null;
+            return <RowGroup key={r.key} laneId={lane.id} row={r} threadIds={ids} emails={emails} labelId={labelId} onOpen={onOpen} />;
+          })
         ) : (
           <SortableContext items={lane.threadIds.map((t) => `${T}${t}`)} strategy={verticalListSortingStrategy}>
             {lane.threadIds.map((t) =>
