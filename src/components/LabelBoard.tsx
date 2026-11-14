@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   DndContext,
@@ -76,6 +76,9 @@ const LANE = "lane:"; // droppable column ids; "lane:<id>#<row>" for one row of 
 const fromId = (id: string) => id.slice(T.length);
 const GENERAL = "__general"; // the row for cards with no sub-label
 const STALE_DAYS = 7; // a card waiting this long is flagged
+// True while an email from the first column is dragged: a card in a status is
+// then a drop target ("add to this card") rather than a place in the list.
+const MergeDragContext = createContext(false);
 
 // A row of the board: one sub-label of the label being looked through.
 type Row = { key: string; labelId: string | null; name: string; path: string };
@@ -343,6 +346,22 @@ export function LabelBoard({
     );
   };
 
+  // Several emails into one status (and row) at once, saved one after another.
+  const placeMany = async (ids: string[], target: string, row?: string) => {
+    const before = { lanes, unsorted };
+    let cur: Columns = before;
+    const steps = ids.map((id) => {
+      const from = containerOf(id, cur);
+      cur = moveInto(cur, id, target);
+      return { id, from, cols: cur };
+    });
+    apply(cur);
+    for (const s of steps) {
+      if (s.from !== target) await persist(s.id, s.from, target, s.cols, before);
+      if (row && row !== rowOf(emails[s.id])) await moveToRow(s.id, row);
+    }
+  };
+
   // From the email panel's lane picker.
   const place = async (threadId: string, target: string) => {
     const cols = { lanes, unsorted };
@@ -361,6 +380,8 @@ export function LabelBoard({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [dragFromFirst, setDragFromFirst] = useState(false);
+  const [overLane, setOverLane] = useState<string | null>(null);
   const snapshot = useRef<(Columns & { from?: string }) | null>(null);
 
   // A new reply on an email in a "reopen on reply" lane (Done, Waiting...)
@@ -428,6 +449,25 @@ export function LabelBoard({
   const newReplies = shownLanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply).length;
 
 
+  // ----- picking several emails in the first column -----
+  // Tick emails (or shift-click a run of them), then file, archive, hide or
+  // combine them together, or drag one and the rest come along.
+  const firstList = recent ? shownRecent : shownUnsorted;
+  const [picked, setPicked] = useState<string[]>([]);
+  const lastPicked = useRef<string | null>(null);
+  const pickedShown = useMemo(() => firstList.filter((t) => picked.includes(t) && !placed.has(t)), [firstList, picked, placed]);
+  const pick = (threadId: string, range: boolean) => {
+    const anchor = lastPicked.current;
+    lastPicked.current = threadId;
+    setPicked((prev) => {
+      if (range && anchor && firstList.includes(anchor)) {
+        const [a, b] = [firstList.indexOf(anchor), firstList.indexOf(threadId)].sort((x, y) => x - y);
+        return [...new Set([...prev, ...firstList.slice(a, b + 1)])];
+      }
+      return prev.includes(threadId) ? prev.filter((x) => x !== threadId) : [...prev, threadId];
+    });
+  };
+
   const collision: CollisionDetection = (args) => {
     const hits = pointerWithin(args);
     const cardHits = hits.filter((h) => String(h.id).startsWith(T));
@@ -476,16 +516,21 @@ export function LabelBoard({
   function onDragStart({ active }: DragStartEvent) {
     const id = fromId(String(active.id));
     setActiveId(id);
-    snapshot.current = { lanes, unsorted, from: containerOf(id, { lanes, unsorted }) };
+    const from = containerOf(id, { lanes, unsorted });
+    snapshot.current = { lanes, unsorted, from };
+    // From the first column there's no live preview in the statuses, so the
+    // cards stay still and can be dropped onto.
+    setDragFromFirst(!from || from === UNSORTED);
   }
 
   // Emails follow the pointer into lanes while dragging. The unsorted column
   // keeps Gmail's date order, so it only takes an email back on drop.
   function onDragOver({ active, over }: DragOverEvent) {
-    if (!over) return;
     const id = fromId(String(active.id));
     const cols = { lanes, unsorted };
-    const target = targetOf(String(over.id), cols);
+    const target = over ? targetOf(String(over.id), cols) : undefined;
+    setOverLane(target && target !== UNSORTED ? target : null);
+    if (!over || dragFromFirst) return;
     if (!target || target === UNSORTED || target === containerOf(id, cols)) return;
     const before = String(over.id).startsWith(T) ? fromId(String(over.id)) : undefined;
     apply(moveInto(cols, id, target, before));
@@ -495,11 +540,36 @@ export function LabelBoard({
     const snap = snapshot.current;
     snapshot.current = null;
     setActiveId(null);
+    setDragFromFirst(false);
+    setOverLane(null);
     const id = fromId(String(active.id));
     const cols = { lanes, unsorted };
     const target = over ? targetOf(String(over.id), cols) : undefined;
     if (!snap || !target) {
       if (snap) apply(snap);
+      return;
+    }
+    if (dragFromFirst && target !== UNSORTED) {
+      const overId = String(over!.id);
+      const onCard = overId.startsWith(T) ? fromId(overId) : undefined;
+      // Picked emails travel together, the dragged one first.
+      const group = pickedShown.includes(id) ? [id, ...pickedShown.filter((t) => t !== id)] : [id];
+      setPicked([]);
+      if (onCard && onCard !== id && !emails[id]?.local) {
+        // Dropped onto a card: the email(s) join it.
+        for (const t of group) {
+          const e = emails[t];
+          if (!e || e.local || t === onCard) continue;
+          const err = await addToCard(e, onCard);
+          if (err) {
+            setSaveError(err);
+            break;
+          }
+        }
+        return;
+      }
+      const row = rows ? (overId.startsWith(LANE) ? overId.split("#")[1] : rowOf(emails[fromId(overId)])) : undefined;
+      await placeMany(group, target, row);
       return;
     }
     let next = cols;
@@ -721,12 +791,99 @@ export function LabelBoard({
     await save(() => setHidden(snapshotOf(e), hidden), () => set(!hidden));
   };
 
+  const archiveMany = async (ids: string[]) => {
+    const own = ids.filter((id) => emails[id] && !emails[id].local);
+    const threads = own.flatMap((id) => emails[id].threads.map((t) => t.threadId)).filter((t) => !t.startsWith("local:"));
+    if (!threads.length) return;
+    if (selected && own.includes(selected)) setSelected(null);
+    const before = unsorted;
+    setUnsorted((prev) => prev.filter((x) => !own.includes(x)));
+    const res = await archiveThreads(threads);
+    if (res.error || !res.labelIds) {
+      setUnsorted(before);
+      setSaveError(res.error ?? "Couldn't archive those emails.");
+      return;
+    }
+    const labels = res.labelIds;
+    setEmails((prev) => {
+      const next = { ...prev };
+      for (const id of own) {
+        const cur = next[id];
+        if (cur)
+          next[id] = {
+            ...cur,
+            labelIds: labels[cur.threadId] ?? cur.labelIds,
+            threads: cur.threads.map((t) => ({ ...t, labelIds: labels[t.threadId] ?? t.labelIds })),
+          };
+      }
+      return next;
+    });
+  };
+
+  // Several emails become one card: the newest is the card, the others join it.
+  // It stays in the first column, ready to be filed.
+  const combine = async (ids: string[]) => {
+    const [base, ...rest] = ids;
+    const card = emails[base];
+    if (!card) return;
+    if (!card.local) {
+      let failed = false;
+      await save(() => arrangeEmails(workspace.id, { lanes: [], unsorted: [], snapshots: [snapshotOf(card)] }), () => (failed = true));
+      if (failed) return;
+    }
+    for (const id of rest) {
+      const e = emails[id];
+      if (!e || e.local) continue;
+      const err = await addToCard(e, base);
+      if (err) {
+        setSaveError(err);
+        break;
+      }
+    }
+    setSelected(base);
+  };
+
+  const bulk = {
+    statuses: lanes.map((l) => ({ id: l.id, name: l.name })),
+    onMove: (laneId: string) => {
+      const ids = pickedShown;
+      setPicked([]);
+      void placeMany(ids, laneId);
+    },
+    onArchive:
+      isInbox && !recent
+        ? () => {
+            const ids = pickedShown;
+            setPicked([]);
+            void archiveMany(ids);
+          }
+        : undefined,
+    onHide: () => {
+      const ids = pickedShown;
+      setPicked([]);
+      ids.forEach((id) => void hide(id, true));
+    },
+    onCombine: () => {
+      const ids = pickedShown;
+      setPicked([]);
+      void combine(ids);
+    },
+    onClear: () => setPicked([]),
+  };
+
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape" && pickedShown.length && !selected) {
+        setPicked([]);
+        return;
+      }
       if (ev.metaKey || ev.ctrlKey || ev.altKey || !selected) return;
       if ((ev.target as HTMLElement | null)?.closest?.("input, textarea, select, [contenteditable='true']")) return;
       const fromFirst = !lanes.some((l) => l.threadIds.includes(selected));
-      if (ev.key === "e" && isInbox && fromFirst) {
+      if (ev.key === "x" && fromFirst) {
+        ev.preventDefault();
+        pick(selected, false);
+      } else if (ev.key === "e" && isInbox && fromFirst) {
         ev.preventDefault();
         void archive(selected, true);
       } else if (ev.key === "#" && !emails[selected]?.local) {
@@ -759,6 +916,7 @@ export function LabelBoard({
 
   return (
     <CardBoardContext.Provider value={cardBoard}>
+    <MergeDragContext.Provider value={dragFromFirst && !!activeId && !emails[activeId]?.local}>
     <DndContext
       id="label-board" // stable id avoids an SSR/client hydration mismatch in dnd-kit's aria ids
       sensors={sensors}
@@ -770,6 +928,8 @@ export function LabelBoard({
         if (snapshot.current) apply(snapshot.current);
         snapshot.current = null;
         setActiveId(null);
+        setDragFromFirst(false);
+        setOverLane(null);
       }}
     >
       <div className="flex h-full min-h-0 flex-col md:flex-row">
@@ -786,6 +946,9 @@ export function LabelBoard({
         {(docked) => (
         <UnsortedColumn
           docked={docked}
+          picked={pickedShown}
+          onPick={pick}
+          bulk={bulk}
           title={recent && isInbox ? "Recent" : title}
           labelId={sourceLabelId}
           isLens={!!lens}
@@ -868,7 +1031,7 @@ export function LabelBoard({
               onOpen={setSelected}
               rows={orderedRows}
               rowOf={rowOf}
-              showEmptyRows={!!activeId}
+              showEmptyRows={!!activeId && overLane === lane.id}
               width={laneWidth}
               colors={LANE_THEMES[i % LANE_THEMES.length]}
               icon={look.icons.lanes[i % look.icons.lanes.length]}
@@ -956,7 +1119,16 @@ export function LabelBoard({
       )}
 
       <DragOverlay dropAnimation={null}>
-        {activeEmail ? <CardFace email={activeEmail} hideLabelId={sourceLabelId} dragging /> : null}
+        {activeEmail ? (
+          <div className="relative">
+            <CardFace email={activeEmail} hideLabelId={sourceLabelId} dragging />
+            {dragFromFirst && pickedShown.length > 1 && pickedShown.includes(activeEmail.threadId) && (
+              <span className="absolute -top-2 -right-2 rounded-full bg-terracotta px-2 py-0.5 text-xs font-bold text-cream shadow">
+                {pickedShown.length}
+              </span>
+            )}
+          </div>
+        ) : null}
       </DragOverlay>
 
       {selectedEmail && (
@@ -1013,6 +1185,7 @@ export function LabelBoard({
         />
       )}
     </DndContext>
+    </MergeDragContext.Provider>
     </CardBoardContext.Provider>
   );
 }
@@ -1021,6 +1194,16 @@ export function LabelBoard({
 
 function UnsortedColumn(p: {
   docked: boolean; // shown at the bottom of the sidebar rather than as the board's first column
+  picked: string[];
+  onPick: (threadId: string, range: boolean) => void;
+  bulk: {
+    statuses: { id: string; name: string }[];
+    onMove: (laneId: string) => void;
+    onArchive?: () => void;
+    onHide: () => void;
+    onCombine: () => void;
+    onClear: () => void;
+  };
   laneCount: number;
   draggingFromStatus: boolean;
   cutoff: { from: string | null; applies: boolean } | null; // null in the Inbox's own triage column
@@ -1094,6 +1277,14 @@ function UnsortedColumn(p: {
           <h1 className="min-w-0 flex-1 truncate text-xl font-semibold text-walnut" title={p.title}>
             {p.title.split("/").join(" › ")}
           </h1>
+          {p.laneCount > 0 && (
+            <span
+              className="shrink-0 cursor-help text-sm text-muted"
+              title={`Keys, with an email open: 1–${Math.min(p.laneCount, 9)} files it into a status${p.onArchive ? ", e archives it" : ""}, h hides it, # deletes it, x picks it. Shift-click picks a run of emails. Drop an email onto a card to add it to that card.`}
+            >
+              ⌨
+            </span>
+          )}
           {p.isInbox && !p.recent && (
             <div className="flex shrink-0 overflow-hidden rounded-full border border-line-strong bg-cream text-xs font-semibold">
               {[true, false].map((v) => (
@@ -1122,12 +1313,6 @@ function UnsortedColumn(p: {
             </button>
           ))}
         </div>
-        {p.onArchive && p.laneCount > 0 && (
-          <p className="text-xs text-muted" title="Keyboard shortcuts while an email is open">
-            Open an email, then <kbd className="font-semibold">1</kbd>–<kbd className="font-semibold">{Math.min(p.laneCount, 9)}</kbd> files it
-            into a status, <kbd className="font-semibold">e</kbd> archives it, <kbd className="font-semibold">h</kbd> hides it, <kbd className="font-semibold">#</kbd> deletes it.
-          </p>
-        )}
         {p.isLens && (
           <p className="text-xs text-muted">
             Your workflow, showing only this label&apos;s cards.{" "}
@@ -1153,13 +1338,14 @@ function UnsortedColumn(p: {
             ↻
           </button>
         </form>
+        <div className="flex flex-wrap items-center justify-between gap-2">
         {ticket === null ? (
           <button onClick={() => setTicket("")} className="text-xs font-semibold text-terracotta hover:underline">
             + New ticket (no email)
           </button>
         ) : (
           <form
-            className="flex gap-1.5"
+            className="flex w-full gap-1.5"
             onSubmit={async (e) => {
               e.preventDefault();
               if (!ticket.trim()) return;
@@ -1194,6 +1380,7 @@ function UnsortedColumn(p: {
             ))}
           </select>
         </label>
+        </div>
         <p className="text-xs font-semibold text-muted">
           {p.searching ? "Search results" : p.recent ? (p.isInbox ? "Labelled, not in a status yet, newest first" : "Not in a status yet, newest first") : "Not in a status yet"}
           {!p.recent && ` · ${p.threadIds.length}${p.hasMore ? "+" : ""}`}
@@ -1208,6 +1395,7 @@ function UnsortedColumn(p: {
       </div>
       <div ref={setNodeRef} className={`min-h-0 flex-1 space-y-2.5 overflow-y-auto p-2.5 transition-colors ${isOver ? "bg-oat/60" : ""}`}>
         {p.draggingFromStatus && <DropBack />}
+        {p.picked.length > 0 && <BulkBar count={p.picked.length} {...p.bulk} />}
         {p.state === "error" && <p className="p-2 text-sm text-red-600">{p.error}</p>}
         {groups.map((g) => (
           <div key={g.key} className="space-y-2.5">
@@ -1238,6 +1426,9 @@ function UnsortedColumn(p: {
                     email={p.emails[id]}
                     labelId={p.labelId}
                     selected={p.selected === id}
+                    picked={p.picked.includes(id)}
+                    picking={p.picked.length > 0}
+                    onPick={(range) => p.onPick(id, range)}
                     onOpen={() => p.onOpen(id)}
                     onArchive={p.onArchive && !p.emails[id].local ? () => p.onArchive!(id) : undefined}
                     onHide={() => p.onHide(id)}
@@ -1322,6 +1513,53 @@ function UnsortedColumn(p: {
   );
 }
 
+// Shown while emails are picked in the first column.
+function BulkBar(p: {
+  count: number;
+  statuses: { id: string; name: string }[];
+  onMove: (laneId: string) => void;
+  onArchive?: () => void;
+  onHide: () => void;
+  onCombine: () => void;
+  onClear: () => void;
+}) {
+  const btn = "btn-press rounded-lg bg-oat px-2 py-0.5 text-xs font-semibold text-bark hover:text-terracotta";
+  return (
+    <div className="sticky top-0 z-[3] flex flex-wrap items-center gap-1.5 rounded-2xl border border-moss/60 bg-cream p-2 shadow-md">
+      <span className="text-xs font-bold text-walnut">{p.count} picked</span>
+      <select
+        value=""
+        onChange={(e) => e.target.value && p.onMove(e.target.value)}
+        className="field rounded-lg px-1.5 py-0.5 text-xs text-bark"
+        aria-label="Move picked emails to a status"
+      >
+        <option value="">Move to…</option>
+        {p.statuses.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+          </option>
+        ))}
+      </select>
+      {p.count > 1 && (
+        <button onClick={p.onCombine} className={btn} title="Make one card from these emails (the newest is the card)">
+          Combine
+        </button>
+      )}
+      {p.onArchive && (
+        <button onClick={p.onArchive} className={btn} title="Archive in Gmail">
+          Archive
+        </button>
+      )}
+      <button onClick={p.onHide} className={btn} title="Hide: doesn't need tracking">
+        Hide
+      </button>
+      <button onClick={p.onClear} className="ml-auto text-xs font-semibold text-muted hover:text-terracotta" title="Clear (Esc)">
+        ✕
+      </button>
+    </div>
+  );
+}
+
 // Shown while a card is dragged out of a status: drop it here to take it out
 // of the workflow and back into the first column.
 function DropBack() {
@@ -1342,6 +1580,9 @@ function DraggableEmail({
   email,
   labelId,
   selected,
+  picked,
+  picking,
+  onPick,
   onOpen,
   onArchive,
   onHide,
@@ -1350,6 +1591,9 @@ function DraggableEmail({
   email: BoardEmail;
   labelId: string;
   selected: boolean;
+  picked: boolean;
+  picking: boolean;
+  onPick: (range: boolean) => void;
   onOpen: () => void;
   onArchive?: () => void;
   onHide?: () => void;
@@ -1361,10 +1605,35 @@ function DraggableEmail({
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      onClick={onOpen}
-      className={`group/drag relative touch-manipulation ${isDragging ? "opacity-30" : ""} ${selected ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper" : ""}`}
+      // Shift- or Ctrl-click picks instead of opening.
+      onClick={(e) => (e.shiftKey || e.ctrlKey || e.metaKey ? onPick(e.shiftKey) : onOpen())}
+      className={`group/drag relative touch-manipulation ${isDragging ? "opacity-30" : ""} ${
+        picked
+          ? "rounded-2xl ring-2 ring-moss ring-offset-2 ring-offset-paper"
+          : selected
+            ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper"
+            : ""
+      }`}
     >
       <CardFace email={email} hideLabelId={labelId} />
+      <button
+        role="checkbox"
+        aria-checked={picked}
+        aria-label={picked ? "Unpick" : "Pick"}
+        title="Pick (x). Shift-click picks a run."
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onPick(e.shiftKey);
+        }}
+        className={`absolute top-2 left-0.5 z-[1] flex h-4 w-4 items-center justify-center rounded border text-[10px] leading-none font-bold transition ${
+          picked
+            ? "border-moss bg-moss text-cream"
+            : `border-line-strong bg-cream text-transparent hover:border-moss ${picking ? "" : "opacity-0 group-hover/drag:opacity-100 max-md:opacity-100"}`
+        }`}
+      >
+        ✓
+      </button>
       {(onArchive || onHide) && (
         // Desktop: on hover. Phones use the buttons on the card itself.
         <div className="absolute right-2 bottom-2 flex gap-1 opacity-0 transition group-hover/drag:opacity-100 max-md:hidden">
@@ -1545,7 +1814,8 @@ function RowGroup({
 }
 
 function SortableEmail({ email, labelId, onOpen }: { email: BoardEmail; labelId: string; onOpen: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `${T}${email.threadId}` });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: `${T}${email.threadId}` });
+  const merging = useContext(MergeDragContext) && isOver && !isDragging;
   return (
     <div
       ref={setNodeRef}
@@ -1553,9 +1823,14 @@ function SortableEmail({ email, labelId, onOpen }: { email: BoardEmail; labelId:
       {...attributes}
       {...listeners}
       onClick={onOpen}
-      className={`touch-manipulation ${isDragging ? "opacity-30" : ""}`}
+      className={`relative touch-manipulation ${isDragging ? "opacity-30" : ""} ${merging ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper" : ""}`}
     >
       <CardFace email={email} hideLabelId={labelId} />
+      {merging && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-accent-soft/85 text-sm font-bold text-accent-ink">
+          ＋ Add to this card
+        </div>
+      )}
     </div>
   );
 }

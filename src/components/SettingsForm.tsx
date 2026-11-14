@@ -29,6 +29,29 @@ export function SettingsForm({ user, triageFrom }: Props) {
   );
 }
 
+// Back to where you were (or the Inbox if Settings was opened directly). Esc too.
+export function CloseSettings() {
+  const router = useRouter();
+  const close = () => (window.history.length > 1 ? router.back() : router.push("/l/INBOX"));
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !(e.target as HTMLElement | null)?.closest?.("input, textarea, select")) close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  return (
+    <button
+      onClick={close}
+      className="btn-press rounded-full bg-oat px-3 py-1 text-sm font-semibold text-bark hover:text-terracotta"
+      aria-label="Close settings"
+      title="Close (Esc)"
+    >
+      ✕ Close
+    </button>
+  );
+}
+
 function Card({ title, children, hint }: { title: string; children: React.ReactNode; hint?: string }) {
   return (
     <section className="paper rounded-3xl border border-line p-4">
