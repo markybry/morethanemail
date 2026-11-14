@@ -9,12 +9,10 @@ import { useMail } from "./MailContext";
 import { ThemeIcon, useTheme } from "./ThemeContext";
 import { makeLabelIcon } from "@/lib/labelColors";
 
-const OPEN_KEY = "mte.labelsOpen";
-
 type Node = { segment: string; path: string; label?: MailLabel; children: Node[] };
 
 // Gmail nests labels by name ("Clients/Acme"), so the tree is built from the names.
-// A parent that isn't itself a label still shows, but only expands.
+// A parent that isn't itself a label still shows, but only opens its level.
 function buildTree(labels: MailLabel[]): Node[] {
   const root: Node = { segment: "", path: "", children: [] };
   for (const l of labels) {
@@ -34,61 +32,61 @@ function buildTree(labels: MailLabel[]): Node[] {
   return root.children;
 }
 
+function findNode(nodes: Node[], path: string): Node | undefined {
+  for (const n of nodes) {
+    if (n.path === path) return n;
+    if (path.startsWith(`${n.path}/`)) return findNode(n.children, path);
+  }
+}
+
+const parentOf = (path: string) => (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
+const lastOf = (path: string) => path.split("/").pop() ?? path;
 const hrefFor = (labelId: string) => `/l/${encodeURIComponent(labelId)}`;
 
-// The workflow first, then the user's labels as a tree. A label is a lens:
-// opening it shows the workflow filtered to that label.
+// The workflow first, then the user's labels one level at a time: a label with
+// sub-labels has a › that steps into them, and the heading steps back out.
+// A label is a lens: opening it shows the workflow filtered to that label.
 export function MailNav() {
   const { labels, reloadLabels, pinned, togglePin, openCount, reloadPins, colorOf } = useMail();
   const pathname = usePathname();
   // Counts change as cards move; refresh them when moving between pages.
   useEffect(() => reloadPins(), [pathname, reloadPins]);
   const router = useRouter();
-  // Where a new label is being typed: "" for top level, else the parent's path.
-  const [creatingUnder, setCreatingUnder] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [filter, setFilter] = useState("");
   const tree = useMemo(() => buildTree(labels), [labels]);
-  const [open, setOpen] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    try {
-      setOpen(new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? "[]") as string[]));
-    } catch {}
-  }, []);
+  // The level being shown: "" for the top, else the parent label's path.
+  const [level, setLevel] = useState("");
 
   const activeId = pathname.startsWith("/l/") ? decodeURIComponent(pathname.slice(3)) : null;
-  // Keep the branch holding the open label expanded.
   const activePath = labels.find((l) => l.id === activeId)?.name;
-  const isOpen = (path: string) => open.has(path) || (!!activePath && activePath.startsWith(`${path}/`));
+  // Follow the open label: show the level it sits in.
+  useEffect(() => {
+    if (activePath !== undefined) setLevel(parentOf(activePath));
+  }, [activePath]);
 
-  const toggle = (path: string) => {
-    setOpen((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      try {
-        localStorage.setItem(OPEN_KEY, JSON.stringify([...next]));
-      } catch {}
-      return next;
-    });
-  };
+  const levelNode = level ? findNode(tree, level) : undefined;
+  // A level that no longer exists (label renamed or deleted) falls back to the top.
+  const shown = levelNode ? level : "";
+  const rows = levelNode?.children ?? tree;
+  const topName = pinned.length > 0 ? "All labels" : "Labels";
+
+  const q = filter.trim().toLowerCase();
+  const matches = useMemo(
+    () => (q ? labels.filter((l) => l.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name)) : []),
+    [labels, q],
+  );
 
   // Open a new label straight away (an empty view of the workflow through it).
   const create = async (name: string) => {
-    const parent = creatingUnder;
-    setCreatingUnder(null);
+    setCreating(false);
     setCreateError("");
     if (!name.trim()) return;
-    const res = await createWorkspace(parent ? `${parent}/${name}` : name);
+    const res = await createWorkspace(shown ? `${shown}/${name}` : name);
     if (res.error || !res.label) return setCreateError(res.error ?? "Couldn't create the label.");
-    if (parent) setOpen((prev) => new Set(prev).add(parent));
     reloadLabels();
     router.push(hrefFor(res.label.id));
-  };
-
-  const startChild = (path: string) => {
-    setOpen((prev) => new Set(prev).add(path));
-    setCreatingUnder(path);
   };
 
   return (
@@ -102,8 +100,8 @@ export function MailNav() {
             const count = openCount(id);
             const color = colorOf(id);
             return (
-              <NavRow key={id} href={hrefFor(id)} active={activeId === id} activeColor={color} depth={0}>
-                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
+              <NavRow key={id} href={hrefFor(id)} active={activeId === id} activeColor={color}>
+                <span className="mx-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
                 <span className="truncate font-semibold text-side-strong" title={label.name}>
                   {label.name.split("/").join(" › ")}
                 </span>
@@ -120,85 +118,123 @@ export function MailNav() {
           })}
         </>
       )}
-      <p className="mt-3 px-5 pb-1 text-xs font-bold tracking-widest text-side-muted uppercase">{pinned.length > 0 ? "All labels" : "Labels"}</p>
-      {tree.map((n) => (
-        <TreeNode
-          key={n.path}
-          node={n}
-          depth={0}
-          activeId={activeId}
-          isOpen={isOpen}
-          onToggle={toggle}
-          onAddChild={startChild}
-          creatingUnder={creatingUnder}
-          onCreate={create}
-        />
-      ))}
-      {creatingUnder === "" ? (
-        <NewLabelInput placeholder="Label name, e.g. Clients/JR" onSubmit={create} />
-      ) : (
-        <button
-          onClick={() => setCreatingUnder("")}
-          className="mx-2 mt-2 w-[calc(100%-1rem)] rounded-xl border-2 border-dashed border-side-strong/25 px-3 py-1 text-left text-sm font-semibold text-side-muted transition hover:border-side-accent/60 hover:bg-white/5 hover:text-side-accent"
-        >
-          + New label
-        </button>
+
+      <div className="mt-3 px-3 pb-1">
+        {shown && !q ? (
+          <button
+            onClick={() => setLevel(parentOf(shown))}
+            className="flex max-w-full min-w-0 items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold tracking-widest text-side-muted uppercase transition hover:bg-white/10 hover:text-side-accent"
+            title="Back"
+          >
+            <span aria-hidden className="text-sm leading-none">
+              ‹
+            </span>
+            <span className="truncate">{shown.includes("/") ? lastOf(parentOf(shown)) : topName}</span>
+          </button>
+        ) : (
+          <p className="px-2 py-0.5 text-xs font-bold tracking-widest text-side-muted uppercase">{topName}</p>
+        )}
+      </div>
+      {labels.length > 6 && (
+        <div className="mx-2 mb-1">
+          <input
+            type="search"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setFilter("");
+              if (e.key === "Enter" && matches[0]) {
+                setFilter("");
+                router.push(hrefFor(matches[0].id));
+              }
+            }}
+            placeholder="Find a label"
+            aria-label="Find a label"
+            className="w-full rounded-xl bg-black/15 px-3 py-1 text-sm text-side-strong outline-none ring-1 ring-side-strong/15 placeholder:text-side-muted/70 focus:ring-side-accent/50"
+          />
+        </div>
       )}
+
+      {q ? (
+        <div key="filter" className="animate-fade-in">
+          {matches.map((l) => (
+            <LabelRow
+              key={l.id}
+              node={{ segment: l.name, path: l.name, label: l, children: [] }}
+              fullPath
+              activeId={activeId}
+              onOpenLevel={setLevel}
+              onNavigate={() => setFilter("")}
+            />
+          ))}
+          {matches.length === 0 && <p className="px-5 py-1 text-sm text-side-muted">No labels match.</p>}
+        </div>
+      ) : (
+        <div key={shown} className="animate-fade-in">
+          {levelNode && <LabelRow node={{ ...levelNode, children: [] }} heading activeId={activeId} onOpenLevel={setLevel} />}
+          {rows.map((n) => (
+            <LabelRow key={n.path} node={n} activeId={activeId} onOpenLevel={setLevel} />
+          ))}
+        </div>
+      )}
+
+      {!q &&
+        (creating ? (
+          <NewLabelInput placeholder={shown ? `New label in ${lastOf(shown)}` : "Label name, e.g. Clients/JR"} onSubmit={create} />
+        ) : (
+          <button
+            onClick={() => setCreating(true)}
+            className="mx-2 mt-2 w-[calc(100%-1rem)] truncate rounded-xl border-2 border-dashed border-side-strong/25 px-3 py-1 text-left text-sm font-semibold text-side-muted transition hover:border-side-accent/60 hover:bg-white/5 hover:text-side-accent"
+          >
+            + New label{shown ? ` in ${lastOf(shown)}` : ""}
+          </button>
+        ))}
       {createError && <p className="mx-4 mt-1 text-xs text-red-400">{createError}</p>}
     </div>
   );
 }
 
-function TreeNode({
+// One label in the list. `heading` marks the label whose level is open (it sits
+// above its sub-labels); `fullPath` shows "Clients › Acme" for filter results.
+function LabelRow({
   node,
-  depth,
   activeId,
-  isOpen,
-  onToggle,
-  onAddChild,
-  creatingUnder,
-  onCreate,
+  onOpenLevel,
+  onNavigate,
+  heading,
+  fullPath,
 }: {
   node: Node;
-  depth: number;
   activeId: string | null;
-  isOpen: (path: string) => boolean;
-  onToggle: (path: string) => void;
-  onAddChild: (path: string) => void;
-  creatingUnder: string | null;
-  onCreate: (name: string) => void;
+  onOpenLevel: (path: string) => void;
+  onNavigate?: () => void;
+  heading?: boolean;
+  fullPath?: boolean;
 }) {
   const { colorOfPath, labels, pinned, togglePin } = useMail();
   const { theme } = useTheme();
   const iconOf = useMemo(() => makeLabelIcon(labels, theme.icons.labels), [labels, theme]);
   const color = colorOfPath(node.path);
-  const expanded = isOpen(node.path);
   const active = !!node.label && node.label.id === activeId;
-  const chevron =
-    node.children.length > 0 ? (
-      <span
-        role="button"
-        aria-label={expanded ? "Collapse" : "Expand"}
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onToggle(node.path);
-        }}
-        className="w-3 shrink-0 text-center text-muted hover:text-white"
-      >
-        {expanded ? "▾" : "▸"}
-      </span>
-    ) : undefined;
+  const topLevel = !node.path.includes("/");
+  const hasChildren = node.children.length > 0;
+  const name = fullPath ? node.path.split("/").join(" › ") : node.segment;
+
   const content = (
     <>
-      {depth === 0 ? (
+      {topLevel ? (
         <span className="w-5 shrink-0 text-center text-base leading-none group-hover:animate-wiggle" aria-hidden>
           <ThemeIcon icon={iconOf(node.path)} size={16} />
         </span>
       ) : (
-        <span className="h-2 w-2 shrink-0 rounded-full ring-2 ring-black/20" style={{ background: color }} />
+        <span className="mx-1.5 h-2 w-2 shrink-0 rounded-full ring-2 ring-black/20" style={{ background: color }} />
       )}
-      <span className={`truncate ${node.label?.unread || depth === 0 ? "font-bold text-side-strong" : ""}`}>{node.segment}</span>
+      <span
+        className={`truncate ${node.label?.unread || topLevel || heading ? "font-bold text-side-strong" : ""}`}
+        title={node.path.split("/").join(" › ")}
+      >
+        {name}
+      </span>
       <span className="ml-auto flex items-center gap-1 pl-2">
         {!!node.label?.unread && (
           <span className="rounded-full px-1.5 text-[11px] font-extrabold text-shadow" style={{ background: color }}>
@@ -206,60 +242,35 @@ function TreeNode({
           </span>
         )}
         {node.label && !pinned.includes(node.label.id) && <PinButton pinned={false} onToggle={() => togglePin(node.label!.id)} />}
-        <span
-          role="button"
-          aria-label={`New label under ${node.path}`}
-          title={`New label under ${node.path.split("/").join(" › ")}`}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onAddChild(node.path);
-          }}
-          className="hidden w-4 text-center text-muted group-hover:inline hover:text-white max-md:inline"
-        >
-          +
-        </span>
+        {hasChildren && (
+          <span
+            role="button"
+            aria-label={`Show labels in ${node.segment}`}
+            title={`Show labels in ${node.segment}`}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onOpenLevel(node.path);
+            }}
+            className="-my-1 -mr-2 rounded-lg px-2 py-0.5 text-base leading-none text-side-muted hover:bg-white/10 hover:text-side-accent"
+          >
+            ›
+          </span>
+        )}
       </span>
     </>
   );
-  return (
-    <>
-      {node.label ? (
-        <NavRow href={hrefFor(node.label.id)} active={active} activeColor={color} depth={depth} chevron={chevron}>
-          {content}
-        </NavRow>
-      ) : (
-        <NavRow onClick={() => onToggle(node.path)} active={false} depth={depth} chevron={chevron}>
-          {content}
-        </NavRow>
-      )}
-      {(expanded || creatingUnder === node.path) && (
-        // Children sit beside a guide line in the branch colour, so it's clear
-        // which parent they belong to even with several branches open.
-        <div className="relative ml-[22px]">
-          {/* A stitched thread in the branch colour links children to their parent. */}
-          <span className="absolute top-0 bottom-1 left-2 border-l-2 border-dashed" style={{ borderColor: color, opacity: 0.75 }} />
-          <div className="pl-2">
-            {expanded &&
-              node.children.map((c) => (
-                <TreeNode
-                  key={c.path}
-                  node={c}
-                  depth={depth + 1}
-                  activeId={activeId}
-                  isOpen={isOpen}
-                  onToggle={onToggle}
-                  onAddChild={onAddChild}
-                  creatingUnder={creatingUnder}
-                  onCreate={onCreate}
-                />
-              ))}
-            {creatingUnder === node.path && <NewLabelInput placeholder="New label name" onSubmit={onCreate} />}
-          </div>
-        </div>
-      )}
-    </>
+  const row = node.label ? (
+    <NavRow href={hrefFor(node.label.id)} onClick={onNavigate} active={active} activeColor={color}>
+      {content}
+    </NavRow>
+  ) : (
+    // A parent that isn't itself a label just opens its level.
+    <NavRow onClick={() => (hasChildren ? onOpenLevel(node.path) : undefined)} active={false}>
+      {content}
+    </NavRow>
   );
+  return heading ? <div className="mb-1 border-b border-side-strong/10 pb-1">{row}</div> : row;
 }
 
 function NavRow({
@@ -267,39 +278,25 @@ function NavRow({
   onClick,
   active,
   activeColor,
-  depth,
-  chevron,
   children,
 }: {
   href?: string;
   onClick?: () => void;
   active: boolean;
   activeColor?: string;
-  depth: number;
-  chevron?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const className = `group mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 rounded-xl py-1 pr-3 text-left text-sm transition hover:translate-x-0.5 hover:bg-white/10 ${
+  const className = `group mx-2 flex w-[calc(100%-1rem)] items-center gap-1.5 rounded-xl py-1 pr-3 pl-3 text-left text-sm transition hover:translate-x-0.5 hover:bg-white/10 ${
     active ? "text-side-strong" : ""
   }`;
-  // Nesting is shown by the guide-line containers, so rows only need a little padding.
-  const style = {
-    paddingLeft: depth === 0 ? 12 : 6,
-    ...(active && activeColor ? { background: `${activeColor}33`, boxShadow: `inset 3px 0 0 ${activeColor}` } : {}),
-  };
-  const inner = (
-    <>
-      {chevron ?? <span className="w-3 shrink-0" />}
-      {children}
-    </>
-  );
+  const style = active && activeColor ? { background: `${activeColor}33`, boxShadow: `inset 3px 0 0 ${activeColor}` } : undefined;
   return href ? (
-    <Link href={href} className={className} style={style}>
-      {inner}
+    <Link href={href} onClick={onClick} className={className} style={style}>
+      {children}
     </Link>
   ) : (
     <button onClick={onClick} className={className} style={style}>
-      {inner}
+      {children}
     </button>
   );
 }
