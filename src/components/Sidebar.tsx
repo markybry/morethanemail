@@ -38,6 +38,14 @@ export function Sidebar({ user, mobileOpen, onClose, slotRef }: Props) {
         </div>
 
         <Link
+          href="/l/INBOX"
+          className={`mx-2 flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold transition hover:bg-white/10 ${
+            pathname === "/l/INBOX" ? "bg-side-strong/15 text-side-strong shadow-[inset_0_1px_3px_rgb(0_0_0/0.3)]" : ""
+          }`}
+        >
+          <span className="w-4 text-center">📥</span> Inbox
+        </Link>
+        <Link
           href="/dashboard"
           className={`mx-2 flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold transition hover:bg-white/10 ${
             pathname === "/dashboard" ? "bg-side-strong/15 text-side-strong shadow-[inset_0_1px_3px_rgb(0_0_0/0.3)]" : ""
@@ -54,8 +62,7 @@ export function Sidebar({ user, mobileOpen, onClose, slotRef }: Props) {
           <ThemeIcon icon={theme.icons.tasks} size={16} /> Next actions
         </Link>
 
-        <p className="mt-5 px-5 pb-1 text-xs font-bold tracking-widest text-side-muted uppercase">Labels</p>
-        <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+        <div className="mt-2 min-h-0 flex-1 overflow-y-auto pb-4">
           <MailNav />
         </div>
         {/* The board's Inbox / To-triage column lands here on desktop (see SidebarSlot). */}

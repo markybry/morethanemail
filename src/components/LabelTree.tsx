@@ -93,9 +93,6 @@ export function MailNav() {
 
   return (
     <div>
-      <NavRow href={hrefFor("INBOX")} active={activeId === "INBOX"} depth={0}>
-        <span className="truncate">Inbox</span>
-      </NavRow>
       {pinned.length > 0 && (
         <>
           <p className="mt-3 px-5 pb-1 text-xs font-bold tracking-widest text-side-muted uppercase">Pinned</p>
@@ -121,9 +118,9 @@ export function MailNav() {
               </NavRow>
             );
           })}
-          <p className="mt-3 px-5 pb-1 text-xs font-bold tracking-widest text-side-muted uppercase">All labels</p>
         </>
       )}
+      <p className="mt-3 px-5 pb-1 text-xs font-bold tracking-widest text-side-muted uppercase">{pinned.length > 0 ? "All labels" : "Labels"}</p>
       {tree.map((n) => (
         <TreeNode
           key={n.path}
