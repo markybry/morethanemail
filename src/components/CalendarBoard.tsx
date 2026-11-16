@@ -17,7 +17,8 @@ import {
 import type { BoardEmail, TaskDTO } from "@/lib/types";
 import { nextAction } from "@/lib/cards";
 import { isOverdue } from "@/lib/format";
-import type { Due } from "./DuePicker";
+import { DuePicker, type Due } from "./DuePicker";
+import { NewCardForm } from "./NewCard";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const NO_DATE = "none";
@@ -50,17 +51,22 @@ export function CalendarBoard({
   statusOf,
   onOpen,
   onReschedule,
+  onNew,
 }: {
   cardIds: string[];
   emails: Record<string, BoardEmail>;
   statusOf: (threadId: string) => string | undefined;
   onOpen: (threadId: string) => void;
   onReschedule: (threadId: string, taskId: string, due: Due) => void;
+  onNew: (title: string, due: Due) => Promise<void>; // a new card with no email, its next action due then
 }) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const [month, setMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [dragging, setDragging] = useState<Item | null>(null);
+  // The "+" on a day (or "+ New" on phones) opens a box for a card due then.
+  const [newDue, setNewDue] = useState<Due | null>(null);
+  const startNew = (day: Date) => setNewDue({ dueDate: new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12).toISOString(), dueTime: false });
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
@@ -123,6 +129,13 @@ export function CalendarBoard({
               {month.toLocaleDateString([], { month: "long", year: "numeric" })}
             </h2>
             <div className="ml-auto flex items-center gap-1">
+              <button
+                onClick={() => startNew(today)}
+                className="btn-press rounded-lg bg-moss px-2.5 py-0.5 text-sm font-bold text-cream md:hidden"
+                title="A new card with a next action due on a day"
+              >
+                + New
+              </button>
               <NavButton onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} label="Previous month">
                 ‹
               </NavButton>
@@ -134,6 +147,20 @@ export function CalendarBoard({
               </NavButton>
             </div>
           </div>
+
+          {newDue && (
+            <NewCardForm
+              className="mb-2"
+              placeholder="What needs doing?"
+              onCreate={(t) => onNew(t, newDue)}
+              onClose={() => setNewDue(null)}
+            >
+              <div className="flex items-center gap-2 text-xs text-muted">
+                Due
+                <DuePicker value={newDue} onChange={(d) => setNewDue(d.dueDate ? d : newDue)} variant="field" align="left" />
+              </div>
+            </NewCardForm>
+          )}
 
           {/* Desktop: a month grid. */}
           <div className="paper hidden min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-line md:flex">
@@ -153,6 +180,7 @@ export function CalendarBoard({
                   isToday={dayKey(d) === dayKey(today)}
                   outside={d.getMonth() !== month.getMonth()}
                   onOpen={onOpen}
+                  onAdd={() => startNew(d)}
                 />
               ))}
             </div>
@@ -196,24 +224,48 @@ function NavButton({ onClick, label, children }: { onClick: () => void; label: s
   );
 }
 
-function DayCell({ day, items, isToday, outside, onOpen }: { day: Date; items: Item[]; isToday: boolean; outside: boolean; onOpen: (id: string) => void }) {
+function DayCell({
+  day,
+  items,
+  isToday,
+  outside,
+  onOpen,
+  onAdd,
+}: {
+  day: Date;
+  items: Item[];
+  isToday: boolean;
+  outside: boolean;
+  onOpen: (id: string) => void;
+  onAdd: () => void;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: dayKey(day) });
   const [all, setAll] = useState(false);
   const shown = all ? items : items.slice(0, SHOWN_PER_DAY);
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-h-24 min-w-0 flex-col gap-0.5 overflow-y-auto border-r border-b border-line p-1 [scrollbar-width:thin] nth-[7n]:border-r-0 ${
+      className={`group/day flex min-h-24 min-w-0 flex-col gap-0.5 overflow-y-auto border-r border-b border-line p-1 [scrollbar-width:thin] nth-[7n]:border-r-0 ${
         outside ? "bg-oat/40" : ""
       } ${isOver ? "bg-accent-soft" : ""}`}
     >
-      <span
-        className={`self-end px-1 text-xs ${
-          isToday ? "rounded-full bg-terracotta font-bold text-cream" : outside ? "text-faint" : "text-muted"
-        }`}
-      >
-        {day.getDate()}
-      </span>
+      <div className="flex items-center">
+        <button
+          onClick={onAdd}
+          className="rounded-md px-1 text-sm leading-none font-bold text-muted opacity-0 transition group-hover/day:opacity-100 hover:bg-oat hover:text-terracotta focus:opacity-100"
+          aria-label={`New card due ${day.toLocaleDateString([], { dateStyle: "full" })}`}
+          title="New card due this day"
+        >
+          +
+        </button>
+        <span
+          className={`ml-auto px-1 text-xs ${
+            isToday ? "rounded-full bg-terracotta font-bold text-cream" : outside ? "text-faint" : "text-muted"
+          }`}
+        >
+          {day.getDate()}
+        </span>
+      </div>
       {shown.map((it) => (
         <CalendarCard key={it.email.threadId} item={it} onOpen={onOpen} />
       ))}

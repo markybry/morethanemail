@@ -349,23 +349,41 @@ export async function reorderLanes(workspaceId: string, laneIds: string[]) {
 // ---------- tickets with no email ----------
 
 // labelId: the label being looked through, so the ticket shows in that view.
-export async function createTicket(workspaceId: string, title: string, labelId?: string): Promise<BoardEmail> {
+// A card with no email, made from one of the board's views: in a status (Lanes),
+// with a next action due on a day (Calendar), or filed as information (File).
+// labelId: the label being looked through, so the card shows in that view.
+export async function createTicket(
+  workspaceId: string,
+  title: string,
+  labelId?: string,
+  opts: { laneId?: string; dueDate?: string | null; dueTime?: boolean; filed?: boolean } = {},
+): Promise<BoardEmail> {
   const { user } = await ownWorkspace(workspaceId);
+  const name = title.trim().slice(0, 200) || "Untitled ticket";
+  const now = new Date();
+  const lane = opts.laneId ? await db.lane.findFirst({ where: { id: opts.laneId, workspaceId }, select: { id: true } }) : null;
+  const last = lane ? await db.placement.aggregate({ where: { laneId: lane.id }, _max: { position: true } }) : null;
   const ticket = await db.email.create({
     data: {
       userId: user.id,
       workspaceId,
       threadId: `${LOCAL_PREFIX}${randomUUID()}`,
-      subject: title.trim().slice(0, 200) || "Untitled ticket",
+      subject: name,
       from: user.name ?? user.email,
       snippet: "",
-      date: new Date(),
+      date: now,
       labelIds: labelId && isAssignableLabel(labelId) && labelId !== "INBOX" ? [labelId] : [],
+      hiddenAt: opts.filed ? now : null,
+      ...(opts.dueDate
+        ? { tasks: { create: { userId: user.id, title: name, dueDate: new Date(opts.dueDate), dueTime: !!opts.dueTime, position: 0 } } }
+        : {}),
+      ...(lane ? { placements: { create: { workspaceId, laneId: lane.id, position: (last?._max.position ?? -1) + 1 } } } : {}),
     },
     include: emailInclude,
   });
   await db.activity.create({ data: { userId: user.id, workspaceId, emailId: ticket.id, kind: "ticket" } });
   revalidateBoards();
+  revalidateTaskPages();
   return toBoardEmail(ticket);
 }
 

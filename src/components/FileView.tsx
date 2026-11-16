@@ -6,6 +6,7 @@ import type { BoardEmail, FiledCard } from "@/lib/types";
 import { cardLabelIds } from "@/lib/cards";
 import { senderName, shortDate } from "@/lib/format";
 import { useMail } from "./MailContext";
+import { NewCardForm } from "./NewCard";
 
 type Tab = "done" | "filed" | "all";
 
@@ -23,6 +24,7 @@ export function FileView({
   onDoneLanes,
   onOpen,
   onUnfile,
+  onNew,
 }: {
   labelId: string;
   isInbox: boolean;
@@ -34,12 +36,14 @@ export function FileView({
   onDoneLanes: (laneOf: Record<string, string>) => void; // so an opened Done card shows its status
   onOpen: (threadId: string) => void;
   onUnfile: (threadId: string) => void;
+  onNew: (title: string) => Promise<BoardEmail>; // a new card kept as information, in Filed
 }) {
   const [tab, setTab] = useState<Tab>("done");
   const [query, setQuery] = useState("");
   const [done, setDone] = useState<FiledCard[] | null>(null);
   const [filed, setFiled] = useState<FiledCard[] | null>(null);
   const [error, setError] = useState("");
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -85,6 +89,16 @@ export function FileView({
             {isInbox ? "All labelled mail" : `All under ${labelName}`}
           </TabButton>
         </div>
+        <button
+          onClick={() => {
+            setAdding(true);
+            setTab("filed");
+          }}
+          className="btn-press order-last rounded-xl bg-moss px-3 py-1 text-sm font-bold text-cream md:order-none"
+          title="A new card kept as information: notes, links, reference"
+        >
+          + New
+        </button>
         {tab !== "all" && (
           <input
             value={query}
@@ -95,6 +109,17 @@ export function FileView({
         )}
       </div>
 
+      {adding && (
+        <NewCardForm
+          className="mb-2"
+          placeholder="Something to keep: a note, a link, a reference…"
+          onCreate={async (t) => {
+            const card = await onNew(t);
+            setFiled((prev) => [{ card, at: new Date().toISOString() }, ...(prev ?? [])]);
+          }}
+          onClose={() => setAdding(false)}
+        />
+      )}
       <p className="mb-2 text-xs text-muted">
         {tab === "done" && "Cards moved to a finished status. They leave the board and are kept here; Gmail is left as it is."}
         {tab === "filed" && "Emails filed from triage as information: no status, no tracking. A new message brings one back to triage."}

@@ -35,6 +35,7 @@ import {
   removeThreadFromCard,
   renameLane,
   setHidden,
+  createTicket,
   setTriageFrom,
   trashCard,
   untrashCard,
@@ -55,6 +56,7 @@ import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
 import { ThemeIcon, useTheme } from "./ThemeContext";
 import { InSidebar } from "./SidebarSlot";
 import { CalendarBoard } from "./CalendarBoard";
+import { NewCardForm } from "./NewCard";
 import { FileView } from "./FileView";
 import type { Due } from "./DuePicker";
 
@@ -454,7 +456,7 @@ export function LabelBoard({
   // Tickets with no email that aren't in a status sit at the top.
   const shownInbox = useMemo(
     () => [
-      ...inFirstColumn.filter((t) => emails[t]?.local),
+      ...inFirstColumn.filter((t) => emails[t]?.local && !emails[t].hidden),
       ...recentIds.filter((t) => emails[t] && !emails[t].local && cardLabelIds(emails[t]).includes("INBOX")),
     ],
     [inFirstColumn, recentIds, emails],
@@ -705,6 +707,22 @@ export function LabelBoard({
     },
     [save],
   );
+
+  // A new card with no email, from the "+" in each view: in a status (Lanes), due
+  // on a day (Calendar) or filed as information (File). One made in a finished
+  // status goes straight to File > Done.
+  const newCard = async (title: string, opts: { laneId?: string; dueDate?: string | null; dueTime?: boolean; filed?: boolean } = {}) => {
+    const card = await createTicket(workspace.id, title, lens?.labelId, opts);
+    mergeEmails([card]);
+    if (opts.laneId && card.done) setJustDone(opts.laneId);
+    else if (opts.laneId) {
+      const now = new Date().toISOString();
+      setLanes((prev) =>
+        prev.map((l) => (l.id === opts.laneId ? { ...l, threadIds: [...l.threadIds, card.threadId], since: { ...l.since, [card.threadId]: now } } : l)),
+      );
+    } else setUnsorted((prev) => [card.threadId, ...prev]);
+    return card;
+  };
 
   // Move a next action's due date from the calendar.
   const reschedule = (cardId: string, taskId: string, due: Due) => {
@@ -1052,6 +1070,7 @@ export function LabelBoard({
               statusOf={statusOf}
               mergeEmails={mergeEmails}
               onDoneLanes={setDoneLanes}
+              onNew={(t) => newCard(t, { filed: true })}
               onOpen={setSelected}
               onUnfile={(id) => {
                 void hide(id, false);
@@ -1070,6 +1089,7 @@ export function LabelBoard({
               statusOf={statusOf}
               onOpen={setSelected}
               onReschedule={reschedule}
+              onNew={async (t, due) => void (await newCard(t, due))}
             />
           </section>
         ) : (
@@ -1103,6 +1123,7 @@ export function LabelBoard({
               rows={orderedRows}
               rowOf={rowOf}
               cheer={justDone === lane.id}
+              onNew={async (t) => void (await newCard(t, { laneId: lane.id }))}
               showEmptyRows={!!activeId && overLane === lane.id}
               width={laneWidth}
               colors={LANE_THEMES[i % LANE_THEMES.length]}
@@ -1617,6 +1638,7 @@ function Lane({
   showEmptyRows,
   rowOf,
   cheer,
+  onNew,
   width,
   colors,
   icon,
@@ -1636,10 +1658,12 @@ function Lane({
   showEmptyRows: boolean; // empty sub-labels stay hidden except while a card is being dragged
   rowOf: (e: BoardEmail | undefined) => string;
   cheer: boolean; // a card was just dropped here and left for File > Done
+  onNew: (title: string) => Promise<void>; // a new card with no email, in this status
   width: ReturnType<typeof useStoredWidth>;
   colors: (typeof LANE_THEMES)[number];
   icon: string;
 }) {
+  const [adding, setAdding] = useState(false);
   const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${lane.id}` });
   return (
     <div
@@ -1724,6 +1748,19 @@ function Lane({
               emails[t] ? <SortableEmail key={t} email={emails[t]} labelId={labelId} onOpen={() => onOpen(t)} /> : null,
             )}
           </SortableContext>
+        )}
+      </div>
+      <div className="px-2.5 pb-2.5">
+        {adding ? (
+          <NewCardForm onCreate={onNew} onClose={() => setAdding(false)} />
+        ) : (
+          <button
+            onClick={() => setAdding(true)}
+            className="w-full rounded-xl px-2 py-1.5 text-left text-sm font-semibold text-muted transition hover:bg-cream/70 hover:text-bark"
+            title="A new card with no email, in this status"
+          >
+            + Add a card
+          </button>
         )}
       </div>
     </div>
