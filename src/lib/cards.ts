@@ -1,4 +1,4 @@
-import type { BoardEmail, CardThread } from "./types";
+import type { BoardEmail, CardThread, TaskDTO } from "./types";
 
 // Every label on any of the card's threads.
 export const cardLabelIds = (e: BoardEmail): string[] => [...new Set([e.labelIds, ...e.threads.map((t) => t.labelIds)].flat())];
@@ -8,3 +8,6 @@ export const latestThread = (e: BoardEmail): CardThread | Pick<BoardEmail, "from
 
 // "Sarah Chen <sarah@acme.co>" -> "sarah@acme.co"
 export const senderAddress = (from: string) => (from.match(/<([^>]+)>/)?.[1] ?? from).trim().toLowerCase();
+
+// A card's next action: the first open task in the card's own order.
+export const nextAction = (tasks: TaskDTO[]) => tasks.find((t) => !t.done);

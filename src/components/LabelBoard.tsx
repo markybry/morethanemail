@@ -56,10 +56,13 @@ import { ConfirmButton, InlineEdit } from "./ui";
 import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
 import { ThemeIcon, useTheme } from "./ThemeContext";
 import { InSidebar } from "./SidebarSlot";
+import { CalendarBoard } from "./CalendarBoard";
+import type { Due } from "./DuePicker";
 
 const PRIMARY_KEY = "mte.inboxPrimaryOnly";
 const RECENT_KEY = "mte.firstColumnRecent";
 const GROUP_KEY = "mte.unsortedGroupBy";
+const VIEW_KEY = "mte.boardView"; // "lanes" or "calendar"
 
 // Each lane gets its own colour (defined per theme in globals.css) and an
 // icon from the theme, cycling through these. Literal class names so Tailwind keeps them.
@@ -197,6 +200,7 @@ export function LabelBoard({
   const [showOlder, setShowOlder] = useState(false);
   const cutoffApplies = !!triageFrom && !showOlder && (!isInbox || recent);
   const [prefsReady, setPrefsReady] = useState(false);
+  const [view, setView] = useState<"lanes" | "calendar">("lanes");
   const [query, setQuery] = useState("");
   const [loadedQuery, setLoadedQuery] = useState("");
   const [nextPage, setNextPage] = useState<string | undefined>();
@@ -247,6 +251,7 @@ export function LabelBoard({
     try {
       setPrimaryOnly(localStorage.getItem(PRIMARY_KEY) !== "false");
       setRecent(localStorage.getItem(RECENT_KEY) === "true");
+      if (localStorage.getItem(VIEW_KEY) === "calendar") setView("calendar");
     } catch {}
     setPrefsReady(true);
   }, []);
@@ -264,6 +269,13 @@ export function LabelBoard({
   useEffect(() => {
     void refreshEmails(refreshIds).then((r) => mergeEmails(r.emails));
   }, [refreshIds, mergeEmails]);
+
+  const changeView = (v: "lanes" | "calendar") => {
+    setView(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {}
+  };
 
   const changeRecent = (v: boolean) => {
     setRecent(v);
@@ -677,6 +689,19 @@ export function LabelBoard({
     [save],
   );
 
+  // Move a next action's due date from the calendar.
+  const reschedule = (cardId: string, taskId: string, due: Due) => {
+    const before = emails[cardId]?.tasks.find((t) => t.id === taskId);
+    if (!before) return;
+    const set = (d: Due) =>
+      setEmails((prev) => {
+        const e = prev[cardId];
+        return e ? { ...prev, [cardId]: { ...e, tasks: e.tasks.map((t) => (t.id === taskId ? { ...t, ...d } : t)) } } : prev;
+      });
+    set(due);
+    void save(() => updateTask(taskId, due), () => set({ dueDate: before.dueDate, dueTime: before.dueTime }));
+  };
+
   // How long a card has been in its status; a long wait in a waiting status is flagged.
   const ageOf = useCallback(
     (threadId: string): CardAge | null => {
@@ -934,10 +959,13 @@ export function LabelBoard({
     >
       <div className="flex h-full min-h-0 flex-col md:flex-row">
         <ColumnTabs
+          view={view}
+          onView={changeView}
           columns={[
             { id: "unsorted", name: isInbox ? "Inbox" : "To triage", count: shownUnsorted.length },
-            ...shownLanes.map((l) => ({ id: l.id, name: l.name, count: l.threadIds.length })),
-            { id: "add", name: "+ Status", count: null },
+            ...(view === "calendar"
+              ? [{ id: "calendar", name: "Calendar", count: null }]
+              : [...shownLanes.map((l) => ({ id: l.id, name: l.name, count: l.threadIds.length })), { id: "add", name: "+ Status", count: null }]),
           ]}
         />
         {/* On phones this row scrolls sideways, one column per screen; on desktop it dissolves. */}
@@ -1002,7 +1030,27 @@ export function LabelBoard({
         )}
         </InSidebar>
 
-        <section className="board-bg flex min-w-0 flex-1 gap-4 overflow-x-auto p-4 max-md:flex-none max-md:gap-3 max-md:overflow-visible max-md:p-3">
+        {/* Desktop: a view switch above the board. On phones it sits in the column tabs. */}
+        {/* The wrapper carries the board's background on desktop; on phones it dissolves and each section carries its own. */}
+        <div className="board-bg flex min-w-0 flex-1 flex-col max-md:contents">
+        <div className="flex items-center gap-2 px-4 pt-3 max-md:hidden">
+          <ViewSwitch view={view} onView={changeView} />
+        </div>
+        {view === "calendar" ? (
+          <section
+            id="col-calendar"
+            className="board-bg flex min-h-0 min-w-0 flex-1 p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:w-[calc(100vw-1.5rem)] max-md:flex-none max-md:shrink-0 max-md:snap-start max-md:overflow-y-auto max-md:p-3"
+          >
+            <CalendarBoard
+              cardIds={[...shownLanes.flatMap((l) => l.threadIds), ...shownUnsorted]}
+              emails={emails}
+              statusOf={statusOf}
+              onOpen={setSelected}
+              onReschedule={reschedule}
+            />
+          </section>
+        ) : (
+        <section className="board-bg flex min-h-0 min-w-0 flex-1 gap-4 overflow-x-auto p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:flex-none max-md:gap-3 max-md:overflow-visible max-md:p-3">
           {shownLanes.map((lane, i) => (
             <Lane
               key={lane.id}
@@ -1089,6 +1137,8 @@ export function LabelBoard({
             />
           </div>
         </section>
+        )}
+        </div>
         </div>
       </div>
 
@@ -1917,9 +1967,38 @@ function LaneTemplates({
 }
 
 // Phones show one column at a time; these tabs jump between them.
-function ColumnTabs({ columns }: { columns: { id: string; name: string; count: number | null }[] }) {
+// Lanes (statuses side by side) or Calendar (cards on the day their next action is due).
+function ViewSwitch({ view, onView, small }: { view: "lanes" | "calendar"; onView: (v: "lanes" | "calendar") => void; small?: boolean }) {
   return (
-    <nav className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-line bg-cream px-2 py-1.5 [scrollbar-width:none] md:hidden" aria-label="Columns">
+    <div role="group" aria-label="Board view" className="inline-flex shrink-0 rounded-full bg-oat p-0.5">
+      {(["lanes", "calendar"] as const).map((v) => (
+        <button
+          key={v}
+          onClick={() => onView(v)}
+          aria-pressed={view === v}
+          className={`rounded-full font-semibold transition ${small ? "px-2.5 py-0.5 text-xs" : "px-3 py-0.5 text-sm"} ${
+            view === v ? "bg-cream text-walnut shadow-sm" : "text-muted hover:text-bark"
+          }`}
+        >
+          {v === "lanes" ? "▥ Lanes" : "▦ Calendar"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ColumnTabs({
+  columns,
+  view,
+  onView,
+}: {
+  columns: { id: string; name: string; count: number | null }[];
+  view: "lanes" | "calendar";
+  onView: (v: "lanes" | "calendar") => void;
+}) {
+  return (
+    <nav className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-line bg-cream px-2 py-1.5 [scrollbar-width:none] md:hidden" aria-label="Columns">
+      <ViewSwitch view={view} onView={onView} small />
       {columns.map((c) => (
         <button
           key={c.id}

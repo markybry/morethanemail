@@ -614,12 +614,14 @@ const revalidateTaskPages = () => {
   revalidatePath("/dashboard");
 };
 
-export async function addTask(thread: ThreadSnapshot, title: string, dueDate: string | null, dueTime = false): Promise<TaskDTO> {
+// Adds to the end of the card's task list, or to the top (making it the next action).
+export async function addTask(thread: ThreadSnapshot, title: string, dueDate: string | null, dueTime = false, atTop = false): Promise<TaskDTO> {
   const user = await requireUser();
   const email = await upsertEmail(user.id, thread);
-  const count = await db.task.count({ where: { emailId: email.id } });
+  const ends = await db.task.aggregate({ where: { emailId: email.id }, _min: { position: true }, _max: { position: true } });
+  const position = atTop ? (ends._min.position ?? 0) - 1 : (ends._max.position ?? -1) + 1;
   const task = await db.task.create({
-    data: { userId: user.id, emailId: email.id, title: title.trim(), dueDate: dueDate ? new Date(dueDate) : null, dueTime: !!dueDate && dueTime, position: count },
+    data: { userId: user.id, emailId: email.id, title: title.trim(), dueDate: dueDate ? new Date(dueDate) : null, dueTime: !!dueDate && dueTime, position },
   });
   await db.activity.create({ data: { userId: user.id, emailId: email.id, kind: "task", detail: task.title } });
   revalidateTaskPages();
@@ -657,6 +659,15 @@ export async function updateTask(
     const task = await db.task.findFirst({ where: { id: taskId, userId: user.id } });
     if (task) await db.activity.create({ data: { userId: user.id, emailId: task.emailId, kind: "taskDone", detail: task.title } });
   }
+  revalidateTaskPages();
+}
+
+// A card's tasks in their new order. The first open one is the card's next action.
+export async function reorderTasks(taskIds: string[]) {
+  const user = await requireUser();
+  await db.$transaction(
+    taskIds.slice(0, 500).map((id, position) => db.task.updateMany({ where: { id, userId: user.id }, data: { position } })),
+  );
   revalidateTaskPages();
 }
 

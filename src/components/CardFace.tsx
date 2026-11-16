@@ -1,11 +1,11 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { BoardEmail, TaskDTO } from "@/lib/types";
+import type { BoardEmail } from "@/lib/types";
 import { dueLabel, isOverdue, senderName, shortDate, timeAgo } from "@/lib/format";
 import { useMail } from "./MailContext";
 import { useTheme } from "./ThemeContext";
-import { cardLabelIds, latestThread, senderAddress } from "@/lib/cards";
+import { cardLabelIds, latestThread, nextAction, senderAddress } from "@/lib/cards";
 
 // What the board offers its cards: ticking off next actions without opening
 // the card, and how long the card has sat in its status.
@@ -24,7 +24,6 @@ export const CardBoardContext = createContext<{
   remove: (threadId: string) => void; // to Gmail's Trash
 } | null>(null);
 
-const NEXT_SHOWN = 4;
 const LATEST_SHOWN = 3;
 
 type Happening = { key: string; at: string; icon: string; who?: string; text: string; fresh?: boolean };
@@ -58,14 +57,6 @@ function latestHappenings(email: BoardEmail, me: string): Happening[] {
   return out.sort((a, b) => b.at.localeCompare(a.at));
 }
 
-// Open actions, soonest due first, then in the order they were added.
-const nextActions = (tasks: TaskDTO[]) =>
-  tasks
-    .filter((t) => !t.done)
-    .map((t, i) => ({ t, i }))
-    .sort((a, b) => (a.t.dueDate ?? "9999").localeCompare(b.t.dueDate ?? "9999") || a.i - b.i)
-    .map((x) => x.t);
-
 // A card on the board, in the first column or in a status. At a glance: what it
 // is (title, and its summary or newest message) and what needs to happen next.
 export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; hideLabelId?: string; dragging?: boolean }) {
@@ -75,8 +66,9 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
   const toggleTask = board?.toggleTask;
   const age = board?.ageOf(email.threadId) ?? null;
   const accent = (hideLabelId && colorOf(hideLabelId)) || "var(--color-terracotta)";
-  const next = nextActions(email.tasks);
-  const done = email.tasks.length - next.length;
+  const next = nextAction(email.tasks);
+  const open = email.tasks.filter((t) => !t.done).length;
+  const done = email.tasks.length - open;
   const summary = email.summary.trim();
 
   // Other labels on the email, most specific only ("Clients/Acme" implies "Clients").
@@ -134,32 +126,32 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
       ) : (
         !summary && <div className="mt-0.5 truncate text-xs text-muted">{latest.snippet}</div>
       )}
-      {next.length > 0 && (
-        <ul className={`space-y-1 ${compact ? "mt-1.5" : "mt-2 border-t border-dashed border-line pt-1.5"}`}>
-          {next.slice(0, compact ? 1 : NEXT_SHOWN).map((t) => (
-            <li key={t.id} className="flex items-start gap-1.5 text-xs leading-snug">
-              {toggleTask ? (
-                <input
-                  type="checkbox"
-                  checked={false}
-                  aria-label={`Done: ${t.title}`}
-                  // Tick it here without picking the card up or opening it.
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={() => toggleTask(email.threadId, t.id, true)}
-                  className="mt-px h-3.5 w-3.5 shrink-0 cursor-pointer accent-moss"
-                />
-              ) : (
-                <span className="text-muted">○</span>
-              )}
-              <span className={`min-w-0 flex-1 text-ink ${compact ? "truncate" : ""}`}>{t.title}</span>
-              {t.dueDate && (
-                <span className={`shrink-0 font-semibold ${isOverdue(t.dueDate, t.dueTime) ? "text-bad-ink" : "text-muted"}`}>{dueLabel(t.dueDate, t.dueTime)}</span>
-              )}
-            </li>
-          ))}
-          {!compact && next.length > NEXT_SHOWN && <li className="pl-5 text-xs text-muted">+{next.length - NEXT_SHOWN} more</li>}
-        </ul>
+      {next && (
+        <div className={`flex items-start gap-1.5 text-xs leading-snug ${compact ? "mt-1.5" : "mt-2 border-t border-dashed border-line pt-1.5"}`}>
+          {toggleTask ? (
+            <input
+              type="checkbox"
+              checked={false}
+              aria-label={`Done: ${next.title}`}
+              // Tick it here without picking the card up or opening it; the next task on the list moves up.
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              onChange={() => toggleTask(email.threadId, next.id, true)}
+              className="mt-px h-3.5 w-3.5 shrink-0 cursor-pointer accent-moss"
+            />
+          ) : (
+            <span className="text-muted">○</span>
+          )}
+          <span className={`min-w-0 flex-1 text-ink ${compact ? "truncate" : ""}`}>
+            <span className="font-semibold text-muted">Next: </span>
+            {next.title}
+          </span>
+          {next.dueDate && (
+            <span className={`shrink-0 font-semibold ${isOverdue(next.dueDate, next.dueTime) ? "text-bad-ink" : "text-muted"}`}>
+              {dueLabel(next.dueDate, next.dueTime)}
+            </span>
+          )}
+        </div>
       )}
       {board && !dragging && (
         // Phone only: file or archive without press-and-drag.
