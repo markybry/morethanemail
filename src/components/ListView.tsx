@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchFiled, fetchLabelEmails } from "@/app/actions";
 import type { BoardEmail, FiledCard } from "@/lib/types";
-import { cardLabelIds } from "@/lib/cards";
+import { cardLabelIds, latestThread } from "@/lib/cards";
 import { senderName, shortDate } from "@/lib/format";
 import { useMail } from "./MailContext";
 import { NewCardForm } from "./NewCard";
@@ -147,6 +147,19 @@ function AllMail({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [searched, setSearched] = useState("");
+  const [sort, setSort] = useState<Sort>("newest");
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(SORT_KEY);
+      if (v && v in SORTS) setSort(v as Sort);
+    } catch {}
+  }, []);
+  const changeSort = (v: Sort) => {
+    setSort(v);
+    try {
+      localStorage.setItem(SORT_KEY, v);
+    } catch {}
+  };
 
   const load = useCallback(
     async (q: string, pageToken?: string) => {
@@ -187,12 +200,26 @@ function AllMail({
         <button disabled={busy} className="btn-press rounded-xl bg-oat px-3 text-sm font-semibold text-bark disabled:opacity-50">
           {busy ? "…" : "Search"}
         </button>
+        <select
+          value={sort}
+          onChange={(e) => changeSort(e.target.value as Sort)}
+          className="field rounded-xl px-2 text-sm text-bark"
+          aria-label="Sort"
+          title="Sort what's loaded (Load more fetches older mail)"
+        >
+          {Object.entries(SORTS).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v.name}
+            </option>
+          ))}
+        </select>
       </form>
       {error && <p className="p-3 text-sm text-red-600">{error}</p>}
       <List loading={!items && !error} empty={searched ? "Nothing found." : "Nothing filed here yet."}>
-        {[...pinned.filter((e) => !searched || matchesText(e, searched)), ...(items ?? []).filter((e) => !pinned.some((p) => p.threadId === e.threadId))].map(
-          (item, i) => {
-            const e = emails[item.threadId] ?? item; // live state, so edits in the open card show here
+        {[...pinned.filter((e) => !searched || matchesText(e, searched)), ...(items ?? []).filter((e) => !pinned.some((p) => p.threadId === e.threadId))]
+          .map((item) => emails[item.threadId] ?? item) // live state, so edits in the open card show here
+          .sort(SORTS[sort].compare)
+          .map((e, i) => {
             return (
               <Row
                 key={e.threadId}
@@ -206,8 +233,7 @@ function AllMail({
                 action={e.hidden ? { label: "Back to triage", run: () => onUnfile(e.threadId) } : undefined}
               />
             );
-          },
-        )}
+          })}
       </List>
       {next && (
         <div className="p-2">
@@ -258,41 +284,59 @@ function Row({
     return named.filter((l) => !named.some((o) => o.name.startsWith(`${l.name}/`))).slice(0, 2);
   }, [card, labelNames, here]);
 
+  const latest = latestThread(card);
+  const preview = (card.local ? card.snippet : latest.snippet).trim();
   return (
-    <li className="list-row group animate-rise flex items-center gap-3 px-3 py-2" style={{ animationDelay: `${Math.min(i, 15) * 25}ms` }}>
-      <button onClick={() => onOpen(card.threadId)} className="min-w-0 flex-1 text-left">
-        <span className="flex items-baseline gap-1.5">
+    <li
+      className="list-row group animate-rise flex cursor-pointer flex-col gap-1.5 px-3 py-2.5 md:flex-row md:gap-4"
+      style={{ animationDelay: `${Math.min(i, 15) * 25}ms` }}
+      onClick={() => onOpen(card.threadId)}
+    >
+      {/* Left: what it is. */}
+      <div className="min-w-0 md:w-[42%] md:shrink-0">
+        <div className="flex items-baseline gap-1.5">
           {plain && (
             <span className="shrink-0 text-xs text-muted" title="Just an email: no tasks, notes or summary on it">
               ✉
             </span>
           )}
-          <span className="truncate text-sm font-semibold text-walnut group-hover:text-terracotta">{card.title}</span>
-        </span>
-        <span className="block truncate text-xs text-muted">
-          {card.local && card.threads.length <= 1 ? "✎ Ticket" : senderName(card.from)}
-          {card.threads.length > 1 && ` · ✉ ${card.threads.length}`}
-          {card.summary.trim() && ` · ${card.summary.trim()}`}
-        </span>
-      </button>
-      <span className="hidden shrink-0 gap-1 sm:flex">
-        {labels.map((l) => (
-          <span key={l.id} className="rounded-full border border-line bg-paper px-2 py-0.5 text-[11px] font-semibold text-bark">
-            <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: colorOf(l.id) }} />
-            {l.name.split("/").join(" › ")}
+          <button className="min-w-0 truncate text-left text-sm font-semibold text-walnut group-hover:text-terracotta">{card.title}</button>
+        </div>
+        <div className="mt-0.5 flex items-baseline gap-1.5 text-xs text-muted">
+          <span className="min-w-0 truncate">
+            {card.local && card.threads.length <= 1 ? "✎ Ticket" : senderName(latest.from)}
+            {card.threads.length > 1 && ` · ✉ ${card.threads.length}`}
           </span>
-        ))}
-      </span>
-      {tag && <span className="shrink-0 rounded-full bg-info-bg px-2 py-0.5 text-[11px] font-semibold text-info-ink">{tag}</span>}
-      {action && (
-        <button
-          onClick={action.run}
-          className="shrink-0 text-xs font-semibold text-muted opacity-0 group-hover:opacity-100 hover:text-terracotta focus:opacity-100 max-md:opacity-100"
-        >
-          {action.label}
-        </button>
-      )}
-      <span className="w-14 shrink-0 text-right text-xs text-muted">{shortDate(when)}</span>
+          <span className="ml-auto shrink-0">{shortDate(when)}</span>
+        </div>
+        {(tag || labels.length > 0 || action) && (
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            {tag && <span className="rounded-full bg-info-bg px-2 py-0.5 text-[11px] font-semibold text-info-ink">{tag}</span>}
+            {labels.map((l) => (
+              <span key={l.id} className="rounded-full border border-line bg-paper px-2 py-0.5 text-[11px] font-semibold text-bark">
+                <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: colorOf(l.id) }} />
+                {l.name.split("/").join(" › ")}
+              </span>
+            ))}
+            {action && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  action.run();
+                }}
+                className="ml-auto text-xs font-semibold text-muted opacity-0 group-hover:opacity-100 hover:text-terracotta focus:opacity-100 max-md:opacity-100"
+              >
+                {action.label}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {/* Right: the first lines of the email (or the card's summary). */}
+      <div className="min-w-0 flex-1 md:border-l md:border-line md:pl-4">
+        {card.summary.trim() && <p className="line-clamp-2 text-xs font-semibold text-bark">{card.summary.trim()}</p>}
+        <p className="line-clamp-3 text-xs leading-relaxed text-muted">{preview || "No preview."}</p>
+      </div>
     </li>
   );
 }
@@ -316,3 +360,14 @@ function matchesText(e: BoardEmail, q: string) {
   const needle = q.toLowerCase();
   return [e.title, e.subject, e.from, e.summary, e.snippet].join(" ").toLowerCase().includes(needle);
 }
+
+// Sorting the List: what's loaded, by date, sender or subject.
+const SORT_KEY = "mte.listSort";
+type Sort = "newest" | "oldest" | "sender" | "subject";
+const byText = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base" });
+const SORTS: Record<Sort, { name: string; compare: (a: BoardEmail, b: BoardEmail) => number }> = {
+  newest: { name: "Newest first", compare: (a, b) => b.date.localeCompare(a.date) },
+  oldest: { name: "Oldest first", compare: (a, b) => a.date.localeCompare(b.date) },
+  sender: { name: "Sender A–Z", compare: (a, b) => byText(senderName(latestThread(a).from), senderName(latestThread(b).from)) || b.date.localeCompare(a.date) },
+  subject: { name: "Subject A–Z", compare: (a, b) => byText(a.title, b.title) || b.date.localeCompare(a.date) },
+};
