@@ -27,6 +27,7 @@ import {
   applyLaneTemplate,
   arrangeEmails,
   createLane,
+  createWorkspace,
   deleteLaneTemplate,
   deleteTicket,
   deleteLane,
@@ -49,7 +50,7 @@ import {
 import type { BoardEmail, LaneDTO, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "@/lib/types";
 import { CardFace, CardBoardContext, type CardAge } from "./CardFace";
 import { EmailPanel, UNSORTED, type CardChoice } from "./EmailPanel";
-import { cardLabelIds, senderAddress } from "@/lib/cards";
+import { cardLabelIds, hasOwnLabel, senderAddress } from "@/lib/cards";
 import { useMail } from "./MailContext";
 import { ConfirmButton, InlineEdit } from "./ui";
 import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
@@ -58,6 +59,7 @@ import { InSidebar } from "./SidebarSlot";
 import { CalendarBoard } from "./CalendarBoard";
 import { NewCardForm } from "./NewCard";
 import { ListView } from "./ListView";
+import { FileUnder } from "./FileUnder";
 import type { Due } from "./DuePicker";
 
 const VIEW_KEY = "mte.boardView"; // "lanes", "calendar" or "list"
@@ -854,13 +856,50 @@ export function LabelBoard({
     });
   };
 
-  const file = async (threadId: string, filed: boolean) => {
+  const fileNow = async (threadId: string, filed: boolean) => {
     const e = emails[threadId];
     if (!e) return;
     if (filed && selected === threadId) openNext(threadId);
     const set = (v: boolean) => setEmails((prev) => (prev[threadId] ? { ...prev, [threadId]: { ...prev[threadId], hidden: v } } : prev));
     set(filed);
     await save(() => setHidden(snapshotOf(e), filed), () => set(!filed));
+  };
+
+  // Only labelled things are filed: anything without a label asks for one first
+  // (the rest of the mail is ignored or deleted, not filed).
+  const [fileAsk, setFileAsk] = useState<string[] | null>(null);
+  const file = (threadId: string, filed: boolean) => fileMany([threadId], filed);
+  const fileMany = (ids: string[], filed = true) => {
+    const known = ids.filter((id) => emails[id]);
+    if (!filed) return void known.forEach((id) => void fileNow(id, false));
+    const ready = known.filter((id) => hasOwnLabel(emails[id]));
+    ready.forEach((id) => void fileNow(id, true));
+    const ask = known.filter((id) => !ready.includes(id));
+    if (ask.length) setFileAsk(ask);
+  };
+  // Label them, then file them. Returns an error to show in the dialog.
+  const fileUnder = async (ids: string[], label: { id: string } | { name: string }): Promise<string | undefined> => {
+    let labelId: string;
+    if ("id" in label) labelId = label.id;
+    else {
+      const made = await createWorkspace(label.name);
+      if (made.error || !made.label) return made.error ?? "Couldn't create the label.";
+      labelId = made.label.id;
+      reloadLabels();
+    }
+    for (const id of ids) {
+      const res = await setEmailLabels(id, [labelId], []);
+      if (res.error || !res.labelIds) return res.error ?? "Couldn't add the label.";
+      const labelIds = res.labelIds;
+      setEmails((prev) => {
+        const cur = prev[id];
+        if (!cur) return prev;
+        return { ...prev, [id]: { ...cur, labelIds, threads: cur.threads.map((t) => (t.threadId === id ? { ...t, labelIds } : t)) } };
+      });
+      void fileNow(id, true);
+    }
+    setFileAsk(null);
+    return undefined;
   };
 
   const archiveMany = async (ids: string[]) => {
@@ -933,7 +972,7 @@ export function LabelBoard({
     onFile: () => {
       const ids = pickedShown;
       setPicked([]);
-      ids.forEach((id) => void file(id, true));
+      fileMany(ids);
     },
     onCombine: () => {
       const ids = pickedShown;
@@ -1091,7 +1130,12 @@ export function LabelBoard({
               statusOf={statusOf}
               mergeEmails={mergeEmails}
               onDoneLanes={setDoneLanes}
-              onNew={(t) => newCard(t, { filed: true })}
+              onNew={async (t) => {
+                if (lens) return newCard(t, { filed: true });
+                const card = await newCard(t);
+                setFileAsk([card.threadId]);
+                return card;
+              }}
               onOpen={setSelected}
               onUnfile={(id) => {
                 void file(id, false);
@@ -1300,6 +1344,7 @@ export function LabelBoard({
           onClose={() => setSelected(null)}
         />
       )}
+      {fileAsk && <FileUnder count={fileAsk.length} onPick={(label) => fileUnder(fileAsk, label)} onClose={() => setFileAsk(null)} />}
     </DndContext>
     </MergeDragContext.Provider>
     </CardBoardContext.Provider>

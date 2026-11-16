@@ -3,14 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchFiled, fetchLabelEmails } from "@/app/actions";
 import type { BoardEmail, FiledCard } from "@/lib/types";
-import { cardLabelIds, latestThread } from "@/lib/cards";
+import { cardLabelIds, hasOwnLabel, latestThread } from "@/lib/cards";
 import { senderName, shortDate } from "@/lib/format";
 import { useMail } from "./MailContext";
 import { NewCardForm } from "./NewCard";
 
 // Everything under the label (all labelled mail in the Workspace), older mail
-// included, plus cards filed by hand and cards that are done. Cards show their
-// status; rows that are just an email, with nothing added, are marked so.
+// included, plus labelled cards with no email. Only labelled things are filed:
+// the rest is ignored or deleted. Cards show their status; rows that are just
+// an email, with nothing added, are marked so.
 export function ListView({
   labelId,
   isInbox,
@@ -59,22 +60,17 @@ export function ListView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Read cards from the board's state so changes made in the open card show here.
-  const view = (list: FiledCard[] | null, keep: (e: BoardEmail) => boolean) =>
-    (list ?? []).map((f) => ({ ...f, card: emails[f.card.threadId] ?? f.card })).filter((f) => inLens(f.card) && keep(f.card));
   // A done card's status name (Done, Resolved…), by its finished status.
   const doneStatus = useMemo(() => new Map((done ?? []).map((d) => [d.laneId!, d.status!])), [done]);
-  // Cards the mail list below won't include, shown first: cards with no email, and
-  // filed or done emails without the label (or, in the Workspace, without any label).
-  const covered = (e: BoardEmail) =>
-    !e.local && (isInbox ? cardLabelIds(e).some((id) => id.startsWith("Label_")) : inLens(e));
-  const pinned = [...view(filed, (e) => e.hidden && !covered(e)), ...view(done, (e) => e.done && !covered(e))];
+  // Labelled cards with no email: the mail list below can't include them.
+  // Read from the board's state, so a card filed just now shows straight away.
+  const pinned = Object.values(emails).filter((e) => e.local && (e.hidden || e.done) && hasOwnLabel(e) && inLens(e));
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <p className="min-w-0 flex-1 text-xs text-muted">
-          {isInbox ? "Everything under your labels" : `Everything labelled ${labelName}`}, older mail included, plus cards filed or done. ✉
+          {isInbox ? "Everything under your labels" : `Everything labelled ${labelName}`}, older mail included. Only labelled things are filed. ✉
           marks a plain email with nothing added.
         </p>
         <button
@@ -92,7 +88,7 @@ export function ListView({
           placeholder="Something to keep: a note, a link, a reference…"
           onCreate={async (t) => {
             const card = await onNew(t);
-            setFiled((prev) => [{ card, at: new Date().toISOString() }, ...(prev ?? [])]);
+            if (!card.hidden) setAdding(false); // no label yet: it's asked for, then filed
           }}
           onClose={() => setAdding(false)}
         />
@@ -104,7 +100,7 @@ export function ListView({
           <AllMail
             labelId={isInbox ? "ALL" : labelId}
             hideLabelId={isInbox ? undefined : labelId}
-            pinned={pinned.map((f) => f.card)}
+            pinned={pinned}
             doneStatus={doneStatus}
             emails={emails}
             statusOf={statusOf}
