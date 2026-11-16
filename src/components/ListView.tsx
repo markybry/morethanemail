@@ -293,7 +293,7 @@ function Row({
       onClick={() => onOpen(card.threadId)}
     >
       {/* Left: what it is. */}
-      <div className="min-w-0 md:w-[42%] md:shrink-0">
+      <div className="min-w-0 md:w-1/3 md:shrink-0">
         <div className="flex items-baseline gap-1.5">
           {plain && (
             <span className="shrink-0 text-xs text-muted" title="Just an email: no tasks, notes or summary on it">
