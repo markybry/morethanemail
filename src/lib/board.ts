@@ -184,7 +184,7 @@ export async function loadWorkspace(
       },
     },
   });
-  // Finished cards leave the board straight away; they're in File > Done.
+  // Finished cards leave the board straight away; they're in the List.
   const lanes = ws.lanes.map((l) => ({ ...l, shown: l.finished ? [] : l.placements }));
   const placedIds = new Set(ws.lanes.flatMap((l) => l.placements.map((p) => p.email.threadId)));
   const emails: Record<string, BoardEmail> = {};

@@ -11,7 +11,7 @@ import { NewCardForm } from "./NewCard";
 // Everything under the label (all labelled mail in the Workspace), older mail
 // included, plus cards filed by hand and cards that are done. Cards show their
 // status; rows that are just an email, with nothing added, are marked so.
-export function FileView({
+export function ListView({
   labelId,
   isInbox,
   labelName,
@@ -34,7 +34,7 @@ export function FileView({
   onDoneLanes: (laneOf: Record<string, string>) => void; // so an opened Done card shows its status
   onOpen: (threadId: string) => void;
   onUnfile: (threadId: string) => void;
-  onNew: (title: string) => Promise<BoardEmail>; // a new card kept as information, in Filed
+  onNew: (title: string) => Promise<BoardEmail>; // a new card kept as information, filed in the List
 }) {
   const [done, setDone] = useState<FiledCard[] | null>(null);
   const [filed, setFiled] = useState<FiledCard[] | null>(null);

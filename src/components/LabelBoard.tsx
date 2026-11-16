@@ -57,15 +57,15 @@ import { ThemeIcon, useTheme } from "./ThemeContext";
 import { InSidebar } from "./SidebarSlot";
 import { CalendarBoard } from "./CalendarBoard";
 import { NewCardForm } from "./NewCard";
-import { FileView } from "./FileView";
+import { ListView } from "./ListView";
 import type { Due } from "./DuePicker";
 
-const VIEW_KEY = "mte.boardView"; // "lanes", "calendar" or "file"
-type BoardView = "lanes" | "calendar" | "file";
+const VIEW_KEY = "mte.boardView"; // "lanes", "calendar" or "list"
+type BoardView = "lanes" | "calendar" | "list";
 const VIEWS: { id: BoardView; name: string }[] = [
   { id: "lanes", name: "▥ Lanes" },
   { id: "calendar", name: "▦ Calendar" },
-  { id: "file", name: "🗄 File" },
+  { id: "list", name: "☰ List" },
 ];
 
 // Each lane gets its own colour (defined per theme in globals.css) and an
@@ -283,7 +283,8 @@ export function LabelBoard({
   useEffect(() => {
     try {
       const v = localStorage.getItem(VIEW_KEY);
-      if (v === "calendar" || v === "file") setView(v);
+      if (v === "calendar" || v === "list") setView(v);
+      else if (v === "file") setView("list"); // the view was called File before
     } catch {}
     setPrefsReady(true);
   }, []);
@@ -355,7 +356,7 @@ export function LabelBoard({
       const now = new Date().toISOString();
       setLanes((prev) => prev.map((l) => (l.id === to ? { ...l, since: { ...l.since, [threadId]: now } } : l)));
     }
-    // A finished status takes the card off the board (it's in File > Done); Gmail is left alone.
+    // A finished status takes the card off the board (it's in the List); Gmail is left alone.
     const finished = from !== to && !!lanes.find((l) => l.id === to)?.finished;
     const affected = new Set([from, to].filter((x): x is string => !!x && x !== UNSORTED));
     const email = emails[threadId];
@@ -721,7 +722,7 @@ export function LabelBoard({
 
   // A new card with no email, from the "+" in each view: in a status (Lanes), due
   // on a day (Calendar) or filed as information (File). One made in a finished
-  // status goes straight to File > Done.
+  // status goes straight to the List.
   const newCard = async (title: string, opts: { laneId?: string; dueDate?: string | null; dueTime?: boolean; filed?: boolean } = {}) => {
     const card = await createTicket(workspace.id, title, lens?.labelId, opts);
     mergeEmails([card]);
@@ -1010,7 +1011,7 @@ export function LabelBoard({
           columns={[
             { id: "unsorted", name: isInbox ? "Inbox" : "To triage", count: shownUnsorted.length },
             ...(view !== "lanes"
-              ? [{ id: view, name: view === "file" ? "File" : "Calendar", count: null }]
+              ? [{ id: view, name: view === "list" ? "List" : "Calendar", count: null }]
               : [...shownLanes.map((l) => ({ id: l.id, name: l.name, count: l.threadIds.length })), { id: "add", name: "+ Status", count: null }]),
           ]}
         />
@@ -1076,12 +1077,12 @@ export function LabelBoard({
         <div className="flex items-center gap-2 px-4 pt-3 max-md:hidden">
           <ViewSwitch view={view} onView={changeView} />
         </div>
-        {view === "file" ? (
+        {view === "list" ? (
           <section
-            id="col-file"
+            id="col-list"
             className="animate-fade-in board-bg flex min-h-0 min-w-0 flex-1 p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:w-[calc(100vw-1.5rem)] max-md:flex-none max-md:shrink-0 max-md:snap-start max-md:p-3"
           >
-            <FileView
+            <ListView
               labelId={sourceLabelId}
               isInbox={isInbox}
               labelName={title}
@@ -1520,7 +1521,7 @@ function BulkBar(p: {
           Archive
         </button>
       )}
-      <button onClick={p.onFile} className={btn} title="File: just information, no tracking. Find it under File.">
+      <button onClick={p.onFile} className={btn} title="File: just information, no tracking. Find it in the List.">
         File
       </button>
       <button onClick={p.onClear} className="ml-auto text-xs font-semibold text-muted hover:text-terracotta" title="Clear (Esc)">
@@ -1611,7 +1612,7 @@ function DraggableEmail({
         // Desktop: on hover. Phones use the buttons on the card itself.
         <div className="absolute right-2 bottom-2 flex gap-1 opacity-0 transition group-hover/drag:opacity-100 max-md:hidden">
           {[
-            { label: "File", title: "File: just information, no tracking (f). Find it in the File view; a new message brings it back.", run: onFile },
+            { label: "File", title: "File: just information, no tracking (f). Find it in the List; a new message brings it back.", run: onFile },
             { label: "Archive", title: "Archive in Gmail: needs nothing (e)", run: onArchive },
             { label: "Delete", title: "Move to Gmail's Trash (#). Undo straight after, or restore from Trash for 30 days.", run: onTrash },
           ]
@@ -1671,7 +1672,7 @@ function Lane({
   rows: Row[] | null;
   showEmptyRows: boolean; // empty sub-labels stay hidden except while a card is being dragged
   rowOf: (e: BoardEmail | undefined) => string;
-  cheer: boolean; // a card was just dropped here and left for File > Done
+  cheer: boolean; // a card was just dropped here and left for the List
   onNew: (title: string) => Promise<void>; // a new card with no email, in this status
   width: ReturnType<typeof useStoredWidth>;
   colors: (typeof LANE_THEMES)[number];
@@ -1701,7 +1702,7 @@ function Lane({
           </span>
         )}
         {lane.finished && (
-          <span className="text-xs text-muted" title="Finished: cards dropped here leave the board and go to File > Done">
+          <span className="text-xs text-muted" title="Finished: cards dropped here leave the board and go to the List">
             ✓
           </span>
         )}
@@ -1723,8 +1724,8 @@ function Lane({
             className={`px-1 text-xs ${lane.finished ? "font-bold text-terracotta" : "text-muted"}`}
             title={
               lane.finished
-                ? "Finished: cards dropped here leave the board and go to File > Done. Click to stop."
-                : "Mark as finished: cards dropped here leave the board and go to File > Done"
+                ? "Finished: cards dropped here leave the board and go to the List. Click to stop."
+                : "Mark as finished: cards dropped here leave the board and go to the List"
             }
             aria-pressed={lane.finished}
           >
@@ -1743,11 +1744,11 @@ function Lane({
         {lane.finished && lane.threadIds.length === 0 &&
           (cheer ? (
             <p key="cheer" className="animate-pop rounded-2xl border-2 border-moss/50 bg-ok-bg px-3 py-4 text-center text-xs font-bold text-ok-ink">
-              <span className="animate-wiggle mr-1 inline-block">✓</span> Kept in File › Done
+              <span className="animate-wiggle mr-1 inline-block">✓</span> Moved to the List
             </p>
           ) : (
             <p className="rounded-2xl border-2 border-dashed border-line px-3 py-4 text-center text-xs text-muted">
-              Drop a card here when it&apos;s done. It leaves the board and is kept in File › Done.
+              Drop a card here when it&apos;s done. It leaves the board and is kept in the List.
             </p>
           ))}
         {rows ? (

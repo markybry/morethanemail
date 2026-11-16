@@ -306,7 +306,7 @@ export async function setLaneReopenOnReply(laneId: string, reopenOnReply: boolea
   revalidateBoards();
 }
 
-// A finished status: moving a card there takes it off the board and into File > Done. Gmail is left as it is.
+// A finished status: moving a card there takes it off the board and into the List. Gmail is left as it is.
 export async function setLaneFinished(laneId: string, finished: boolean) {
   await ownLane(laneId);
   await db.lane.update({ where: { id: laneId }, data: { finished } });
@@ -802,7 +802,7 @@ export async function unignoreSender(address: string): Promise<string[]> {
   return list;
 }
 
-// ---------- the File view ----------
+// ---------- the List view ----------
 
 // Done: cards in a finished status, newest first, including those that have
 // dropped off the board. Filed: emails set aside as information (no status),
@@ -832,7 +832,7 @@ export async function fetchFiled(): Promise<{ done: FiledCard[]; filed: FiledCar
     };
   } catch (e) {
     console.error("fetchFiled failed", e);
-    return { done: [], filed: [], error: "Couldn't load the File view. Try again." };
+    return { done: [], filed: [], error: "Couldn't load the List. Try again." };
   }
 }
 

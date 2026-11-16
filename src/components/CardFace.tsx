@@ -20,7 +20,7 @@ export const CardBoardContext = createContext<{
   canArchive: (threadId: string) => boolean;
   archive: (threadId: string) => void;
   canFile: (threadId: string) => boolean;
-  file: (threadId: string) => void; // to File > Filed: just information
+  file: (threadId: string) => void; // filed in the List: just information
   remove: (threadId: string) => void; // to Gmail's Trash
 } | null>(null);
 

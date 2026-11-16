@@ -37,15 +37,15 @@ export type BoardEmail = ThreadSnapshot & {
   summary: string; // where things stand and what was decided
   threads: CardThread[];
   partOf: string | null; // for a thread added to another card: that card's threadId
-  done: boolean; // in a finished status: off the board, in File > Done
+  done: boolean; // in a finished status: off the board, in the List
   doneLaneId: string | null; // that finished status
-  hidden: boolean; // filed (File > Filed) until a newer message arrives
+  hidden: boolean; // filed (in the List) until a newer message arrives
   activity: ActivityDTO[]; // the card's latest few changes, newest first
 };
 
 // reopenOnReply: a new reply sends the email back to unsorted for triage.
 // finished: work here is done; its cards don't count as open, moving a card
-// here takes it off the board into File > Done (Gmail is left alone).
+// here takes it off the board into the List (Gmail is left alone).
 // since: when each card came into this status (ISO), by threadId.
 export type LaneDTO = {
   id: string;
@@ -65,5 +65,5 @@ export type LaneTemplateDTO = { id: string; name: string; builtIn: boolean; lane
 export type Lens = { labelId: string; name: string };
 export type WorkspaceDTO = { id: string; labelId: string; name: string; lanes: LaneDTO[]; ticketIds: string[]; lens: Lens | null };
 
-// A card in the File view. at: when it reached its finished status, or was filed.
+// A card in the List view. at: when it reached its finished status, or was filed.
 export type FiledCard = { card: BoardEmail; at: string; laneId?: string; status?: string };
