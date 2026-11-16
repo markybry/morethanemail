@@ -296,6 +296,99 @@ h3,
   outline: none;
 }
 
+/* ---------- Beach ---------- */
+/* Warm sand, sea glass, coral and driftwood; the sidebar is deep water. */
+html[data-theme="beach"] {
+  --theme-sans: var(--font-nunito);
+  --theme-display: var(--font-fraunces);
+
+  --color-paper: #f5ecd9;
+  --color-cream: #fffbf2;
+  --color-oat: #eadfc6;
+  --color-walnut: #123a4a;
+  --color-bark: #3f5f68;
+  --color-ink: #1f3a44;
+  --color-muted: #8a9a93;
+  --color-faint: #c9c2a8;
+  --color-line: #e6dcc3;
+  --color-line-strong: #d8cba9;
+  --color-moss: #2a9d8f;
+  --color-terracotta: #e76f51;
+  --color-mustard: #e9b949;
+  --color-dusk: #3d7ea6;
+  --color-accent-soft: #fde2d6;
+  --color-accent-ink: #9a3a20;
+  --color-shadow: #0d2a35;
+  --color-side-text: #d6eef0;
+  --color-side-muted: #8fc1c6;
+  --color-side-strong: #f4fbfb;
+  --color-side-accent: #ffb59a;
+  --color-ok-bg: #d4efe9;
+  --color-ok-ink: #1d6b61;
+  --color-bad-bg: #fbdcd2;
+  --color-bad-ink: #9a3a20;
+  --color-warn-bg: #fbecc4;
+  --color-warn-ink: #7a5a12;
+  --color-info-bg: #d9ebf4;
+  --color-info-ink: #245a7a;
+  --color-note: #fff1c7;
+  --color-note-line: #f0dea0;
+  --color-note-edge: #e8d28a;
+  --color-card-edge: #e3d6b6;
+  --color-card-line: #ece2ca;
+
+  /* Lanes: sea glass, coral, sun, deep water, driftwood, seaweed. */
+  --lane-1-bg: #dcefe9;
+  --lane-1-ring: #b5ddd3;
+  --lane-1-bar: #2a9d8f;
+  --lane-1-text: #1d6b61;
+  --lane-2-bg: #fbe1d7;
+  --lane-2-ring: #f4c2ae;
+  --lane-2-bar: #e76f51;
+  --lane-2-text: #9a3a20;
+  --lane-3-bg: #fbefcf;
+  --lane-3-ring: #f1d98f;
+  --lane-3-bar: #e9b949;
+  --lane-3-text: #7a5a12;
+  --lane-4-bg: #dceaf3;
+  --lane-4-ring: #b8d3e5;
+  --lane-4-bar: #3d7ea6;
+  --lane-4-text: #245a7a;
+  --lane-5-bg: #ece3d6;
+  --lane-5-ring: #d9c9b0;
+  --lane-5-bar: #a08262;
+  --lane-5-text: #5c4630;
+  --lane-6-bg: #e1ecdc;
+  --lane-6-ring: #c4d9bb;
+  --lane-6-bar: #6a9a5b;
+  --lane-6-text: #3d5f31;
+}
+/* Deep water, lighter towards the surface. */
+html[data-theme="beach"] .felt {
+  background-color: #123a4a;
+  background-image:
+    radial-gradient(30rem 12rem at 50% 0%, rgb(120 210 215 / 0.25), transparent 70%),
+    repeating-radial-gradient(circle at 50% 120%, transparent 0 22px, rgb(255 255 255 / 0.03) 22px 24px),
+    linear-gradient(180deg, #1b5266 0%, #0f3140 100%);
+}
+/* Sand, with the sea lapping at the top corner. */
+html[data-theme="beach"] .board-bg {
+  background-color: var(--color-paper);
+  background-image:
+    var(--grain),
+    radial-gradient(45rem 22rem at 100% 0%, rgb(42 157 143 / 0.18) 0%, transparent 65%),
+    radial-gradient(40rem 30rem at 0% 100%, #fbe6c8 0%, transparent 60%);
+}
+html[data-theme="beach"] .card-tactile {
+  box-shadow:
+    inset 0 1px 0 #fff,
+    0 2px 0 var(--color-card-edge),
+    0 8px 16px -8px rgb(18 58 74 / 0.25);
+}
+html[data-theme="beach"] .field:focus {
+  border-color: var(--color-moss);
+}
+
 /* ---------- Georgian writing desk ---------- */
 /* Mahogany, green leather with gold tooling, parchment, brass and wax red. */
 html[data-theme="georgian"] {

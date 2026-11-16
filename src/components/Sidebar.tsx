@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { MailNav } from "./LabelTree";
 import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
 import { ThemeIcon, useTheme } from "./ThemeContext";
+import { Logo } from "./Logo";
 
 type Props = {
   user: { name: string; email: string; isDemo: boolean; triageFrom: string | null };
@@ -30,7 +31,7 @@ export function Sidebar({ user, mobileOpen, onClose, slotRef }: Props) {
       >
         <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} label="Resize sidebar" />
         <div className="flex items-center gap-2 px-4 py-4">
-          <ThemeIcon icon={theme.icons.logo} size={26} className="animate-pop text-2xl hover:animate-wiggle" />
+          <Logo size={28} className="animate-pop shrink-0 hover:animate-wiggle" />
           <span className="font-display text-lg font-semibold tracking-tight text-side-strong">More Than Email</span>
           <button onClick={onClose} className="ml-auto rounded-full px-2 text-xl text-side-muted md:hidden" aria-label="Close menu">
             ×

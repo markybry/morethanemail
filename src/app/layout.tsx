@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, EB_Garamond, Fraunces, Inter, JetBrains_Mono, Nunito, Press_Start_2P, VT323 } from "next/font/google";
+import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/session";
 import { isThemeId } from "@/lib/themes";
 import "./globals.css";
@@ -32,7 +33,9 @@ export default async function RootLayout({
 }>) {
   // The saved theme goes on <html> so the first paint is already themed.
   const user = await getCurrentUser().catch(() => null);
-  const theme = isThemeId(user?.theme) ? user.theme : "woodland";
+  // Signed out (sign-in and error pages): the theme last used in this browser.
+  const remembered = (await cookies()).get("mte.theme")?.value;
+  const theme = isThemeId(user?.theme) ? user.theme : isThemeId(remembered) ? remembered : "woodland";
   const fonts = [nunito, fraunces, garamond, cormorant, vt323, pressStart, inter, jetbrains].map((f) => f.variable).join(" ");
   return (
     // Font variables sit on <html> too, so each theme's --theme-sans/--theme-display can use them.

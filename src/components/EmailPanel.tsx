@@ -417,7 +417,7 @@ function Labels({
 
   const nameOf = (id: string) => (id === "INBOX" ? "Inbox" : labelNames.get(id));
   const current = email.labelIds.filter((id) => nameOf(id));
-  const q = query.trim().toLowerCase();
+  const q = query.replace(/\\/g, "/").trim().toLowerCase(); // a backslash nests too
   const options = [{ id: "INBOX", name: "Inbox" }, ...labels]
     .filter((l) => !email.labelIds.includes(l.id))
     .filter((l) => !q || l.name.toLowerCase().includes(q))
@@ -511,7 +511,7 @@ function Labels({
                 onClick={() => run(() => createLabelForEmail(email.threadId, query))}
                 className="block w-full truncate px-3 py-1 text-left text-sm text-terracotta hover:bg-oat"
               >
-                + Create label “{query.trim().split("/").filter(Boolean).join(" › ")}”
+                + Create label “{query.replace(/\\/g, "/").split("/").map((x) => x.trim()).filter(Boolean).join(" › ")}”
               </button>
             )}
           </div>

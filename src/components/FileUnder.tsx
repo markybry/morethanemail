@@ -15,7 +15,7 @@ export function FileUnder({
   onPick: (label: { id: string } | { name: string }) => Promise<string | undefined>; // an error, if any
   onClose: () => void;
 }) {
-  const { labels, colorOf } = useMail();
+  const { labels, colorOf, recentLabels, noteLabelUsed } = useMail();
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -26,9 +26,14 @@ export function FileUnder({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const q = query.trim().toLowerCase();
+  const q = query.replace(/\\/g, "/").trim().toLowerCase(); // a backslash nests too
   const own = labels.filter((l) => l.id.startsWith("Label_"));
-  const options = own.filter((l) => !q || l.name.toLowerCase().includes(q)).slice(0, 12);
+  // Nothing typed: recently used labels first.
+  const rank = (id: string) => {
+    const i = recentLabels.indexOf(id);
+    return i < 0 ? recentLabels.length : i;
+  };
+  const options = (q ? own.filter((l) => l.name.toLowerCase().includes(q)) : [...own].sort((x, y) => rank(x.id) - rank(y.id))).slice(0, 12);
   const exact = own.some((l) => l.name.toLowerCase() === q);
 
   const pick = async (label: { id: string } | { name: string }) => {
@@ -37,6 +42,7 @@ export function FileUnder({
     setError("");
     const err = await onPick(label);
     setBusy(false);
+    if (!err && "id" in label) noteLabelUsed(label.id);
     if (err) setError(err);
   };
 
@@ -53,7 +59,7 @@ export function FileUnder({
           onSubmit={(e) => {
             e.preventDefault();
             if (options[0] && (exact || options.length === 1)) void pick({ id: (own.find((l) => l.name.toLowerCase() === q) ?? options[0]).id });
-            else if (q) void pick({ name: query.trim() });
+            else if (q) void pick({ name: query.replace(/\\/g, "/").trim() });
           }}
         >
           <input
@@ -82,10 +88,10 @@ export function FileUnder({
             <li>
               <button
                 disabled={busy}
-                onClick={() => void pick({ name: query.trim() })}
+                onClick={() => void pick({ name: query.replace(/\\/g, "/").trim() })}
                 className="w-full truncate rounded-xl px-3 py-1.5 text-left text-sm font-semibold text-terracotta hover:bg-oat disabled:opacity-50"
               >
-                + Create label “{query.trim().split("/").join(" › ")}”
+                + Create label “{query.replace(/\\/g, "/").split("/").map((x) => x.trim()).filter(Boolean).join(" › ")}”
               </button>
             </li>
           )}

@@ -9,6 +9,11 @@ import { PixelSprite } from "./PixelSprite";
 // (summary, latest activity, all next actions). Saved on this device.
 export type Density = "compact" | "detailed";
 const DENSITY_KEY = "mte.density";
+// The theme also goes in a cookie, so the sign-in and error pages (no user yet) match it.
+export const THEME_COOKIE = "mte.theme";
+const rememberTheme = (id: ThemeId) => {
+  document.cookie = `${THEME_COOKIE}=${id}; path=/; max-age=31536000; samesite=lax`;
+};
 
 type ThemeContextValue = { theme: ThemeDef; setTheme: (id: ThemeId) => void; density: Density; setDensity: (d: Density) => void };
 
@@ -26,8 +31,10 @@ export function ThemeProvider({ initial, children }: { initial: ThemeId; childre
   const setTheme = useCallback((next: ThemeId) => {
     setId(next);
     document.documentElement.dataset.theme = next;
+    rememberTheme(next);
     void saveTheme(next);
   }, []);
+  useEffect(() => rememberTheme(initial), [initial]);
   const [density, setDensityState] = useState<Density>("compact");
   useEffect(() => {
     try {

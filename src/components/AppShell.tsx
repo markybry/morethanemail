@@ -7,7 +7,8 @@ import { MailProvider } from "./MailContext";
 import { SearchBar } from "./SearchBar";
 import { Sidebar } from "./Sidebar";
 import { SidebarSlotProvider } from "./SidebarSlot";
-import { ThemeIcon, ThemeProvider, useTheme } from "./ThemeContext";
+import { ThemeProvider } from "./ThemeContext";
+import { Logo } from "./Logo";
 
 type User = { name: string; email: string; isDemo: boolean; triageFrom: string | null };
 
@@ -25,7 +26,6 @@ export function AppShell({ user, theme, children }: { user: User; theme: ThemeId
 function Frame({ user, children }: { user: User; children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
-  const { theme } = useTheme();
   const [slot, setSlot] = useState<HTMLElement | null>(null);
 
   // Navigating (e.g. picking a label) closes the phone menu.
@@ -38,7 +38,7 @@ function Frame({ user, children }: { user: User; children: React.ReactNode }) {
         <button onClick={() => setMenuOpen(true)} className="rounded-lg px-2 py-1 text-xl" aria-label="Open menu">
           ☰
         </button>
-        <ThemeIcon icon={theme.icons.logo} size={22} className="text-xl" />
+        <Logo size={24} className="shrink-0" />
         <Suspense>
           <SearchBar className="min-w-0 flex-1" />
         </Suspense>
@@ -47,7 +47,7 @@ function Frame({ user, children }: { user: User; children: React.ReactNode }) {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="shrink-0 border-b border-line bg-cream px-4 py-2 max-md:hidden">
           <Suspense>
-            <SearchBar className="max-w-2xl" />
+            <SearchBar className="mx-auto max-w-2xl" />
           </Suspense>
         </div>
         <main className="min-h-0 min-w-0 flex-1">{children}</main>

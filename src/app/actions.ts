@@ -245,6 +245,7 @@ export async function setEmailLabels(
 // Gmail label names: trim each "/"-separated part and drop empty ones.
 const cleanLabelName = (name: string) =>
   name
+    .replace(/\\/g, "/") // "Clients\JR" is meant as a sub-label too
     .split("/")
     .map((p) => p.trim())
     .filter(Boolean)

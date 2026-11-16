@@ -2,7 +2,7 @@
 // [data-theme=...]; this file holds the names and the icons each theme uses.
 // An icon is an emoji, or "sprite:<name>" for the pixel-art sprites.
 
-export type ThemeId = "woodland" | "georgian" | "pixel" | "dev" | "dark" | "light";
+export type ThemeId = "woodland" | "beach" | "georgian" | "pixel" | "dev" | "dark" | "light";
 
 export type ThemeIcons = {
   logo: string;
@@ -43,6 +43,25 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
       labels: ["🦊", "🦔", "🦉", "🐻", "🐢", "🐇", "🦡", "🐿️", "🦫", "🐸"],
     },
     text: { sorted: "All sorted. Time for a cuppa.", empty: "Nothing with this label yet.", loading: "Fetching your mail…" },
+  },
+  // Sand, sea glass and coral; a deep-sea sidebar.
+  beach: {
+    id: "beach",
+    name: "🏖️ Beach",
+    icons: {
+      logo: "🐚",
+      workspace: "🌊",
+      dashboard: "🌅",
+      tasks: "🦀",
+      addLane: "🐚",
+      empty: "🦀",
+      sorted: "🍹",
+      loading: "🌊",
+      hint: "🐚",
+      lanes: ["🐚", "🦀", "🐠", "🌊", "⛱️", "🪸"],
+      labels: ["🐚", "🦀", "🐠", "🐬", "🪸", "⛱️", "🌴", "🐢", "⭐", "🦩"],
+    },
+    text: { sorted: "All clear. Feet up, tide's out.", empty: "Nothing washed up here yet.", loading: "Waiting for the tide…" },
   },
   georgian: {
     id: "georgian",
