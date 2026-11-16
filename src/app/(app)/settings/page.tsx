@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/session";
 import { CloseSettings, SettingsForm } from "@/components/SettingsForm";
 
-// Settings: appearance, triage, pinned labels and the account.
+// Settings: appearance, ignored senders, pinned labels and the account.
 export default async function SettingsPage() {
   const user = await requireUser();
   return (
@@ -13,7 +13,6 @@ export default async function SettingsPage() {
         </div>
         <SettingsForm
           user={{ name: user.name ?? user.email, email: user.email, isDemo: user.isDemo }}
-          triageFrom={user.triageFrom?.toISOString() ?? null}
           ignoredSenders={user.ignoredSenders}
         />
       </div>

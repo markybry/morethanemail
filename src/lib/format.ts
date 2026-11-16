@@ -32,10 +32,6 @@ export function isOverdue(iso: string, withTime = false) {
   return d.getTime() < Date.now();
 }
 
-// Value for <input type="date"> from an ISO string, and back.
-export const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
-export const fromDateInput = (v: string) => (v ? new Date(`${v}T12:00:00`).toISOString() : null);
-
 // "just now", "5m ago", "3h ago", "2d ago", then the date.
 export function timeAgo(iso: string) {
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);

@@ -2,19 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { setTriageFrom, unignoreSender } from "@/app/actions";
-import { toDateInput } from "@/lib/format";
+import { unignoreSender } from "@/app/actions";
 import { THEME_IDS, THEMES, type ThemeId } from "@/lib/themes";
 import { useMail } from "./MailContext";
 import { useTheme } from "./ThemeContext";
 
-type Props = { user: { name: string; email: string; isDemo: boolean }; triageFrom: string | null; ignoredSenders: string[] };
+type Props = { user: { name: string; email: string; isDemo: boolean }; ignoredSenders: string[] };
 
-export function SettingsForm({ user, triageFrom, ignoredSenders }: Props) {
+export function SettingsForm({ user, ignoredSenders }: Props) {
   return (
     <div className="space-y-4">
       <Appearance />
-      <Triage triageFrom={triageFrom} />
       <Ignored initial={ignoredSenders} />
       <Pinned />
       <Card title="Account">
@@ -97,47 +95,6 @@ function Appearance() {
             {THEMES[id].name}
           </button>
         ))}
-      </div>
-    </Card>
-  );
-}
-
-function Triage({ triageFrom }: { triageFrom: string | null }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const save = async (when: "now" | string | null) => {
-    setBusy(true);
-    await setTriageFrom(when);
-    setBusy(false);
-    router.refresh();
-  };
-  return (
-    <Card title="Triage">
-      <div className="space-y-4">
-        <div>
-          <label className="flex flex-wrap items-center gap-2 text-sm text-bark">
-            <span className="font-semibold text-walnut">Queue cleared up to</span>
-            <input
-              type="date"
-              value={triageFrom ? toDateInput(triageFrom) : ""}
-              disabled={busy}
-              onChange={(e) => void save(e.target.value || null)}
-              className="field rounded-xl px-2 py-1 text-sm"
-            />
-            <button disabled={busy} onClick={() => void save("now")} className="btn-press rounded-xl bg-oat px-3 py-1 text-xs font-semibold text-bark">
-              Up to now
-            </button>
-            {triageFrom && (
-              <button disabled={busy} onClick={() => void save(null)} className="text-xs font-semibold text-muted hover:text-terracotta">
-                Clear
-              </button>
-            )}
-          </label>
-          <p className="mt-1 text-xs text-muted">
-            Set by Clear queue on the board. Mail with nothing newer than this stays out of the first column, in the Inbox and
-            in labels; a new message brings a thread back. Search and File still find everything, and nothing changes in Gmail.
-          </p>
-        </div>
       </div>
     </Card>
   );
