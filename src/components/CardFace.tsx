@@ -127,7 +127,8 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
         !summary && <div className="mt-0.5 truncate text-xs text-muted">{latest.snippet}</div>
       )}
       {next && (
-        <div className={`flex items-start gap-1.5 text-xs leading-snug ${compact ? "mt-1.5" : "mt-2 border-t border-dashed border-line pt-1.5"}`}>
+        // Keyed by task, so the one after it slides in when it's ticked off.
+        <div key={next.id} className={`animate-slide-up flex items-start gap-1.5 text-xs leading-snug ${compact ? "mt-1.5" : "mt-2 border-t border-dashed border-line pt-1.5"}`}>
           {toggleTask ? (
             <input
               type="checkbox"

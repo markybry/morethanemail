@@ -206,6 +206,13 @@ export function LabelBoard({
   const cutoffApplies = !!triageFrom && !showOlder && !isInbox;
   const [prefsReady, setPrefsReady] = useState(false);
   const [view, setView] = useState<BoardView>("lanes");
+  // A finished status that just took a card: it says so for a moment.
+  const [justDone, setJustDone] = useState<string | null>(null);
+  useEffect(() => {
+    if (!justDone) return;
+    const t = setTimeout(() => setJustDone(null), 1600);
+    return () => clearTimeout(t);
+  }, [justDone]);
   // Done cards opened from File that have left the board: their finished status.
   const [doneLanes, setDoneLanes] = useState<Record<string, string>>({});
   const [loadedQuery, setLoadedQuery] = useState("");
@@ -358,6 +365,7 @@ export function LabelBoard({
     if (!finished && emails[threadId]?.done)
       setEmails((prev) => (prev[threadId] ? { ...prev, [threadId]: { ...prev[threadId], done: false, doneLaneId: null } } : prev));
     if (finished) {
+      setJustDone(to);
       setLanes((prev) => prev.map((l) => (l.id === to ? { ...l, threadIds: l.threadIds.filter((x) => x !== threadId) } : l)));
       setEmails((prev) => (prev[threadId] ? { ...prev, [threadId]: { ...prev[threadId], done: true, doneLaneId: to } } : prev));
       if (selected === threadId) setSelected(null);
@@ -1033,7 +1041,7 @@ export function LabelBoard({
         {view === "file" ? (
           <section
             id="col-file"
-            className="board-bg flex min-h-0 min-w-0 flex-1 p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:w-[calc(100vw-1.5rem)] max-md:flex-none max-md:shrink-0 max-md:snap-start max-md:p-3"
+            className="animate-fade-in board-bg flex min-h-0 min-w-0 flex-1 p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:w-[calc(100vw-1.5rem)] max-md:flex-none max-md:shrink-0 max-md:snap-start max-md:p-3"
           >
             <FileView
               labelId={sourceLabelId}
@@ -1054,7 +1062,7 @@ export function LabelBoard({
         ) : view === "calendar" ? (
           <section
             id="col-calendar"
-            className="board-bg flex min-h-0 min-w-0 flex-1 p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:w-[calc(100vw-1.5rem)] max-md:flex-none max-md:shrink-0 max-md:snap-start max-md:overflow-y-auto max-md:p-3"
+            className="animate-fade-in board-bg flex min-h-0 min-w-0 flex-1 p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:w-[calc(100vw-1.5rem)] max-md:flex-none max-md:shrink-0 max-md:snap-start max-md:overflow-y-auto max-md:p-3"
           >
             <CalendarBoard
               cardIds={[...shownLanes.flatMap((l) => l.threadIds), ...shownUnsorted]}
@@ -1065,7 +1073,7 @@ export function LabelBoard({
             />
           </section>
         ) : (
-        <section className="board-bg flex min-h-0 min-w-0 flex-1 gap-4 overflow-x-auto p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:flex-none max-md:gap-3 max-md:overflow-visible max-md:p-3">
+        <section className="animate-fade-in board-bg flex min-h-0 min-w-0 flex-1 gap-4 overflow-x-auto p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:flex-none max-md:gap-3 max-md:overflow-visible max-md:p-3">
           {shownLanes.map((lane, i) => (
             <Lane
               key={lane.id}
@@ -1094,6 +1102,7 @@ export function LabelBoard({
               onOpen={setSelected}
               rows={orderedRows}
               rowOf={rowOf}
+              cheer={justDone === lane.id}
               showEmptyRows={!!activeId && overLane === lane.id}
               width={laneWidth}
               colors={LANE_THEMES[i % LANE_THEMES.length]}
@@ -1607,6 +1616,7 @@ function Lane({
   rows,
   showEmptyRows,
   rowOf,
+  cheer,
   width,
   colors,
   icon,
@@ -1625,6 +1635,7 @@ function Lane({
   rows: Row[] | null;
   showEmptyRows: boolean; // empty sub-labels stay hidden except while a card is being dragged
   rowOf: (e: BoardEmail | undefined) => string;
+  cheer: boolean; // a card was just dropped here and left for File > Done
   width: ReturnType<typeof useStoredWidth>;
   colors: (typeof LANE_THEMES)[number];
   icon: string;
@@ -1691,11 +1702,16 @@ function Lane({
         </div>
       </div>
       <div ref={setNodeRef} className={`flex min-h-24 flex-1 flex-col gap-2.5 overflow-y-auto px-2.5 pb-2.5 ${isOver && !rows ? "rounded-2xl bg-cream/50" : ""}`}>
-        {lane.finished && lane.threadIds.length === 0 && (
-          <p className="rounded-2xl border-2 border-dashed border-line px-3 py-4 text-center text-xs text-muted">
-            Drop a card here when it&apos;s done. It leaves the board and is kept in File › Done.
-          </p>
-        )}
+        {lane.finished && lane.threadIds.length === 0 &&
+          (cheer ? (
+            <p key="cheer" className="animate-pop rounded-2xl border-2 border-moss/50 bg-ok-bg px-3 py-4 text-center text-xs font-bold text-ok-ink">
+              <span className="animate-wiggle mr-1 inline-block">✓</span> Kept in File › Done
+            </p>
+          ) : (
+            <p className="rounded-2xl border-2 border-dashed border-line px-3 py-4 text-center text-xs text-muted">
+              Drop a card here when it&apos;s done. It leaves the board and is kept in File › Done.
+            </p>
+          ))}
         {rows ? (
           rows.map((r) => {
             const ids = lane.threadIds.filter((t) => rowOf(emails[t]) === r.key);

@@ -73,10 +73,10 @@ export default async function TodayPage() {
         <h1 className="text-xl font-semibold text-walnut">Today</h1>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Stat label="Next actions" value={openTasks.length} href="/tasks" />
-          <Stat label="Overdue" value={overdue} href="/tasks" alert={overdue > 0} />
-          <Stat label="New replies" value={replies.length} alert={replies.length > 0} />
-          <Stat label={`Waiting ${STALE_DAYS}+ days`} value={stale.length} alert={stale.length > 0} />
+          <Stat i={0} label="Next actions" value={openTasks.length} href="/tasks" />
+          <Stat i={1} label="Overdue" value={overdue} href="/tasks" alert={overdue > 0} />
+          <Stat i={2} label="New replies" value={replies.length} alert={replies.length > 0} />
+          <Stat i={3} label={`Waiting ${STALE_DAYS}+ days`} value={stale.length} alert={stale.length > 0} />
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
@@ -196,10 +196,15 @@ function describe(kind: string, detail: string) {
   }
 }
 
-function Stat({ label, value, href, alert }: { label: string; value: number; href?: string; alert?: boolean }) {
+function Stat({ i, label, value, href, alert }: { i: number; label: string; value: number; href?: string; alert?: boolean }) {
   const body = (
-    <div className="card-tactile rounded-2xl px-4 py-3">
-      <div className={`font-display text-3xl font-semibold ${alert ? "text-terracotta" : "text-walnut"}`}>{value}</div>
+    <div className="card-tactile animate-rise rounded-2xl px-4 py-3" style={{ animationDelay: `${i * 60}ms` }}>
+      <div
+        className={`font-display text-3xl font-semibold ${alert ? "animate-pop text-terracotta" : "text-walnut"}`}
+        style={{ animationDelay: `${i * 60 + 200}ms` }}
+      >
+        {value}
+      </div>
       <div className="text-xs font-semibold text-muted">{label}</div>
     </div>
   );
@@ -214,7 +219,7 @@ function Stat({ label, value, href, alert }: { label: string; value: number; hre
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="paper rounded-3xl border border-line p-4">
+    <section className="paper animate-rise rounded-3xl border border-line p-4">
       <h2 className="mb-2 text-sm font-semibold text-terracotta">{title}</h2>
       {children}
     </section>

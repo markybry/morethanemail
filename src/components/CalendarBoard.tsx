@@ -144,7 +144,7 @@ export function CalendarBoard({
                 </div>
               ))}
             </div>
-            <div className="grid min-h-0 flex-1 grid-cols-7" style={{ gridTemplateRows: `repeat(${weeks.length / 7}, minmax(0, 1fr))` }}>
+            <div key={month.getTime()} className="animate-fade-in grid min-h-0 flex-1 grid-cols-7" style={{ gridTemplateRows: `repeat(${weeks.length / 7}, minmax(0, 1fr))` }}>
               {weeks.map((d) => (
                 <DayCell
                   key={dayKey(d)}

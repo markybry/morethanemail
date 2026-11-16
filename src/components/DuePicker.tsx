@@ -161,8 +161,8 @@ function Calendar({ value, align, onPick }: { value: Due; align: "left" | "right
     <div
       role="dialog"
       aria-label="Due date"
-      className={`absolute z-30 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-cream p-3 text-sm text-ink shadow-lg ${
-        align === "right" ? "right-0" : "left-0"
+      className={`animate-drop-in absolute z-30 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-cream p-3 text-sm text-ink shadow-lg ${
+        align === "right" ? "right-0 origin-top-right" : "left-0 origin-top-left"
       }`}
     >
       <div className="mb-2 grid grid-cols-2 gap-1">

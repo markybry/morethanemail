@@ -19,7 +19,7 @@ export function Drawer({ onClose, children }: { onClose: () => void; children: R
       <div
         role="dialog"
         aria-modal="true"
-        className="animate-rise relative flex h-full flex-col bg-cream shadow-2xl shadow-shadow/40 max-md:w-full md:h-[calc(100vh-3rem)] md:max-h-[60rem] md:w-[var(--w)] md:max-w-[calc(100vw-3rem)] md:overflow-hidden md:rounded-3xl md:border md:border-line"
+        className="animate-zoom-in relative flex h-full flex-col bg-cream shadow-2xl shadow-shadow/40 max-md:w-full md:h-[calc(100vh-3rem)] md:max-h-[60rem] md:w-[var(--w)] md:max-w-[calc(100vw-3rem)] md:overflow-hidden md:rounded-3xl md:border md:border-line"
         style={widthVar(w.width)}
       >
         <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} edge="right" label="Resize card" />

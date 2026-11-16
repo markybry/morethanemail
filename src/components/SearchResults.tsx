@@ -52,8 +52,8 @@ export function SearchResults({ query }: { query: string }) {
           <section>
             <h2 className="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Cards</h2>
             <ul className="paper divide-y divide-line rounded-2xl border border-line">
-              {cards.map((c) => (
-                <li key={c.threadId}>
+              {cards.map((c, i) => (
+                <li key={c.threadId} className="animate-rise" style={{ animationDelay: `${Math.min(i, 15) * 25}ms` }}>
                   <Link href={cardLink(c.threadId)} className="group flex items-center gap-3 px-3 py-2 hover:bg-oat/60">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-walnut group-hover:text-terracotta">{c.title}</span>
@@ -78,8 +78,8 @@ export function SearchResults({ query }: { query: string }) {
             <p className="text-sm text-muted">No emails match.</p>
           ) : (
             <ul className="paper divide-y divide-line rounded-2xl border border-line">
-              {emails.map((e) => (
-                <EmailRow key={e.threadId} email={e} />
+              {emails.map((e, i) => (
+                <EmailRow key={e.threadId} email={e} i={i} />
               ))}
             </ul>
           )}
@@ -98,12 +98,12 @@ export function SearchResults({ query }: { query: string }) {
   );
 }
 
-function EmailRow({ email: e }: { email: BoardEmail }) {
+function EmailRow({ email: e, i }: { email: BoardEmail; i: number }) {
   const { labelNames, colorOf } = useMail();
   const named = e.labelIds.map((id) => ({ id, name: labelNames.get(id) })).filter((l): l is { id: string; name: string } => !!l.name);
   const labels = named.filter((l) => !named.some((o) => o.name.startsWith(`${l.name}/`))).slice(0, 3);
   return (
-    <li>
+    <li className="animate-rise" style={{ animationDelay: `${Math.min(i % 30, 15) * 25}ms` }}>
       <Link href={cardLink(e.threadId)} className="group flex items-center gap-3 px-3 py-2 hover:bg-oat/60">
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-sm ${e.unread ? "font-bold text-walnut" : "text-ink"}`}>

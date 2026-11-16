@@ -108,16 +108,17 @@ export function FileView({
       <div className="paper min-h-0 flex-1 overflow-y-auto rounded-2xl border border-line">
         {tab === "done" && (
           <List loading={!done} empty={q ? "Nothing matches." : "Nothing done yet."}>
-            {shownDone.map((f) => (
-              <Row key={f.card.threadId} card={f.card} hideLabelId={isInbox ? undefined : labelId} tag={f.status} when={f.at} onOpen={onOpen} />
+            {shownDone.map((f, i) => (
+              <Row key={f.card.threadId} i={i} card={f.card} hideLabelId={isInbox ? undefined : labelId} tag={f.status} when={f.at} onOpen={onOpen} />
             ))}
           </List>
         )}
         {tab === "filed" && (
           <List loading={!filed} empty={q ? "Nothing matches." : "Nothing filed. Use File in triage for emails that are just information."}>
-            {shownFiled.map((f) => (
+            {shownFiled.map((f, i) => (
               <Row
                 key={f.card.threadId}
+                i={i}
                 card={f.card}
                 hideLabelId={isInbox ? undefined : labelId}
                 when={f.at}
@@ -196,11 +197,12 @@ function AllMail({
       </form>
       {error && <p className="p-3 text-sm text-red-600">{error}</p>}
       <List loading={!items && !error} empty="Nothing found.">
-        {(items ?? []).map((e) => {
+        {(items ?? []).map((e, i) => {
           const status = statusOf(e.threadId);
           return (
             <Row
               key={e.threadId}
+              i={i}
               card={e}
               hideLabelId={hideLabelId}
               tag={status ?? (e.hidden ? "Filed" : undefined)}
@@ -246,6 +248,7 @@ function List({ loading, empty, children }: { loading: boolean; empty: string; c
 }
 
 function Row({
+  i,
   card,
   hideLabelId,
   tag,
@@ -253,6 +256,7 @@ function Row({
   onOpen,
   action,
 }: {
+  i: number; // position, for a short stagger as the list comes in
   card: BoardEmail;
   hideLabelId?: string;
   tag?: string;
@@ -270,7 +274,7 @@ function Row({
   }, [card, labelNames, here]);
 
   return (
-    <li className="group flex items-center gap-3 px-3 py-2 hover:bg-oat/60">
+    <li className="group animate-rise flex items-center gap-3 px-3 py-2 hover:bg-oat/60" style={{ animationDelay: `${Math.min(i, 15) * 25}ms` }}>
       <button onClick={() => onOpen(card.threadId)} className="min-w-0 flex-1 text-left">
         <span className="block truncate text-sm font-semibold text-walnut group-hover:text-terracotta">{card.title}</span>
         <span className="block truncate text-xs text-muted">

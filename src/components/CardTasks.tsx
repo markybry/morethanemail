@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -37,16 +37,32 @@ export function NextAction(p: Props) {
   const after = open[1];
   const [title, setTitle] = useState("");
   const [due, setDue] = useState<Due>(NO_DUE);
+  // A little "done!" floats up when the next action is ticked off.
+  const [cheer, setCheer] = useState(0);
+  useEffect(() => {
+    if (!cheer) return;
+    const t = setTimeout(() => setCheer(0), 1100);
+    return () => clearTimeout(t);
+  }, [cheer]);
 
   return (
     <Section title="Next action">
+      <div className="relative">
+      {cheer > 0 && (
+        <span key={cheer} className="animate-cheer pointer-events-none absolute -top-3 left-3 z-10 rounded-full bg-moss px-2 py-0.5 text-xs font-bold text-cream shadow">
+          ✓ Done!
+        </span>
+      )}
       {next ? (
         <>
-          <div className="flex items-center gap-2.5 rounded-xl border border-line bg-paper px-3 py-2">
+          <div key={next.id} className="animate-slide-up flex items-center gap-2.5 rounded-xl border border-line bg-paper px-3 py-2">
             <input
               type="checkbox"
               checked={false}
-              onChange={() => patch(next.id, { done: true })}
+              onChange={() => {
+                setCheer(Date.now());
+                void patch(next.id, { done: true });
+              }}
               className="h-5 w-5 shrink-0 accent-moss transition active:scale-125"
               aria-label={`Done: ${next.title}`}
               title="Done: the next task on the list moves up"
@@ -94,6 +110,7 @@ export function NextAction(p: Props) {
         </form>
       )}
       {!next && <DueChips value={due} onChange={setDue} />}
+      </div>
     </Section>
   );
 }
@@ -213,7 +230,7 @@ function SortableTask({
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={`group flex items-center gap-2 rounded px-1 py-0.5 hover:bg-oat ${isDragging ? "relative z-10 bg-oat shadow-md" : ""}`}
+      className={`group animate-rise flex items-center gap-2 rounded px-1 py-0.5 hover:bg-oat ${isDragging ? "relative z-10 bg-oat shadow-md" : ""}`}
     >
       <button
         ref={setActivatorNodeRef}
