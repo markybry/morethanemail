@@ -57,12 +57,19 @@ import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
 import { ThemeIcon, useTheme } from "./ThemeContext";
 import { InSidebar } from "./SidebarSlot";
 import { CalendarBoard } from "./CalendarBoard";
+import { FileView } from "./FileView";
 import type { Due } from "./DuePicker";
 
 const PRIMARY_KEY = "mte.inboxPrimaryOnly";
 const RECENT_KEY = "mte.firstColumnRecent";
 const GROUP_KEY = "mte.unsortedGroupBy";
-const VIEW_KEY = "mte.boardView"; // "lanes" or "calendar"
+const VIEW_KEY = "mte.boardView"; // "lanes", "calendar" or "file"
+type BoardView = "lanes" | "calendar" | "file";
+const VIEWS: { id: BoardView; name: string }[] = [
+  { id: "lanes", name: "▥ Lanes" },
+  { id: "calendar", name: "▦ Calendar" },
+  { id: "file", name: "🗄 File" },
+];
 
 // Each lane gets its own colour (defined per theme in globals.css) and an
 // icon from the theme, cycling through these. Literal class names so Tailwind keeps them.
@@ -200,7 +207,9 @@ export function LabelBoard({
   const [showOlder, setShowOlder] = useState(false);
   const cutoffApplies = !!triageFrom && !showOlder && (!isInbox || recent);
   const [prefsReady, setPrefsReady] = useState(false);
-  const [view, setView] = useState<"lanes" | "calendar">("lanes");
+  const [view, setView] = useState<BoardView>("lanes");
+  // Done cards opened from File that have left the board: their finished status.
+  const [doneLanes, setDoneLanes] = useState<Record<string, string>>({});
   const [query, setQuery] = useState("");
   const [loadedQuery, setLoadedQuery] = useState("");
   const [nextPage, setNextPage] = useState<string | undefined>();
@@ -251,7 +260,8 @@ export function LabelBoard({
     try {
       setPrimaryOnly(localStorage.getItem(PRIMARY_KEY) !== "false");
       setRecent(localStorage.getItem(RECENT_KEY) === "true");
-      if (localStorage.getItem(VIEW_KEY) === "calendar") setView("calendar");
+      const v = localStorage.getItem(VIEW_KEY);
+      if (v === "calendar" || v === "file") setView(v);
     } catch {}
     setPrefsReady(true);
   }, []);
@@ -270,7 +280,7 @@ export function LabelBoard({
     void refreshEmails(refreshIds).then((r) => mergeEmails(r.emails));
   }, [refreshIds, mergeEmails]);
 
-  const changeView = (v: "lanes" | "calendar") => {
+  const changeView = (v: BoardView) => {
     setView(v);
     try {
       localStorage.setItem(VIEW_KEY, v);
@@ -914,7 +924,7 @@ export function LabelBoard({
       } else if (ev.key === "#" && !emails[selected]?.local) {
         ev.preventDefault();
         void trash(selected);
-      } else if (ev.key === "h" && fromFirst && !emails[selected]?.hidden) {
+      } else if ((ev.key === "f" || ev.key === "h") && fromFirst && !emails[selected]?.hidden) {
         ev.preventDefault();
         void hide(selected, true);
       } else if (/^[1-9]$/.test(ev.key) && lanes[Number(ev.key) - 1]) {
@@ -963,8 +973,8 @@ export function LabelBoard({
           onView={changeView}
           columns={[
             { id: "unsorted", name: isInbox ? "Inbox" : "To triage", count: shownUnsorted.length },
-            ...(view === "calendar"
-              ? [{ id: "calendar", name: "Calendar", count: null }]
+            ...(view !== "lanes"
+              ? [{ id: view, name: view === "file" ? "File" : "Calendar", count: null }]
               : [...shownLanes.map((l) => ({ id: l.id, name: l.name, count: l.threadIds.length })), { id: "add", name: "+ Status", count: null }]),
           ]}
         />
@@ -1036,7 +1046,28 @@ export function LabelBoard({
         <div className="flex items-center gap-2 px-4 pt-3 max-md:hidden">
           <ViewSwitch view={view} onView={changeView} />
         </div>
-        {view === "calendar" ? (
+        {view === "file" ? (
+          <section
+            id="col-file"
+            className="board-bg flex min-h-0 min-w-0 flex-1 p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:w-[calc(100vw-1.5rem)] max-md:flex-none max-md:shrink-0 max-md:snap-start max-md:p-3"
+          >
+            <FileView
+              labelId={sourceLabelId}
+              isInbox={isInbox}
+              labelName={title}
+              emails={emails}
+              inLens={inLens}
+              statusOf={statusOf}
+              mergeEmails={mergeEmails}
+              onDoneLanes={setDoneLanes}
+              onOpen={setSelected}
+              onUnfile={(id) => {
+                void hide(id, false);
+                if (!containerOf(id, { lanes, unsorted })) setUnsorted((prev) => byDate([...prev, id]));
+              }}
+            />
+          </section>
+        ) : view === "calendar" ? (
           <section
             id="col-calendar"
             className="board-bg flex min-h-0 min-w-0 flex-1 p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:w-[calc(100vw-1.5rem)] max-md:flex-none max-md:shrink-0 max-md:snap-start max-md:overflow-y-auto max-md:p-3"
@@ -1196,7 +1227,7 @@ export function LabelBoard({
             else if (!containerOf(t, { lanes, unsorted })) setUnsorted((prev) => byDate([...prev, t]));
           }}
           lanes={lanes}
-          laneId={containerOf(selectedEmail.threadId, { lanes, unsorted }) ?? UNSORTED}
+          laneId={containerOf(selectedEmail.threadId, { lanes, unsorted }) ?? doneLanes[selectedEmail.threadId] ?? UNSORTED}
           onPlace={(laneId) => place(selectedEmail.threadId, laneId)}
           onChange={(e) => mergeEmails([e])}
           onSeenThread={(t) => seenThread(selectedEmail.threadId, t)}
@@ -1537,7 +1568,7 @@ function UnsortedColumn(p: {
         {p.hiddenIds.length > 0 && (
           <details className="rounded-2xl border border-dashed border-line px-3 py-2">
             <summary className="cursor-pointer text-xs font-semibold text-muted">
-              Hidden · {p.hiddenIds.length} <span className="font-normal">(no tracking needed; back if a new message arrives)</span>
+              Filed · {p.hiddenIds.length} <span className="font-normal">(just information; all of it is in the File view)</span>
             </summary>
             <ul className="mt-2 space-y-1">
               {p.hiddenIds.map((id) => (
@@ -1546,7 +1577,7 @@ function UnsortedColumn(p: {
                     {p.emails[id]?.title}
                   </button>
                   <button onClick={() => p.onUnhide(id)} className="shrink-0 text-xs font-semibold text-muted hover:text-terracotta">
-                    Unhide
+                    Back to triage
                   </button>
                 </li>
               ))}
@@ -1600,8 +1631,8 @@ function BulkBar(p: {
           Archive
         </button>
       )}
-      <button onClick={p.onHide} className={btn} title="Hide: doesn't need tracking">
-        Hide
+      <button onClick={p.onHide} className={btn} title="File: just information, no tracking. Find it under File.">
+        File
       </button>
       <button onClick={p.onClear} className="ml-auto text-xs font-semibold text-muted hover:text-terracotta" title="Clear (Esc)">
         ✕
@@ -1688,7 +1719,7 @@ function DraggableEmail({
         // Desktop: on hover. Phones use the buttons on the card itself.
         <div className="absolute right-2 bottom-2 flex gap-1 opacity-0 transition group-hover/drag:opacity-100 max-md:hidden">
           {[
-            { label: "Hide", title: "Hide: doesn't need tracking (h). It comes back if a new message arrives.", run: onHide },
+            { label: "File", title: "File: just information, no tracking (f). Find it in the File view; a new message brings it back.", run: onHide },
             { label: "Archive", title: "Archive in Gmail: needs nothing (e)", run: onArchive },
             { label: "Delete", title: "Move to Gmail's Trash (#). Undo straight after, or restore from Trash for 30 days.", run: onTrash },
           ]
@@ -1967,20 +1998,21 @@ function LaneTemplates({
 }
 
 // Phones show one column at a time; these tabs jump between them.
-// Lanes (statuses side by side) or Calendar (cards on the day their next action is due).
-function ViewSwitch({ view, onView, small }: { view: "lanes" | "calendar"; onView: (v: "lanes" | "calendar") => void; small?: boolean }) {
+// Lanes (statuses side by side), Calendar (cards on the day their next action is
+// due) or File (done, filed and older mail).
+function ViewSwitch({ view, onView, small }: { view: BoardView; onView: (v: BoardView) => void; small?: boolean }) {
   return (
     <div role="group" aria-label="Board view" className="inline-flex shrink-0 rounded-full bg-oat p-0.5">
-      {(["lanes", "calendar"] as const).map((v) => (
+      {VIEWS.map((v) => (
         <button
-          key={v}
-          onClick={() => onView(v)}
-          aria-pressed={view === v}
-          className={`rounded-full font-semibold transition ${small ? "px-2.5 py-0.5 text-xs" : "px-3 py-0.5 text-sm"} ${
-            view === v ? "bg-cream text-walnut shadow-sm" : "text-muted hover:text-bark"
+          key={v.id}
+          onClick={() => onView(v.id)}
+          aria-pressed={view === v.id}
+          className={`rounded-full font-semibold whitespace-nowrap transition ${small ? "px-2.5 py-0.5 text-xs" : "px-3 py-0.5 text-sm"} ${
+            view === v.id ? "bg-cream text-walnut shadow-sm" : "text-muted hover:text-bark"
           }`}
         >
-          {v === "lanes" ? "▥ Lanes" : "▦ Calendar"}
+          {v.name}
         </button>
       ))}
     </div>
@@ -1993,8 +2025,8 @@ function ColumnTabs({
   onView,
 }: {
   columns: { id: string; name: string; count: number | null }[];
-  view: "lanes" | "calendar";
-  onView: (v: "lanes" | "calendar") => void;
+  view: BoardView;
+  onView: (v: BoardView) => void;
 }) {
   return (
     <nav className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-line bg-cream px-2 py-1.5 [scrollbar-width:none] md:hidden" aria-label="Columns">

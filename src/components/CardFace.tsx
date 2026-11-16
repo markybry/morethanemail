@@ -176,7 +176,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
           )}
           {board.canHide(email.threadId) && (
             <button onClick={() => board.hide(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-xs font-semibold text-bark">
-              Hide
+              File
             </button>
           )}
           {board.canHide(email.threadId) && !email.local && (

@@ -18,7 +18,7 @@ import {
 } from "@/lib/mail";
 import { requireUser } from "@/lib/session";
 import { isThemeId } from "@/lib/themes";
-import type { BoardEmail, LaneDTO, LaneTemplateDTO, LinkDTO, NoteDTO, TaskDTO, TemplateLane, ThreadSnapshot } from "@/lib/types";
+import type { BoardEmail, FiledCard, LaneDTO, LaneTemplateDTO, LinkDTO, NoteDTO, TaskDTO, TemplateLane, ThreadSnapshot } from "@/lib/types";
 import { parseTemplateLanes } from "@/lib/laneTemplates";
 import { isLocalThread, LOCAL_PREFIX } from "@/lib/format";
 import { randomUUID } from "crypto";
@@ -731,6 +731,40 @@ export async function setTriageFrom(when: "now" | string | null): Promise<string
 
 // Hide an email that doesn't need tracking (it shows again when a newer message
 // arrives), or bring it back. Nothing changes in Gmail.
+// ---------- the File view ----------
+
+// Done: cards in a finished status, newest first, including those that have
+// dropped off the board. Filed: emails set aside as information (no status),
+// until a newer message brings them back to triage.
+export async function fetchFiled(): Promise<{ done: FiledCard[]; filed: FiledCard[]; error?: string }> {
+  const user = await requireUser();
+  try {
+    const [done, filed] = await Promise.all([
+      db.placement.findMany({
+        where: { workspace: { userId: user.id }, lane: { finished: true } },
+        orderBy: { movedAt: "desc" },
+        take: 300,
+        include: { lane: { select: { id: true, name: true } }, email: { include: emailInclude } },
+      }),
+      db.email.findMany({
+        where: { userId: user.id, hiddenAt: { not: null }, parentId: null, placements: { none: {} } },
+        orderBy: { hiddenAt: "desc" },
+        take: 300,
+        include: emailInclude,
+      }),
+    ]);
+    return {
+      done: done.map((p) => ({ card: toBoardEmail(p.email), at: p.movedAt.toISOString(), laneId: p.lane.id, status: p.lane.name })),
+      filed: filed
+        .map((e) => ({ card: toBoardEmail(e), at: e.hiddenAt!.toISOString() }))
+        .filter((f) => f.card.hidden),
+    };
+  } catch (e) {
+    console.error("fetchFiled failed", e);
+    return { done: [], filed: [], error: "Couldn't load the File view. Try again." };
+  }
+}
+
 export async function setHidden(thread: ThreadSnapshot, hidden: boolean) {
   const user = await requireUser();
   const email = await upsertEmail(user.id, thread);

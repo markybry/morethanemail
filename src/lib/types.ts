@@ -62,3 +62,6 @@ export type LaneTemplateDTO = { id: string; name: string; builtIn: boolean; lane
 // label's cards show, and its Gmail emails fill the first column.
 export type Lens = { labelId: string; name: string };
 export type WorkspaceDTO = { id: string; labelId: string; name: string; lanes: LaneDTO[]; ticketIds: string[]; lens: Lens | null };
+
+// A card in the File view. at: when it reached its finished status, or was filed.
+export type FiledCard = { card: BoardEmail; at: string; laneId?: string; status?: string };
