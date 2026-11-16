@@ -951,3 +951,31 @@ html[data-theme="dev"] .lane.lane-over {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* A row in a list (File, search, dashboard, tasks): its own raised surface on
+   the card colour, so lists don't look printed flat onto their panel. In the
+   components layer so utilities can still adjust it. */
+@layer components {
+  .list-row {
+    background: var(--color-cream);
+    border: 1px solid var(--color-card-line);
+    border-radius: 0.75rem;
+    box-shadow:
+      0 1px 0 var(--color-card-edge),
+      0 3px 8px -5px rgb(0 0 0 / 0.18);
+    transition:
+      transform 0.15s,
+      box-shadow 0.15s;
+  }
+  .list-row:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      0 2px 0 var(--color-card-edge),
+      0 8px 16px -8px rgb(0 0 0 / 0.25);
+  }
+}
+html[data-theme="pixel"] .list-row {
+  border-radius: 0;
+  border-width: 2px;
+  box-shadow: 2px 2px 0 var(--color-card-edge);
+}

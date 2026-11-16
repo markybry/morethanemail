@@ -55,7 +55,7 @@ export function NextAction(p: Props) {
       )}
       {next ? (
         <>
-          <div key={next.id} className="animate-slide-up flex items-center gap-2.5 rounded-xl border border-line bg-paper px-3 py-2">
+          <div key={next.id} className="list-row animate-slide-up flex items-center gap-2.5 border-l-4 border-l-moss px-3 py-2">
             <input
               type="checkbox"
               checked={false}
@@ -147,7 +147,7 @@ export function TaskList(p: Props) {
       {open.length === 0 && <p className="mb-1 text-sm text-muted">No open tasks.</p>}
       <DndContext id={`tasks-${email.threadId}`} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={open.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-          <ul className="space-y-0.5">
+          <ul className="space-y-1">
             {open.map((t, i) => (
               <SortableTask
                 key={t.id}
@@ -230,7 +230,7 @@ function SortableTask({
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
-      className={`group animate-rise flex items-center gap-2 rounded px-1 py-0.5 hover:bg-oat ${isDragging ? "relative z-10 bg-oat shadow-md" : ""}`}
+      className={`list-row group animate-rise flex items-center gap-2 px-1.5 py-1 ${isDragging ? "relative z-10 shadow-lg" : ""}`}
     >
       <button
         ref={setActivatorNodeRef}

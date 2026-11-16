@@ -68,7 +68,7 @@ export function TaskRow({ task }: { task: TaskRowData }) {
   };
 
   return (
-    <li className="px-3 py-2">
+    <li className="list-row px-3 py-2">
       <div className="flex items-center gap-3">
         <input type="checkbox" checked={t.done} onChange={() => save({ done: !t.done })} className="h-4 w-4 shrink-0 accent-moss" />
         <div className="min-w-0 flex-1">

@@ -82,9 +82,9 @@ export default async function TodayPage() {
         <div className="grid gap-6 md:grid-cols-2">
           <Panel title="Next actions">
             {openTasks.length === 0 && <Empty>No next actions. Add them on a card.</Empty>}
-            <ul className="divide-y divide-line">
+            <ul className="space-y-1.5">
               {openTasks.slice(0, 10).map((t) => (
-                <li key={t.id} className="flex items-center gap-3 py-1.5">
+                <li key={t.id} className="list-row flex items-center gap-3 px-3 py-2">
                   <TaskCheckbox taskId={t.id} done={t.done} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm text-walnut">{t.title}</div>
@@ -102,11 +102,11 @@ export default async function TodayPage() {
 
           <Panel title="New replies">
             {replies.length === 0 && <Empty>Nothing new on the cards in your statuses.</Empty>}
-            <ul className="divide-y divide-line">
+            <ul className="space-y-1.5">
               {replies.map((e) => {
                 const c = e.parent ?? e;
                 return (
-                  <li key={e.threadId} className="py-1.5">
+                  <li key={e.threadId} className="list-row px-3 py-2">
                     <Link href={cardLink(c.threadId)} className="block truncate text-sm text-walnut hover:text-terracotta">
                       {titleOf(c)}
                     </Link>
@@ -122,9 +122,9 @@ export default async function TodayPage() {
 
           <Panel title={`Waiting ${STALE_DAYS} days or more`}>
             {stale.length === 0 && <Empty>Nothing has been waiting too long.</Empty>}
-            <ul className="divide-y divide-line">
+            <ul className="space-y-1.5">
               {stale.map((p) => (
-                <li key={p.email.threadId} className="flex gap-2 py-1.5">
+                <li key={p.email.threadId} className="list-row flex gap-2 px-3 py-2">
                   <Link href={cardLink(p.email.threadId)} className="min-w-0 flex-1 truncate text-sm text-walnut hover:text-terracotta">
                     {titleOf(p.email)}
                   </Link>
@@ -138,9 +138,9 @@ export default async function TodayPage() {
 
           <Panel title="Recently opened">
             {recent.length === 0 && <Empty>Emails you open show up here, whether or not they&apos;re on the board.</Empty>}
-            <ul className="divide-y divide-line">
+            <ul className="space-y-1.5">
               {recent.map((r) => (
-                <li key={r.c.threadId} className="flex gap-2 py-1.5">
+                <li key={r.c.threadId} className="list-row flex gap-2 px-3 py-2">
                   <div className="min-w-0 flex-1">
                     <Link href={cardLink(r.c.threadId)} className="block truncate text-sm text-walnut hover:text-terracotta">
                       {titleOf(r.c)}
@@ -155,9 +155,9 @@ export default async function TodayPage() {
 
           <Panel title="Recent activity">
             {activity.length === 0 && <Empty>Moves, actions and notes will show up here.</Empty>}
-            <ul className="divide-y divide-line">
+            <ul className="space-y-1.5">
               {activity.map((a) => (
-                <li key={a.id} className="flex gap-2 py-1.5 text-sm">
+                <li key={a.id} className="list-row flex gap-2 px-3 py-2 text-sm">
                   <span className="min-w-0 flex-1 text-bark">
                     {describe(a.kind, a.detail)}{" "}
                     {a.email && (

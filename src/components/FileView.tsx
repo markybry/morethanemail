@@ -8,12 +8,9 @@ import { senderName, shortDate } from "@/lib/format";
 import { useMail } from "./MailContext";
 import { NewCardForm } from "./NewCard";
 
-type Tab = "done" | "filed";
-
-// Where things go when they need no more work. Done: cards that reached a
-// finished status. Filed: everything under the label (all labelled mail in the
-// Workspace), older mail included, plus cards and emails filed by hand. Rows
-// that are just an email, with nothing added, are marked so. Nothing here is lost.
+// Everything under the label (all labelled mail in the Workspace), older mail
+// included, plus cards filed by hand and cards that are done. Cards show their
+// status; rows that are just an email, with nothing added, are marked so.
 export function FileView({
   labelId,
   isInbox,
@@ -39,8 +36,6 @@ export function FileView({
   onUnfile: (threadId: string) => void;
   onNew: (title: string) => Promise<BoardEmail>; // a new card kept as information, in Filed
 }) {
-  const [tab, setTab] = useState<Tab>("done");
-  const [query, setQuery] = useState("");
   const [done, setDone] = useState<FiledCard[] | null>(null);
   const [filed, setFiled] = useState<FiledCard[] | null>(null);
   const [error, setError] = useState("");
@@ -64,51 +59,31 @@ export function FileView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const q = query.trim().toLowerCase();
-  const matches = useCallback(
-    (e: BoardEmail) =>
-      !q || [e.title, e.subject, e.from, e.summary, ...e.threads.map((t) => `${t.subject} ${t.from}`)].join(" ").toLowerCase().includes(q),
-    [q],
-  );
   // Read cards from the board's state so changes made in the open card show here.
   const view = (list: FiledCard[] | null, keep: (e: BoardEmail) => boolean) =>
-    (list ?? []).map((f) => ({ ...f, card: emails[f.card.threadId] ?? f.card })).filter((f) => inLens(f.card) && keep(f.card) && matches(f.card));
-  const shownDone = view(done, () => true);
-  // Filed items the mail list below won't include: cards with no email, and filed
-  // emails without the label (or, in the Workspace, without any label).
+    (list ?? []).map((f) => ({ ...f, card: emails[f.card.threadId] ?? f.card })).filter((f) => inLens(f.card) && keep(f.card));
+  // A done card's status name (Done, Resolved…), by its finished status.
+  const doneStatus = useMemo(() => new Map((done ?? []).map((d) => [d.laneId!, d.status!])), [done]);
+  // Cards the mail list below won't include, shown first: cards with no email, and
+  // filed or done emails without the label (or, in the Workspace, without any label).
   const covered = (e: BoardEmail) =>
     !e.local && (isInbox ? cardLabelIds(e).some((id) => id.startsWith("Label_")) : inLens(e));
-  const pinned = view(filed, (e) => e.hidden && !covered(e));
+  const pinned = [...view(filed, (e) => e.hidden && !covered(e)), ...view(done, (e) => e.done && !covered(e))];
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label="File" className="inline-flex rounded-full bg-oat p-0.5">
-          <TabButton on={tab === "done"} onClick={() => setTab("done")} count={done ? shownDone.length : null}>
-            Done
-          </TabButton>
-          <TabButton on={tab === "filed"} onClick={() => setTab("filed")} count={null}>
-            Filed
-          </TabButton>
-        </div>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <p className="min-w-0 flex-1 text-xs text-muted">
+          {isInbox ? "Everything under your labels" : `Everything labelled ${labelName}`}, older mail included, plus cards filed or done. ✉
+          marks a plain email with nothing added.
+        </p>
         <button
-          onClick={() => {
-            setAdding(true);
-            setTab("filed");
-          }}
-          className="btn-press order-last rounded-xl bg-moss px-3 py-1 text-sm font-bold text-cream md:order-none"
+          onClick={() => setAdding(true)}
+          className="btn-press ml-auto rounded-xl bg-moss px-3 py-1 text-sm font-bold text-cream"
           title="A new card kept as information: notes, links, reference"
         >
           + New
         </button>
-        {tab === "done" && (
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Find in Done…"
-            className="field min-w-0 flex-1 rounded-xl px-2.5 py-1 text-sm md:max-w-xs"
-          />
-        )}
       </div>
 
       {adding && (
@@ -122,28 +97,15 @@ export function FileView({
           onClose={() => setAdding(false)}
         />
       )}
-      <p className="mb-2 text-xs text-muted">
-        {tab === "done" && "Cards moved to a finished status. They leave the board and are kept here; Gmail is left as it is."}
-        {tab === "filed" &&
-          (isInbox
-            ? "Everything under your labels, older mail included, and anything filed from triage. ✉ marks a plain email with nothing added."
-            : `Everything labelled ${labelName}, older mail included, and anything filed from triage. ✉ marks a plain email with nothing added.`)}
-      </p>
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
 
       <div className="paper min-h-0 flex-1 overflow-y-auto rounded-2xl border border-line">
-        {tab === "done" && (
-          <List loading={!done} empty={q ? "Nothing matches." : "Nothing done yet."}>
-            {shownDone.map((f, i) => (
-              <Row key={f.card.threadId} i={i} card={f.card} hideLabelId={isInbox ? undefined : labelId} tag={f.status} when={f.at} onOpen={onOpen} />
-            ))}
-          </List>
-        )}
-        {tab === "filed" && (
+        {done && filed && (
           <AllMail
             labelId={isInbox ? "ALL" : labelId}
             hideLabelId={isInbox ? undefined : labelId}
             pinned={pinned.map((f) => f.card)}
+            doneStatus={doneStatus}
             emails={emails}
             statusOf={statusOf}
             mergeEmails={mergeEmails}
@@ -151,6 +113,7 @@ export function FileView({
             onUnfile={onUnfile}
           />
         )}
+        {(!done || !filed) && <p className="p-3 text-sm text-muted">Loading…</p>}
       </div>
     </div>
   );
@@ -161,6 +124,7 @@ function AllMail({
   labelId,
   hideLabelId,
   pinned,
+  doneStatus,
   emails,
   statusOf,
   mergeEmails,
@@ -170,6 +134,7 @@ function AllMail({
   labelId: string;
   hideLabelId?: string;
   pinned: BoardEmail[]; // filed by hand and not in the mail list: shown first
+  doneStatus: Map<string, string>; // finished status names, by status id
   emails: Record<string, BoardEmail>;
   statusOf: (threadId: string) => string | undefined;
   mergeEmails: (list: BoardEmail[]) => void;
@@ -207,7 +172,7 @@ function AllMail({
   return (
     <div>
       <form
-        className="flex gap-2 border-b border-line p-2"
+        className="flex gap-2 p-2 pb-0"
         onSubmit={(e) => {
           e.preventDefault();
           void load(query.trim());
@@ -234,7 +199,7 @@ function AllMail({
                 i={i}
                 card={e}
                 hideLabelId={hideLabelId}
-                tag={statusOf(e.threadId) ?? (e.done ? "Done" : undefined)}
+                tag={statusOf(e.threadId) ?? (e.done ? (e.doneLaneId && doneStatus.get(e.doneLaneId)) || "Done" : undefined)}
                 plain={isPlainEmail(e)}
                 when={e.date}
                 onOpen={onOpen}
@@ -259,24 +224,10 @@ function AllMail({
   );
 }
 
-function TabButton({ on, onClick, count, children }: { on: boolean; onClick: () => void; count: number | null; children: React.ReactNode }) {
-  return (
-    <button
-      role="tab"
-      aria-selected={on}
-      onClick={onClick}
-      className={`rounded-full px-3 py-0.5 text-sm font-semibold whitespace-nowrap transition ${on ? "bg-cream text-walnut shadow-sm" : "text-muted hover:text-bark"}`}
-    >
-      {children}
-      {count !== null && <span className="ml-1 font-normal text-muted">{count}</span>}
-    </button>
-  );
-}
-
 function List({ loading, empty, children }: { loading: boolean; empty: string; children: React.ReactNode[] }) {
   if (loading) return <p className="p-3 text-sm text-muted">Loading…</p>;
   if (children.length === 0) return <p className="p-3 text-sm text-muted">{empty}</p>;
-  return <ul className="divide-y divide-line">{children}</ul>;
+  return <ul className="space-y-1.5 p-2">{children}</ul>;
 }
 
 function Row({
@@ -308,7 +259,7 @@ function Row({
   }, [card, labelNames, here]);
 
   return (
-    <li className="group animate-rise flex items-center gap-3 px-3 py-2 hover:bg-oat/60" style={{ animationDelay: `${Math.min(i, 15) * 25}ms` }}>
+    <li className="list-row group animate-rise flex items-center gap-3 px-3 py-2" style={{ animationDelay: `${Math.min(i, 15) * 25}ms` }}>
       <button onClick={() => onOpen(card.threadId)} className="min-w-0 flex-1 text-left">
         <span className="flex items-baseline gap-1.5">
           {plain && (

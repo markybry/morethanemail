@@ -169,9 +169,9 @@ function Ignored({ initial }: { initial: string[] }) {
       {list.length === 0 ? (
         <p className="text-sm text-muted">No ignored senders.</p>
       ) : (
-        <ul className="divide-y divide-line">
+        <ul className="space-y-1.5">
           {list.map((a) => (
-            <li key={a} className="flex items-center gap-2 py-1.5 text-sm">
+            <li key={a} className="list-row flex items-center gap-2 px-3 py-1.5 text-sm">
               <span className="min-w-0 flex-1 truncate text-bark">{a}</span>
               <button
                 disabled={busy === a}

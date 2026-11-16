@@ -62,7 +62,7 @@ export default async function TasksPage() {
               <h2 className={`mb-2 text-xs font-semibold tracking-wide uppercase ${g.title === "Overdue" ? "text-red-600" : "text-muted"}`}>
                 {g.title} · {g.items.length}
               </h2>
-              <ul className="divide-y divide-line rounded-lg border border-line bg-cream">
+              <ul className="space-y-1.5">
                 {g.items.map((t) => (
                   // Keyed on what the server knows so a moved or edited task re-reads its data.
                   <TaskRow key={`${t.id}:${t.done}:${t.dueDate?.getTime() ?? ""}:${t.dueTime}`} task={row(t)} />
