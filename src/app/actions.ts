@@ -71,6 +71,8 @@ export async function fetchLabelEmails(
       primaryOnly: opts.primaryOnly,
       query: opts.query,
       pageToken: opts.pageToken,
+      // Ignored senders stay out of the Inbox column (a search still finds them).
+      excludeFrom: labelId === "INBOX" && !opts.query?.trim() ? user.ignoredSenders : undefined,
     });
     return { emails: await withStoredMeta(user.id, res.threads), nextPageToken: res.nextPageToken };
   } catch (e) {
@@ -775,6 +777,30 @@ export async function setTriageFrom(when: "now" | string | null): Promise<string
 
 // Hide an email that doesn't need tracking (it shows again when a newer message
 // arrives), or bring it back. Nothing changes in Gmail.
+// ---------- ignored senders ----------
+
+const cleanAddress = (a: string) => a.trim().toLowerCase().replace(/[^\w.@+-]/g, "").slice(0, 200);
+
+// Silence senders (newsletters, notifications): their mail stays out of the Inbox
+// column from now on. Nothing changes in Gmail. Returns the full list.
+export async function ignoreSenders(addresses: string[]): Promise<string[]> {
+  const user = await requireUser();
+  const add = addresses.map(cleanAddress).filter((a) => a.includes("@"));
+  const list = [...new Set([...user.ignoredSenders, ...add])].slice(-500);
+  await db.user.update({ where: { id: user.id }, data: { ignoredSenders: list } });
+  revalidateBoards();
+  return list;
+}
+
+export async function unignoreSender(address: string): Promise<string[]> {
+  const user = await requireUser();
+  const list = user.ignoredSenders.filter((a) => a !== cleanAddress(address));
+  await db.user.update({ where: { id: user.id }, data: { ignoredSenders: list } });
+  revalidateBoards();
+  revalidatePath("/settings");
+  return list;
+}
+
 // ---------- the File view ----------
 
 // Done: cards in a finished status, newest first, including those that have

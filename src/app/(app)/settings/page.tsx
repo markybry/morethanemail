@@ -14,6 +14,7 @@ export default async function SettingsPage() {
         <SettingsForm
           user={{ name: user.name ?? user.email, email: user.email, isDemo: user.isDemo }}
           triageFrom={user.triageFrom?.toISOString() ?? null}
+          ignoredSenders={user.ignoredSenders}
         />
       </div>
     </div>

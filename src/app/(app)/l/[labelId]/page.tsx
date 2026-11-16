@@ -39,6 +39,7 @@ export default async function LabelPage({
       initialThreadId={openThread}
       templates={templates}
       triageFrom={user.triageFrom?.toISOString() ?? null}
+      ignoredSenders={user.ignoredSenders}
     />
   );
 }

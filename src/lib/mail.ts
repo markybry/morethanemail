@@ -62,6 +62,7 @@ export async function listThreads(
     primaryOnly?: boolean;
     query?: string;
     pageToken?: string;
+    excludeFrom?: string[]; // senders to leave out
   },
 ): Promise<{ threads: ThreadSummary[]; nextPageToken?: string }> {
   const query = opts.query?.trim();
@@ -75,7 +76,9 @@ export async function listThreads(
       : opts.inboxOrLabelled
         ? all.filter((t) => t.labelIds.some((l) => l.startsWith("Label_")))
         : all;
-    return { threads: primaryOnly ? demoThreads(INBOX, true, query) : threads };
+    const muted = new Set(opts.excludeFrom ?? []);
+    const keep = (t: ThreadSummary) => !muted.has((t.from.match(/<([^>]+)>/)?.[1] ?? t.from).trim().toLowerCase());
+    return { threads: (primaryOnly ? demoThreads(INBOX, true, query) : threads).filter(keep) };
   }
 
   // One label filters by id; several (with sub-labels) become an OR search.
@@ -84,7 +87,8 @@ export async function listThreads(
   // user's labels (cards in a status are added by the board).
   const scope = opts.inboxOrLabelled ? "has:userlabels" : "";
   const after = opts.after ? `after:${Math.floor(opts.after.getTime() / 1000)}` : "";
-  const q = [primaryOnly ? "category:primary" : "", anyOf, scope, after, query ?? ""].filter(Boolean).join(" ");
+  const exclude = (opts.excludeFrom ?? []).map((a) => `-from:${a.replace(/[^\w.@+-]/g, "")}`).join(" ");
+  const q = [primaryOnly ? "category:primary" : "", anyOf, scope, after, exclude, query ?? ""].filter(Boolean).join(" ");
   const gmail = gmailFor(user);
   const res = await gmail.users.threads.list({
     userId: "me",

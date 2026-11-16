@@ -36,6 +36,8 @@ import {
   renameLane,
   setHidden,
   createTicket,
+  ignoreSenders,
+  unignoreSender,
   setTriageFrom,
   trashCard,
   untrashCard,
@@ -110,12 +112,14 @@ export function LabelBoard({
   initialThreadId,
   templates: initialTemplates,
   triageFrom: initialTriageFrom,
+  ignoredSenders: initialIgnored,
 }: {
   workspace: WorkspaceDTO;
   initialEmails: Record<string, BoardEmail>;
   initialThreadId?: string;
   templates: LaneTemplateDTO[];
   triageFrom: string | null;
+  ignoredSenders: string[];
 }) {
   const { reloadLabels, labelNames, labels } = useMail();
   const { theme: look } = useTheme();
@@ -208,6 +212,8 @@ export function LabelBoard({
   const cutoffApplies = !!triageFrom && !showOlder && !isInbox;
   const [prefsReady, setPrefsReady] = useState(false);
   const [view, setView] = useState<BoardView>("lanes");
+  // Senders silenced from the Inbox column (newsletters, notifications…).
+  const [ignored, setIgnored] = useState(() => new Set(initialIgnored));
   // A finished status that just took a card: it says so for a moment.
   const [justDone, setJustDone] = useState<string | null>(null);
   useEffect(() => {
@@ -450,16 +456,23 @@ export function LabelBoard({
   );
   const inFirstColumn = useMemo(() => unsorted.filter((t) => inLens(emails[t])), [unsorted, emails, inLens]);
   // A label's first column: what's left to triage (not in a status, not filed).
-  const shownUnsorted = useMemo(() => inFirstColumn.filter((t) => !emails[t]?.hidden), [inFirstColumn, emails]);
+  const isIgnored = useCallback(
+    (e: BoardEmail | undefined) => isInbox && !!e && !e.local && ignored.has(senderAddress(e.from)),
+    [isInbox, ignored],
+  );
+  const shownUnsorted = useMemo(
+    () => inFirstColumn.filter((t) => !emails[t]?.hidden && !isIgnored(emails[t])),
+    [inFirstColumn, emails, isIgnored],
+  );
   // The Inbox column is Gmail's inbox as it is: every thread there, newest first,
   // including cards in a status, Done or Filed (tagged). Archiving takes one out.
   // Tickets with no email that aren't in a status sit at the top.
   const shownInbox = useMemo(
     () => [
       ...inFirstColumn.filter((t) => emails[t]?.local && !emails[t].hidden),
-      ...recentIds.filter((t) => emails[t] && !emails[t].local && cardLabelIds(emails[t]).includes("INBOX")),
+      ...recentIds.filter((t) => emails[t] && !emails[t].local && cardLabelIds(emails[t]).includes("INBOX") && !isIgnored(emails[t])),
     ],
-    [inFirstColumn, recentIds, emails],
+    [inFirstColumn, recentIds, emails, isIgnored],
   );
   const tagOf = (threadId: string) => {
     const e = emails[threadId];
@@ -760,6 +773,8 @@ export function LabelBoard({
     archive: (threadId: string) => void archive(threadId, selected === threadId),
     canHide: (threadId: string) => !lanes.some((l) => l.threadIds.includes(threadId)) && !emails[threadId]?.hidden,
     hide: (threadId: string) => void hide(threadId, true),
+    canIgnore: (threadId: string) => isInbox && !emails[threadId]?.local && !lanes.some((l) => l.threadIds.includes(threadId)),
+    ignore: (threadId: string) => void ignore([threadId]),
     remove: (threadId: string) => void trash(threadId),
   };
 
@@ -851,6 +866,30 @@ export function LabelBoard({
     await save(() => setHidden(snapshotOf(e), hidden), () => set(!hidden));
   };
 
+  // Silence the senders of these emails: everything from them leaves the Inbox
+  // column, now and later. Gmail is untouched; Undo or Settings brings them back.
+  const ignore = async (ids: string[]) => {
+    const addresses = [...new Set(ids.map((id) => emails[id]).filter((e) => e && !e.local).map((e) => senderAddress(e.from)))];
+    if (!addresses.length) return;
+    if (selected && ids.includes(selected)) openNext(selected);
+    setIgnored((prev) => new Set([...prev, ...addresses]));
+    const restore = () =>
+      setIgnored((prev) => {
+        const next = new Set(prev);
+        addresses.forEach((a) => next.delete(a));
+        return next;
+      });
+    await save(() => ignoreSenders(addresses), restore);
+    setUndo({
+      text: addresses.length === 1 ? `Ignoring ${addresses[0]}` : `Ignoring ${addresses.length} senders`,
+      run: () => {
+        setUndo(null);
+        restore();
+        void Promise.all(addresses.map((a) => unignoreSender(a)));
+      },
+    });
+  };
+
   const archiveMany = async (ids: string[]) => {
     const own = ids.filter((id) => emails[id] && !emails[id].local);
     const threads = own.flatMap((id) => emails[id].threads.map((t) => t.threadId)).filter((t) => !t.startsWith("local:"));
@@ -923,6 +962,13 @@ export function LabelBoard({
       setPicked([]);
       ids.forEach((id) => void hide(id, true));
     },
+    onIgnore: isInbox
+      ? () => {
+          const ids = pickedShown;
+          setPicked([]);
+          void ignore(ids);
+        }
+      : undefined,
     onCombine: () => {
       const ids = pickedShown;
       setPicked([]);
@@ -949,6 +995,9 @@ export function LabelBoard({
       } else if (ev.key === "#" && !emails[selected]?.local) {
         ev.preventDefault();
         void trash(selected);
+      } else if (ev.key === "i" && isInbox && fromFirst && !emails[selected]?.local) {
+        ev.preventDefault();
+        void ignore([selected]);
       } else if ((ev.key === "f" || ev.key === "h") && fromFirst && !emails[selected]?.hidden) {
         ev.preventDefault();
         void hide(selected, true);
@@ -1036,6 +1085,7 @@ export function LabelBoard({
             setShowOlder(false);
           }}
           onHide={(id) => void hide(id, true)}
+          onIgnore={isInbox ? (id) => void ignore([id]) : undefined}
           onTrash={(id) => void trash(id)}
           onArchive={isInbox ? (id) => void archive(id, selected === id) : undefined}
           selected={selected}
@@ -1296,6 +1346,7 @@ function UnsortedColumn(p: {
     onMove: (laneId: string) => void;
     onArchive?: () => void;
     onHide: () => void;
+    onIgnore?: () => void;
     onCombine: () => void;
     onClear: () => void;
   };
@@ -1305,6 +1356,7 @@ function UnsortedColumn(p: {
   onShowOlder: (v: boolean) => void;
   onMarkOlderDone: (clear: boolean) => Promise<void>;
   onHide: (threadId: string) => void;
+  onIgnore?: (threadId: string) => void;
   onTrash: (threadId: string) => void;
   onArchive?: (threadId: string) => void;
   title: string;
@@ -1348,7 +1400,7 @@ function UnsortedColumn(p: {
           {p.laneCount > 0 && (
             <span
               className="shrink-0 cursor-help text-sm text-muted"
-              title={`Keys, with an email open: 1–${Math.min(p.laneCount, 9)} files it into a status${p.onArchive ? ", e archives it" : ""}, f files it, # deletes it, x picks it. Shift-click picks a run of emails. Drop an email onto a card to add it to that card.`}
+              title={`Keys, with an email open: 1–${Math.min(p.laneCount, 9)} files it into a status${p.onArchive ? ", e archives it, i ignores the sender" : ""}, f files it, # deletes it, x picks it. Shift-click picks a run of emails. Drop an email onto a card to add it to that card.`}
             >
               ⌨
             </span>
@@ -1409,6 +1461,7 @@ function UnsortedColumn(p: {
                     onOpen={() => p.onOpen(id)}
                     onArchive={p.onArchive && !p.emails[id].local ? () => p.onArchive!(id) : undefined}
                     onHide={() => p.onHide(id)}
+                    onIgnore={p.onIgnore && !p.emails[id].local ? () => p.onIgnore!(id) : undefined}
                     onTrash={!p.emails[id].local ? () => p.onTrash(id) : undefined}
                   />
                 )
@@ -1476,6 +1529,7 @@ function BulkBar(p: {
   onMove: (laneId: string) => void;
   onArchive?: () => void;
   onHide: () => void;
+  onIgnore?: () => void;
   onCombine: () => void;
   onClear: () => void;
 }) {
@@ -1509,6 +1563,11 @@ function BulkBar(p: {
       <button onClick={p.onHide} className={btn} title="File: just information, no tracking. Find it under File.">
         File
       </button>
+      {p.onIgnore && (
+        <button onClick={p.onIgnore} className={btn} title="Ignore these senders: nothing from them shows in the Inbox column again">
+          Ignore senders
+        </button>
+      )}
       <button onClick={p.onClear} className="ml-auto text-xs font-semibold text-muted hover:text-terracotta" title="Clear (Esc)">
         ✕
       </button>
@@ -1543,6 +1602,7 @@ function DraggableEmail({
   onOpen,
   onArchive,
   onHide,
+  onIgnore,
   onTrash,
 }: {
   tag?: string;
@@ -1555,6 +1615,7 @@ function DraggableEmail({
   onOpen: () => void;
   onArchive?: () => void;
   onHide?: () => void;
+  onIgnore?: () => void;
   onTrash?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `${T}${email.threadId}` });
@@ -1599,6 +1660,7 @@ function DraggableEmail({
           {[
             { label: "File", title: "File: just information, no tracking (f). Find it in the File view; a new message brings it back.", run: onHide },
             { label: "Archive", title: "Archive in Gmail: needs nothing (e)", run: onArchive },
+            { label: "Ignore", title: "Ignore this sender (i): nothing from them shows in the Inbox column again. Gmail is untouched; undo in Settings.", run: onIgnore },
             { label: "Delete", title: "Move to Gmail's Trash (#). Undo straight after, or restore from Trash for 30 days.", run: onTrash },
           ]
             .filter((b) => b.run)

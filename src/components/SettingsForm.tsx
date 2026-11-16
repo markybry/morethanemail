@@ -2,21 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { setTriageFrom } from "@/app/actions";
+import { setTriageFrom, unignoreSender } from "@/app/actions";
 import { toDateInput } from "@/lib/format";
 import { THEME_IDS, THEMES, type ThemeId } from "@/lib/themes";
 import { useMail } from "./MailContext";
 import { useTheme } from "./ThemeContext";
 
-const PRIMARY_KEY = "mte.inboxPrimaryOnly"; // shared with the board
+type Props = { user: { name: string; email: string; isDemo: boolean }; triageFrom: string | null; ignoredSenders: string[] };
 
-type Props = { user: { name: string; email: string; isDemo: boolean }; triageFrom: string | null };
-
-export function SettingsForm({ user, triageFrom }: Props) {
+export function SettingsForm({ user, triageFrom, ignoredSenders }: Props) {
   return (
     <div className="space-y-4">
       <Appearance />
       <Triage triageFrom={triageFrom} />
+      <Ignored initial={ignoredSenders} />
       <Pinned />
       <Card title="Account">
         <p className="text-sm text-walnut">{user.name}</p>
@@ -106,23 +105,11 @@ function Appearance() {
 function Triage({ triageFrom }: { triageFrom: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [primaryOnly, setPrimaryOnly] = useState(true);
-  useEffect(() => {
-    try {
-      setPrimaryOnly(localStorage.getItem(PRIMARY_KEY) !== "false");
-    } catch {}
-  }, []);
   const save = async (when: "now" | string | null) => {
     setBusy(true);
     await setTriageFrom(when);
     setBusy(false);
     router.refresh();
-  };
-  const changePrimary = (v: boolean) => {
-    setPrimaryOnly(v);
-    try {
-      localStorage.setItem(PRIMARY_KEY, String(v));
-    } catch {}
   };
   return (
     <Card title="Triage">
@@ -147,24 +134,9 @@ function Triage({ triageFrom }: { triageFrom: string | null }) {
             )}
           </label>
           <p className="mt-1 text-xs text-muted">
-            Labelled mail from before this date counts as done: it stays out of the triage column and Recent. A new message
+            Labelled mail from before this date counts as done: it stays out of a label&apos;s triage column. A new message
             brings it back. Your Inbox and searches aren&apos;t affected, and nothing changes in Gmail.
           </p>
-        </div>
-        <div>
-          <span className="text-sm font-semibold text-walnut">Inbox shows</span>
-          <div className="mt-1 flex w-fit overflow-hidden rounded-full border border-line-strong bg-cream text-xs font-semibold">
-            {[true, false].map((v) => (
-              <button
-                key={String(v)}
-                onClick={() => changePrimary(v)}
-                className={`px-3 py-1 transition ${primaryOnly === v ? "bg-moss text-cream" : "text-bark hover:bg-oat"}`}
-              >
-                {v ? "Primary only" : "All tabs"}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1 text-xs text-muted">All tabs includes Updates, Promotions, Social and Forums. Saved on this device.</p>
         </div>
       </div>
     </Card>
@@ -223,6 +195,42 @@ function Pinned() {
           Pin
         </button>
       </div>
+    </Card>
+  );
+}
+
+// Senders ignored from the Inbox column, with a way back.
+function Ignored({ initial }: { initial: string[] }) {
+  const [list, setList] = useState(initial);
+  const [busy, setBusy] = useState("");
+  return (
+    <Card title="Ignored senders">
+      <p className="mb-2 text-xs text-muted">
+        Mail from these senders stays out of the Inbox column (use Ignore on an email, or press i). Nothing changes in Gmail, and
+        search still finds them.
+      </p>
+      {list.length === 0 ? (
+        <p className="text-sm text-muted">No ignored senders.</p>
+      ) : (
+        <ul className="divide-y divide-line">
+          {list.map((a) => (
+            <li key={a} className="flex items-center gap-2 py-1.5 text-sm">
+              <span className="min-w-0 flex-1 truncate text-bark">{a}</span>
+              <button
+                disabled={busy === a}
+                onClick={async () => {
+                  setBusy(a);
+                  setList(await unignoreSender(a));
+                  setBusy("");
+                }}
+                className="shrink-0 text-xs font-semibold text-muted hover:text-terracotta disabled:opacity-50"
+              >
+                Stop ignoring
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 }
