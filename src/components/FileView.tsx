@@ -8,11 +8,12 @@ import { senderName, shortDate } from "@/lib/format";
 import { useMail } from "./MailContext";
 import { NewCardForm } from "./NewCard";
 
-type Tab = "done" | "filed" | "all";
+type Tab = "done" | "filed";
 
-// Where things go when they need no more work: Done cards (a finished status),
-// Filed emails (kept as information, never in a status), and everything under
-// the label, older mail included. Nothing here is lost; open anything to see it.
+// Where things go when they need no more work. Done: cards that reached a
+// finished status. Filed: everything under the label (all labelled mail in the
+// Workspace), older mail included, plus cards and emails filed by hand. Rows
+// that are just an email, with nothing added, are marked so. Nothing here is lost.
 export function FileView({
   labelId,
   isInbox,
@@ -73,7 +74,11 @@ export function FileView({
   const view = (list: FiledCard[] | null, keep: (e: BoardEmail) => boolean) =>
     (list ?? []).map((f) => ({ ...f, card: emails[f.card.threadId] ?? f.card })).filter((f) => inLens(f.card) && keep(f.card) && matches(f.card));
   const shownDone = view(done, () => true);
-  const shownFiled = view(filed, (e) => e.hidden);
+  // Filed items the mail list below won't include: cards with no email, and filed
+  // emails without the label (or, in the Workspace, without any label).
+  const covered = (e: BoardEmail) =>
+    !e.local && (isInbox ? cardLabelIds(e).some((id) => id.startsWith("Label_")) : inLens(e));
+  const pinned = view(filed, (e) => e.hidden && !covered(e));
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -82,11 +87,8 @@ export function FileView({
           <TabButton on={tab === "done"} onClick={() => setTab("done")} count={done ? shownDone.length : null}>
             Done
           </TabButton>
-          <TabButton on={tab === "filed"} onClick={() => setTab("filed")} count={filed ? shownFiled.length : null}>
+          <TabButton on={tab === "filed"} onClick={() => setTab("filed")} count={null}>
             Filed
-          </TabButton>
-          <TabButton on={tab === "all"} onClick={() => setTab("all")} count={null}>
-            {isInbox ? "All labelled mail" : `All under ${labelName}`}
           </TabButton>
         </div>
         <button
@@ -99,11 +101,11 @@ export function FileView({
         >
           + New
         </button>
-        {tab !== "all" && (
+        {tab === "done" && (
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={`Find in ${tab === "done" ? "Done" : "Filed"}…`}
+            placeholder="Find in Done…"
             className="field min-w-0 flex-1 rounded-xl px-2.5 py-1 text-sm md:max-w-xs"
           />
         )}
@@ -122,11 +124,10 @@ export function FileView({
       )}
       <p className="mb-2 text-xs text-muted">
         {tab === "done" && "Cards moved to a finished status. They leave the board and are kept here; Gmail is left as it is."}
-        {tab === "filed" && "Emails filed from triage as information: no status, no tracking. A new message brings one back to triage."}
-        {tab === "all" &&
+        {tab === "filed" &&
           (isInbox
-            ? "Every email under one of your labels, older ones included, whether or not it's on the board."
-            : `Every email labelled ${labelName}, older ones included, whether or not it's on the board.`)}
+            ? "Everything under your labels, older mail included, and anything filed from triage. ✉ marks a plain email with nothing added."
+            : `Everything labelled ${labelName}, older mail included, and anything filed from triage. ✉ marks a plain email with nothing added.`)}
       </p>
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
 
@@ -139,22 +140,16 @@ export function FileView({
           </List>
         )}
         {tab === "filed" && (
-          <List loading={!filed} empty={q ? "Nothing matches." : "Nothing filed. Use File in triage for emails that are just information."}>
-            {shownFiled.map((f, i) => (
-              <Row
-                key={f.card.threadId}
-                i={i}
-                card={f.card}
-                hideLabelId={isInbox ? undefined : labelId}
-                when={f.at}
-                onOpen={onOpen}
-                action={{ label: "Back to triage", run: () => onUnfile(f.card.threadId) }}
-              />
-            ))}
-          </List>
-        )}
-        {tab === "all" && (
-          <AllMail labelId={isInbox ? "ALL" : labelId} hideLabelId={isInbox ? undefined : labelId} statusOf={statusOf} mergeEmails={mergeEmails} onOpen={onOpen} />
+          <AllMail
+            labelId={isInbox ? "ALL" : labelId}
+            hideLabelId={isInbox ? undefined : labelId}
+            pinned={pinned.map((f) => f.card)}
+            emails={emails}
+            statusOf={statusOf}
+            mergeEmails={mergeEmails}
+            onOpen={onOpen}
+            onUnfile={onUnfile}
+          />
         )}
       </div>
     </div>
@@ -165,21 +160,28 @@ export function FileView({
 function AllMail({
   labelId,
   hideLabelId,
+  pinned,
+  emails,
   statusOf,
   mergeEmails,
   onOpen,
+  onUnfile,
 }: {
   labelId: string;
   hideLabelId?: string;
+  pinned: BoardEmail[]; // filed by hand and not in the mail list: shown first
+  emails: Record<string, BoardEmail>;
   statusOf: (threadId: string) => string | undefined;
   mergeEmails: (list: BoardEmail[]) => void;
   onOpen: (threadId: string) => void;
+  onUnfile: (threadId: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<BoardEmail[] | null>(null);
   const [next, setNext] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [searched, setSearched] = useState("");
 
   const load = useCallback(
     async (q: string, pageToken?: string) => {
@@ -188,6 +190,7 @@ function AllMail({
       const res = await fetchLabelEmails(labelId, { includeOlder: true, query: q, pageToken });
       setBusy(false);
       if (res.error) return setError(res.error);
+      setSearched(q);
       // Threads added to a card show up as that card, under Done or on the board.
       const own = res.emails.filter((e) => !e.partOf);
       mergeEmails(own);
@@ -221,21 +224,25 @@ function AllMail({
         </button>
       </form>
       {error && <p className="p-3 text-sm text-red-600">{error}</p>}
-      <List loading={!items && !error} empty="Nothing found.">
-        {(items ?? []).map((e, i) => {
-          const status = statusOf(e.threadId);
-          return (
-            <Row
-              key={e.threadId}
-              i={i}
-              card={e}
-              hideLabelId={hideLabelId}
-              tag={status ?? (e.hidden ? "Filed" : undefined)}
-              when={e.date}
-              onOpen={onOpen}
-            />
-          );
-        })}
+      <List loading={!items && !error} empty={searched ? "Nothing found." : "Nothing filed here yet."}>
+        {[...pinned.filter((e) => !searched || matchesText(e, searched)), ...(items ?? []).filter((e) => !pinned.some((p) => p.threadId === e.threadId))].map(
+          (item, i) => {
+            const e = emails[item.threadId] ?? item; // live state, so edits in the open card show here
+            return (
+              <Row
+                key={e.threadId}
+                i={i}
+                card={e}
+                hideLabelId={hideLabelId}
+                tag={statusOf(e.threadId) ?? (e.done ? "Done" : undefined)}
+                plain={isPlainEmail(e)}
+                when={e.date}
+                onOpen={onOpen}
+                action={e.hidden ? { label: "Back to triage", run: () => onUnfile(e.threadId) } : undefined}
+              />
+            );
+          },
+        )}
       </List>
       {next && (
         <div className="p-2">
@@ -277,6 +284,7 @@ function Row({
   card,
   hideLabelId,
   tag,
+  plain,
   when,
   onOpen,
   action,
@@ -285,6 +293,7 @@ function Row({
   card: BoardEmail;
   hideLabelId?: string;
   tag?: string;
+  plain?: boolean; // just an email, nothing added
   when: string;
   onOpen: (threadId: string) => void;
   action?: { label: string; run: () => void };
@@ -301,7 +310,14 @@ function Row({
   return (
     <li className="group animate-rise flex items-center gap-3 px-3 py-2 hover:bg-oat/60" style={{ animationDelay: `${Math.min(i, 15) * 25}ms` }}>
       <button onClick={() => onOpen(card.threadId)} className="min-w-0 flex-1 text-left">
-        <span className="block truncate text-sm font-semibold text-walnut group-hover:text-terracotta">{card.title}</span>
+        <span className="flex items-baseline gap-1.5">
+          {plain && (
+            <span className="shrink-0 text-xs text-muted" title="Just an email: no tasks, notes or summary on it">
+              ✉
+            </span>
+          )}
+          <span className="truncate text-sm font-semibold text-walnut group-hover:text-terracotta">{card.title}</span>
+        </span>
         <span className="block truncate text-xs text-muted">
           {card.local && card.threads.length <= 1 ? "✎ Ticket" : senderName(card.from)}
           {card.threads.length > 1 && ` · ✉ ${card.threads.length}`}
@@ -328,4 +344,24 @@ function Row({
       <span className="w-14 shrink-0 text-right text-xs text-muted">{shortDate(when)}</span>
     </li>
   );
+}
+
+// Just an email: nothing added to it in the app (no tasks, notes, links, summary,
+// own title, status or extra threads).
+function isPlainEmail(e: BoardEmail) {
+  return (
+    !e.local &&
+    !e.done &&
+    e.threads.length <= 1 &&
+    e.tasks.length === 0 &&
+    e.notes.length === 0 &&
+    e.links.length === 0 &&
+    !e.summary.trim() &&
+    e.title === e.subject
+  );
+}
+
+function matchesText(e: BoardEmail, q: string) {
+  const needle = q.toLowerCase();
+  return [e.title, e.subject, e.from, e.summary, e.snippet].join(" ").toLowerCase().includes(needle);
 }
