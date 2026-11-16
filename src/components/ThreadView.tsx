@@ -63,7 +63,7 @@ export function ThreadView({ threadId, onLoaded }: { threadId: string; onLoaded?
       )}
       {/* Newest first, like the cards: the latest message is at the top and open. */}
       {[...thread.messages].reverse().map((m) => (
-        <article key={m.id} className="rounded-lg border border-line">
+        <article key={m.id} className="overflow-hidden rounded-lg border border-line">
           <button
             onClick={() => toggle(m.id)}
             className={`block w-full px-3 py-2 text-left text-xs text-muted ${open.has(m.id) ? "border-b border-line" : "hover:bg-oat"}`}
@@ -146,7 +146,7 @@ function HtmlBody({ html }: { html: string }) {
   const [height, setHeight] = useState(200);
   const [hasQuote, setHasQuote] = useState(false);
   const [showQuoted, setShowQuoted] = useState(false);
-  const doc = `<!doctype html><html><head><base target="_blank"><meta charset="utf-8"><style>body{margin:12px;font:14px/1.5 system-ui,sans-serif;color:#1e293b;word-wrap:break-word}img{max-width:100%;height:auto}.mte-quoted{display:none!important}</style></head><body>${html}</body></html>`;
+  const doc = `<!doctype html><html><head><base target="_blank"><meta charset="utf-8"><style>html{background:#fff}body{margin:12px;font:14px/1.5 system-ui,sans-serif;color:#1e293b;word-wrap:break-word}img{max-width:100%;height:auto}.mte-quoted{display:none!important}</style></head><body>${html}</body></html>`;
 
   const measure = () => {
     const h = ref.current?.contentDocument?.documentElement.scrollHeight;

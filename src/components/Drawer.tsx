@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
 
 export function Drawer({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
-  const w = useStoredWidth("mte.w.panel", 672, 360, 1600);
+  const w = useStoredWidth("mte.w.panel", 760, 420, 1600);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -12,13 +12,17 @@ export function Drawer({ onClose, children }: { onClose: () => void; children: R
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="animate-fade-in absolute inset-0 bg-shadow/30 backdrop-blur-[2px]" onClick={onClose} />
+    // Centred over the board (full screen on phones), on the card surface colour so
+    // the sections and emails read cleanly in every theme.
+    <div className="fixed inset-0 z-40 flex items-center justify-center md:p-6">
+      <div className="animate-fade-in absolute inset-0 bg-shadow/40 backdrop-blur-[2px]" onClick={onClose} />
       <div
-        className="paper animate-slide-in relative h-full shadow-2xl shadow-shadow/40 max-md:w-full md:w-[var(--w)] md:max-w-[calc(100vw-3rem)]"
+        role="dialog"
+        aria-modal="true"
+        className="animate-rise relative flex h-full flex-col bg-cream shadow-2xl shadow-shadow/40 max-md:w-full md:h-[calc(100vh-3rem)] md:max-h-[60rem] md:w-[var(--w)] md:max-w-[calc(100vw-3rem)] md:overflow-hidden md:rounded-3xl md:border md:border-line"
         style={widthVar(w.width)}
       >
-        <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} edge="left" label="Resize panel" />
+        <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} edge="right" label="Resize card" />
         <div className="flex h-full flex-col overflow-y-auto">{children}</div>
       </div>
     </div>
