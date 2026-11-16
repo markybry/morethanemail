@@ -19,10 +19,8 @@ export const CardBoardContext = createContext<{
   moveTo: (threadId: string, statusId: string | null) => void;
   canArchive: (threadId: string) => boolean;
   archive: (threadId: string) => void;
-  canHide: (threadId: string) => boolean;
-  hide: (threadId: string) => void;
-  canIgnore: (threadId: string) => boolean;
-  ignore: (threadId: string) => void; // silence the sender in the Inbox column
+  canFile: (threadId: string) => boolean;
+  file: (threadId: string) => void; // to File > Filed: just information
   remove: (threadId: string) => void; // to Gmail's Trash
 } | null>(null);
 
@@ -177,17 +175,12 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
               Archive
             </button>
           )}
-          {board.canHide(email.threadId) && (
-            <button onClick={() => board.hide(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-xs font-semibold text-bark">
+          {board.canFile(email.threadId) && (
+            <button onClick={() => board.file(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-xs font-semibold text-bark">
               File
             </button>
           )}
-          {board.canIgnore(email.threadId) && (
-            <button onClick={() => board.ignore(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-xs font-semibold text-bark">
-              Ignore
-            </button>
-          )}
-          {board.canHide(email.threadId) && !email.local && (
+          {board.canFile(email.threadId) && !email.local && (
             <button onClick={() => board.remove(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-xs font-semibold text-bad-ink">
               Delete
             </button>

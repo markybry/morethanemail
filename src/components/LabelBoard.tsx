@@ -36,8 +36,6 @@ import {
   renameLane,
   setHidden,
   createTicket,
-  ignoreSenders,
-  unignoreSender,
   setTriageFrom,
   trashCard,
   untrashCard,
@@ -209,11 +207,11 @@ export function LabelBoard({
   // The setting can change from the sidebar; follow it.
   useEffect(() => setTriageFromState(initialTriageFrom), [initialTriageFrom]);
   const [showOlder, setShowOlder] = useState(false);
-  const cutoffApplies = !!triageFrom && !showOlder && !isInbox;
+  const cutoffApplies = !!triageFrom && !showOlder;
   const [prefsReady, setPrefsReady] = useState(false);
   const [view, setView] = useState<BoardView>("lanes");
-  // Senders silenced from the Inbox column (newsletters, notifications…).
-  const [ignored, setIgnored] = useState(() => new Set(initialIgnored));
+  // Senders ignored earlier (listed in Settings) stay out of the Inbox column.
+  const ignored = useMemo(() => new Set(initialIgnored), [initialIgnored]);
   // A finished status that just took a card: it says so for a moment.
   const [justDone, setJustDone] = useState<string | null>(null);
   useEffect(() => {
@@ -771,10 +769,8 @@ export function LabelBoard({
     canArchive: (threadId: string) =>
       isInbox && !emails[threadId]?.local && !lanes.some((l) => l.threadIds.includes(threadId)),
     archive: (threadId: string) => void archive(threadId, selected === threadId),
-    canHide: (threadId: string) => !lanes.some((l) => l.threadIds.includes(threadId)) && !emails[threadId]?.hidden,
-    hide: (threadId: string) => void hide(threadId, true),
-    canIgnore: (threadId: string) => isInbox && !emails[threadId]?.local && !lanes.some((l) => l.threadIds.includes(threadId)),
-    ignore: (threadId: string) => void ignore([threadId]),
+    canFile: (threadId: string) => !lanes.some((l) => l.threadIds.includes(threadId)) && !emails[threadId]?.hidden,
+    file: (threadId: string) => void file(threadId, true),
     remove: (threadId: string) => void trash(threadId),
   };
 
@@ -857,37 +853,13 @@ export function LabelBoard({
     });
   };
 
-  const hide = async (threadId: string, hidden: boolean) => {
+  const file = async (threadId: string, filed: boolean) => {
     const e = emails[threadId];
     if (!e) return;
-    if (hidden && selected === threadId) openNext(threadId);
+    if (filed && selected === threadId) openNext(threadId);
     const set = (v: boolean) => setEmails((prev) => (prev[threadId] ? { ...prev, [threadId]: { ...prev[threadId], hidden: v } } : prev));
-    set(hidden);
-    await save(() => setHidden(snapshotOf(e), hidden), () => set(!hidden));
-  };
-
-  // Silence the senders of these emails: everything from them leaves the Inbox
-  // column, now and later. Gmail is untouched; Undo or Settings brings them back.
-  const ignore = async (ids: string[]) => {
-    const addresses = [...new Set(ids.map((id) => emails[id]).filter((e) => e && !e.local).map((e) => senderAddress(e.from)))];
-    if (!addresses.length) return;
-    if (selected && ids.includes(selected)) openNext(selected);
-    setIgnored((prev) => new Set([...prev, ...addresses]));
-    const restore = () =>
-      setIgnored((prev) => {
-        const next = new Set(prev);
-        addresses.forEach((a) => next.delete(a));
-        return next;
-      });
-    await save(() => ignoreSenders(addresses), restore);
-    setUndo({
-      text: addresses.length === 1 ? `Ignoring ${addresses[0]}` : `Ignoring ${addresses.length} senders`,
-      run: () => {
-        setUndo(null);
-        restore();
-        void Promise.all(addresses.map((a) => unignoreSender(a)));
-      },
-    });
+    set(filed);
+    await save(() => setHidden(snapshotOf(e), filed), () => set(!filed));
   };
 
   const archiveMany = async (ids: string[]) => {
@@ -957,18 +929,11 @@ export function LabelBoard({
             void archiveMany(ids);
           }
         : undefined,
-    onHide: () => {
+    onFile: () => {
       const ids = pickedShown;
       setPicked([]);
-      ids.forEach((id) => void hide(id, true));
+      ids.forEach((id) => void file(id, true));
     },
-    onIgnore: isInbox
-      ? () => {
-          const ids = pickedShown;
-          setPicked([]);
-          void ignore(ids);
-        }
-      : undefined,
     onCombine: () => {
       const ids = pickedShown;
       setPicked([]);
@@ -995,12 +960,9 @@ export function LabelBoard({
       } else if (ev.key === "#" && !emails[selected]?.local) {
         ev.preventDefault();
         void trash(selected);
-      } else if (ev.key === "i" && isInbox && fromFirst && !emails[selected]?.local) {
-        ev.preventDefault();
-        void ignore([selected]);
       } else if ((ev.key === "f" || ev.key === "h") && fromFirst && !emails[selected]?.hidden) {
         ev.preventDefault();
-        void hide(selected, true);
+        void file(selected, true);
       } else if (/^[1-9]$/.test(ev.key) && lanes[Number(ev.key) - 1]) {
         ev.preventDefault();
         if (fromFirst) openNext(selected);
@@ -1077,15 +1039,23 @@ export function LabelBoard({
           hasMore={!!nextPage}
           laneCount={lanes.length}
           draggingFromStatus={!!activeId && lanes.some((l) => l.threadIds.includes(activeId)) && snapshot.current?.from !== UNSORTED}
-          cutoff={!isInbox ? { from: triageFrom, applies: cutoffApplies } : null}
+          cutoff={{ from: triageFrom, applies: cutoffApplies }}
           onShowOlder={setShowOlder}
-          onMarkOlderDone={async (clear) => {
-            const at = await setTriageFrom(clear ? null : "now");
+          onClearQueue={async () => {
+            const before = triageFrom;
+            const at = await setTriageFrom("now");
             setTriageFromState(at);
             setShowOlder(false);
+            setPicked([]);
+            setUndo({
+              text: "Queue cleared: only new mail shows",
+              run: async () => {
+                setUndo(null);
+                setTriageFromState(await setTriageFrom(before));
+              },
+            });
           }}
-          onHide={(id) => void hide(id, true)}
-          onIgnore={isInbox ? (id) => void ignore([id]) : undefined}
+          onFile={(id) => void file(id, true)}
           onTrash={(id) => void trash(id)}
           onArchive={isInbox ? (id) => void archive(id, selected === id) : undefined}
           selected={selected}
@@ -1123,7 +1093,7 @@ export function LabelBoard({
               onNew={(t) => newCard(t, { filed: true })}
               onOpen={setSelected}
               onUnfile={(id) => {
-                void hide(id, false);
+                void file(id, false);
                 if (!containerOf(id, { lanes, unsorted })) setUnsorted((prev) => byDate([...prev, id]));
               }}
             />
@@ -1345,18 +1315,16 @@ function UnsortedColumn(p: {
     statuses: { id: string; name: string }[];
     onMove: (laneId: string) => void;
     onArchive?: () => void;
-    onHide: () => void;
-    onIgnore?: () => void;
+    onFile: () => void;
     onCombine: () => void;
     onClear: () => void;
   };
   laneCount: number;
   draggingFromStatus: boolean;
-  cutoff: { from: string | null; applies: boolean } | null; // null in the Inbox's own triage column
+  cutoff: { from: string | null; applies: boolean }; // the queue was cleared up to this; older mail shows only on request
   onShowOlder: (v: boolean) => void;
-  onMarkOlderDone: (clear: boolean) => Promise<void>;
-  onHide: (threadId: string) => void;
-  onIgnore?: (threadId: string) => void;
+  onClearQueue: () => Promise<void>;
+  onFile: (threadId: string) => void;
   onTrash: (threadId: string) => void;
   onArchive?: (threadId: string) => void;
   title: string;
@@ -1400,10 +1368,19 @@ function UnsortedColumn(p: {
           {p.laneCount > 0 && (
             <span
               className="shrink-0 cursor-help text-sm text-muted"
-              title={`Keys, with an email open: 1–${Math.min(p.laneCount, 9)} files it into a status${p.onArchive ? ", e archives it, i ignores the sender" : ""}, f files it, # deletes it, x picks it. Shift-click picks a run of emails. Drop an email onto a card to add it to that card.`}
+              title={`Keys, with an email open: 1–${Math.min(p.laneCount, 9)} files it into a status${p.onArchive ? ", e archives it" : ""}, f files it, # deletes it, x picks it. Shift-click picks a run of emails. Drop an email onto a card to add it to that card.`}
             >
               ⌨
             </span>
+          )}
+          {p.threadIds.length > 0 && (
+            <button
+              onClick={() => void p.onClearQueue()}
+              className="btn-press shrink-0 rounded-lg bg-oat px-2 py-0.5 text-xs font-semibold text-bark hover:text-terracotta"
+              title="Nothing here needs you: clear it all. Only mail that arrives after now shows. Gmail is untouched; Show older brings it back."
+            >
+              Clear queue
+            </button>
           )}
           <button onClick={p.onRefresh} className="btn-press shrink-0 rounded-lg bg-oat px-2 py-0.5 text-sm text-bark" title="Refresh" aria-label="Refresh">
             ↻
@@ -1460,8 +1437,7 @@ function UnsortedColumn(p: {
                     onPick={(range) => p.onPick(id, range)}
                     onOpen={() => p.onOpen(id)}
                     onArchive={p.onArchive && !p.emails[id].local ? () => p.onArchive!(id) : undefined}
-                    onHide={() => p.onHide(id)}
-                    onIgnore={p.onIgnore && !p.emails[id].local ? () => p.onIgnore!(id) : undefined}
+                    onFile={() => p.onFile(id)}
                     onTrash={!p.emails[id].local ? () => p.onTrash(id) : undefined}
                   />
                 )
@@ -1487,29 +1463,14 @@ function UnsortedColumn(p: {
             {p.sortedCount > 0 ? p.look.text.sorted : p.look.text.empty}
           </p>
         )}
-        {p.cutoff && p.state === "idle" && !p.searching && (
+        {p.cutoff.from && p.state === "idle" && !p.searching && (
           <div className="rounded-2xl border border-dashed border-line px-3 py-2 text-xs text-muted">
-            {p.cutoff.from ? (
-              <>
-                {p.cutoff.applies
-                  ? `Labelled mail from before ${new Date(p.cutoff.from).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" })} counts as done. `
-                  : "Showing older mail too. "}
-                <button onClick={() => p.onShowOlder(p.cutoff!.applies)} className="font-semibold text-terracotta hover:underline">
-                  {p.cutoff.applies ? "Show older" : "Hide older"}
-                </button>
-                {" · "}
-                <button onClick={() => p.onMarkOlderDone(false)} className="font-semibold hover:text-terracotta hover:underline" title="Everything labelled until now counts as done">
-                  Mark all up to now as done
-                </button>
-              </>
-            ) : (
-              <>
-                Old labelled mail that needs nothing?{" "}
-                <button onClick={() => p.onMarkOlderDone(false)} className="font-semibold text-terracotta hover:underline" title="Everything labelled until now counts as done; new messages still show">
-                  Mark everything up to now as done
-                </button>
-              </>
-            )}
+            {p.cutoff.applies
+              ? `Queue cleared ${new Date(p.cutoff.from).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}: only newer mail shows. `
+              : "Showing mail from before the queue was cleared too. "}
+            <button onClick={() => p.onShowOlder(p.cutoff.applies)} className="font-semibold text-terracotta hover:underline">
+              {p.cutoff.applies ? "Show older" : "Only new mail"}
+            </button>
           </div>
         )}
         {p.state === "idle" && p.hasMore && (
@@ -1528,8 +1489,7 @@ function BulkBar(p: {
   statuses: { id: string; name: string }[];
   onMove: (laneId: string) => void;
   onArchive?: () => void;
-  onHide: () => void;
-  onIgnore?: () => void;
+  onFile: () => void;
   onCombine: () => void;
   onClear: () => void;
 }) {
@@ -1560,14 +1520,9 @@ function BulkBar(p: {
           Archive
         </button>
       )}
-      <button onClick={p.onHide} className={btn} title="File: just information, no tracking. Find it under File.">
+      <button onClick={p.onFile} className={btn} title="File: just information, no tracking. Find it under File.">
         File
       </button>
-      {p.onIgnore && (
-        <button onClick={p.onIgnore} className={btn} title="Ignore these senders: nothing from them shows in the Inbox column again">
-          Ignore senders
-        </button>
-      )}
       <button onClick={p.onClear} className="ml-auto text-xs font-semibold text-muted hover:text-terracotta" title="Clear (Esc)">
         ✕
       </button>
@@ -1601,8 +1556,7 @@ function DraggableEmail({
   onPick,
   onOpen,
   onArchive,
-  onHide,
-  onIgnore,
+  onFile,
   onTrash,
 }: {
   tag?: string;
@@ -1614,8 +1568,7 @@ function DraggableEmail({
   onPick: (range: boolean) => void;
   onOpen: () => void;
   onArchive?: () => void;
-  onHide?: () => void;
-  onIgnore?: () => void;
+  onFile?: () => void;
   onTrash?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `${T}${email.threadId}` });
@@ -1654,13 +1607,12 @@ function DraggableEmail({
       >
         ✓
       </button>
-      {(onArchive || onHide) && (
+      {(onArchive || onFile) && (
         // Desktop: on hover. Phones use the buttons on the card itself.
         <div className="absolute right-2 bottom-2 flex gap-1 opacity-0 transition group-hover/drag:opacity-100 max-md:hidden">
           {[
-            { label: "File", title: "File: just information, no tracking (f). Find it in the File view; a new message brings it back.", run: onHide },
+            { label: "File", title: "File: just information, no tracking (f). Find it in the File view; a new message brings it back.", run: onFile },
             { label: "Archive", title: "Archive in Gmail: needs nothing (e)", run: onArchive },
-            { label: "Ignore", title: "Ignore this sender (i): nothing from them shows in the Inbox column again. Gmail is untouched; undo in Settings.", run: onIgnore },
             { label: "Delete", title: "Move to Gmail's Trash (#). Undo straight after, or restore from Trash for 30 days.", run: onTrash },
           ]
             .filter((b) => b.run)

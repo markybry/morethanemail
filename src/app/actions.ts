@@ -63,7 +63,8 @@ export async function fetchLabelEmails(
   const user = await requireUser();
   try {
     const labels = labelId === "ALL" ? undefined : await labelWithSubLabels(user, labelId);
-    const useCutoff = labelId !== "INBOX" && !opts.includeOlder && !opts.query?.trim() && !!user.triageFrom;
+    // "Clear queue": mail with nothing newer than this stays out of the first column.
+    const useCutoff = labelId !== "ALL" && !opts.includeOlder && !opts.query?.trim() && !!user.triageFrom;
     const res = await listThreads(user, {
       labels,
       inboxOrLabelled: labelId === "ALL",
@@ -775,7 +776,7 @@ export async function setTriageFrom(when: "now" | string | null): Promise<string
 
 // ---------- hiding from the first column ----------
 
-// Hide an email that doesn't need tracking (it shows again when a newer message
+// File an email that doesn't need tracking (it shows again when a newer message
 // arrives), or bring it back. Nothing changes in Gmail.
 // ---------- ignored senders ----------
 

@@ -116,7 +116,7 @@ function Triage({ triageFrom }: { triageFrom: string | null }) {
       <div className="space-y-4">
         <div>
           <label className="flex flex-wrap items-center gap-2 text-sm text-bark">
-            <span className="font-semibold text-walnut">Done before</span>
+            <span className="font-semibold text-walnut">Queue cleared up to</span>
             <input
               type="date"
               value={triageFrom ? toDateInput(triageFrom) : ""}
@@ -134,8 +134,8 @@ function Triage({ triageFrom }: { triageFrom: string | null }) {
             )}
           </label>
           <p className="mt-1 text-xs text-muted">
-            Labelled mail from before this date counts as done: it stays out of a label&apos;s triage column. A new message
-            brings it back. Your Inbox and searches aren&apos;t affected, and nothing changes in Gmail.
+            Set by Clear queue on the board. Mail with nothing newer than this stays out of the first column, in the Inbox and
+            in labels; a new message brings a thread back. Search and File still find everything, and nothing changes in Gmail.
           </p>
         </div>
       </div>
@@ -206,7 +206,7 @@ function Ignored({ initial }: { initial: string[] }) {
   return (
     <Card title="Ignored senders">
       <p className="mb-2 text-xs text-muted">
-        Mail from these senders stays out of the Inbox column (use Ignore on an email, or press i). Nothing changes in Gmail, and
+        Mail from these senders stays out of the Inbox column. Nothing changes in Gmail, and
         search still finds them.
       </p>
       {list.length === 0 ? (
