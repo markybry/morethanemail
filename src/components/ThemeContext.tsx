@@ -15,13 +15,27 @@ const rememberTheme = (id: ThemeId) => {
   document.cookie = `${THEME_COOKIE}=${id}; path=/; max-age=31536000; samesite=lax`;
 };
 
-type ThemeContextValue = { theme: ThemeDef; setTheme: (id: ThemeId) => void; density: Density; setDensity: (d: Density) => void };
+// Animation: always on, follow the device's reduce-motion setting, or off.
+export type Motion = "on" | "system" | "off";
+const MOTION_COOKIE = "mte.motion";
+const isMotion = (v: unknown): v is Motion => v === "on" || v === "system" || v === "off";
+
+type ThemeContextValue = {
+  theme: ThemeDef;
+  setTheme: (id: ThemeId) => void;
+  density: Density;
+  setDensity: (d: Density) => void;
+  motion: Motion;
+  setMotion: (m: Motion) => void;
+};
 
 const ThemeContext = createContext<ThemeContextValue>({
   theme: THEMES.woodland,
   setTheme: () => {},
   density: "compact",
   setDensity: () => {},
+  motion: "on",
+  setMotion: () => {},
 });
 
 // The user's chosen theme. The server renders <html data-theme=...> from the
@@ -47,7 +61,19 @@ export function ThemeProvider({ initial, children }: { initial: ThemeId; childre
       localStorage.setItem(DENSITY_KEY, d);
     } catch {}
   }, []);
-  return <ThemeContext.Provider value={{ theme: THEMES[id], setTheme, density, setDensity }}>{children}</ThemeContext.Provider>;
+  const [motion, setMotionState] = useState<Motion>("on");
+  useEffect(() => {
+    const m = document.documentElement.dataset.motion;
+    if (isMotion(m)) setMotionState(m);
+  }, []);
+  const setMotion = useCallback((m: Motion) => {
+    setMotionState(m);
+    document.documentElement.dataset.motion = m;
+    document.cookie = `${MOTION_COOKIE}=${m}; path=/; max-age=31536000; samesite=lax`;
+  }, []);
+  return (
+    <ThemeContext.Provider value={{ theme: THEMES[id], setTheme, density, setDensity, motion, setMotion }}>{children}</ThemeContext.Provider>
+  );
 }
 
 export const useTheme = () => useContext(ThemeContext);

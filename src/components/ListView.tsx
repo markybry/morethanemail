@@ -7,6 +7,7 @@ import { cardLabelIds, hasOwnLabel, latestThread } from "@/lib/cards";
 import { senderName, shortDate } from "@/lib/format";
 import { useMail } from "./MailContext";
 import { NewCardForm } from "./NewCard";
+import { Loading } from "./Loading";
 
 // Everything under the label (all labelled mail in the Workspace), older mail
 // included, plus labelled cards with no email. Only labelled things are filed:
@@ -106,7 +107,7 @@ export function ListView({
             onUnfile={onUnfile}
           />
         )}
-        {(!done || !filed) && <p className="p-3 text-sm text-muted">Loading…</p>}
+        {(!done || !filed) && <Loading />}
       </div>
     </div>
   );
@@ -244,7 +245,7 @@ function AllMail({
 }
 
 function List({ loading, empty, children }: { loading: boolean; empty: string; children: React.ReactNode[] }) {
-  if (loading) return <p className="p-3 text-sm text-muted">Loading…</p>;
+  if (loading) return <Loading />;
   if (children.length === 0) return <p className="p-3 text-sm text-muted">{empty}</p>;
   return <ul className="space-y-1.5 p-2">{children}</ul>;
 }

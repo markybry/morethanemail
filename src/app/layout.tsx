@@ -36,10 +36,13 @@ export default async function RootLayout({
   // Signed out (sign-in and error pages): the theme last used in this browser.
   const remembered = (await cookies()).get("mte.theme")?.value;
   const theme = isThemeId(user?.theme) ? user.theme : isThemeId(remembered) ? remembered : "woodland";
+  // Animation is on unless turned down in Settings (see globals.css).
+  const motionCookie = (await cookies()).get("mte.motion")?.value;
+  const motion = motionCookie === "system" || motionCookie === "off" ? motionCookie : "on";
   const fonts = [nunito, fraunces, garamond, cormorant, vt323, pressStart, inter, jetbrains].map((f) => f.variable).join(" ");
   return (
     // Font variables sit on <html> too, so each theme's --theme-sans/--theme-display can use them.
-    <html lang="en" className={`${fonts} h-full`} data-theme={theme}>
+    <html lang="en" className={`${fonts} h-full`} data-theme={theme} data-motion={motion}>
       <body className="h-full antialiased">{children}</body>
     </html>
   );

@@ -60,9 +60,32 @@ function Card({ title, children, hint }: { title: string; children: React.ReactN
 }
 
 function Appearance() {
-  const { theme, setTheme, density, setDensity } = useTheme();
+  const { theme, setTheme, density, setDensity, motion, setMotion } = useTheme();
+  const motions = [
+    ["on", "On"],
+    ["system", "Follow device"],
+    ["off", "Off"],
+  ] as const;
   return (
     <Card title="Appearance">
+      <div className="mb-4">
+        <span className="text-sm font-semibold text-walnut">Animation</span>
+        <div className="mt-1 flex w-fit overflow-hidden rounded-full border border-line-strong bg-cream text-xs font-semibold">
+          {motions.map(([m, name]) => (
+            <button
+              key={m}
+              onClick={() => setMotion(m)}
+              aria-pressed={motion === m}
+              className={`px-3 py-1 transition ${motion === m ? "bg-moss text-cream" : "text-bark hover:bg-oat"}`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          Follow device turns animation off when your computer or phone asks for less motion (on Windows, when Animation effects is off).
+        </p>
+      </div>
       <div className="mb-4">
         <span className="text-sm font-semibold text-walnut">Cards show</span>
         <div className="mt-1 flex w-fit overflow-hidden rounded-full border border-line-strong bg-cream text-xs font-semibold">
