@@ -28,6 +28,49 @@ function addDays(d: Date, n: number) {
   return x;
 }
 
+// The common picks: today, tomorrow, the end of the working week (Friday; next
+// Friday at the weekend) and next week (Monday).
+export function quickDays() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dow = today.getDay(); // 0 Sunday … 6 Saturday
+  const friday = addDays(today, dow === 6 ? 6 : 5 - dow);
+  const monday = addDays(today, ((8 - dow) % 7) || 7);
+  return [
+    { label: "Today", day: today },
+    { label: "Tomorrow", day: addDays(today, 1) },
+    { label: "End of week", day: friday },
+    { label: "Next week", day: monday },
+  ];
+}
+
+// One-tap due dates under an "add a task" box. Tapping the chosen one again clears it.
+export function DueChips({ value, onChange }: { value: Due; onChange: (due: Due) => void }) {
+  const picked = value.dueDate ? new Date(value.dueDate) : null;
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+      {quickDays()
+        .slice(0, 3)
+        .map((q) => {
+          const on = !!picked && sameDay(picked, q.day);
+          return (
+            <button
+              key={q.label}
+              type="button"
+              onClick={() => onChange(on ? { dueDate: null, dueTime: false } : toDue(q.day, picked && value.dueTime ? hhmm(picked) : ""))}
+              aria-pressed={on}
+              className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold transition ${
+                on ? "border-moss bg-moss text-cream" : "border-line text-bark hover:bg-oat"
+              }`}
+            >
+              {q.label}
+            </button>
+          );
+        })}
+    </div>
+  );
+}
+
 // Due date button that opens a small calendar with quick picks and an optional time.
 export function DuePicker({
   value,
@@ -109,16 +152,10 @@ function Calendar({ value, align, onPick }: { value: Due; align: "left" | "right
   // Six weeks starting on the Monday on or before the 1st.
   const start = addDays(month, -((month.getDay() + 6) % 7));
   const days = Array.from({ length: 42 }, (_, i) => addDays(start, i));
-  const nextMonday = addDays(today, ((8 - today.getDay()) % 7) || 7);
 
   const pickDay = (d: Date) => onPick(toDue(d, time), !time);
   const pickTime = (t: string) => onPick(toDue(selected ?? today, t), false);
-  const quick = [
-    { label: "Today", day: today },
-    { label: "Tomorrow", day: addDays(today, 1) },
-    { label: "Next Mon", day: nextMonday },
-    { label: "In a week", day: addDays(today, 7) },
-  ];
+  const quick = quickDays();
 
   return (
     <div

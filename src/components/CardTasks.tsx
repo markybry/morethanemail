@@ -7,7 +7,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { addTask, deleteTask, reorderTasks, updateTask } from "@/app/actions";
 import type { BoardEmail, TaskDTO, ThreadSnapshot } from "@/lib/types";
 import { nextAction } from "@/lib/cards";
-import { DuePicker, type Due } from "./DuePicker";
+import { DueChips, DuePicker, type Due } from "./DuePicker";
 import { InlineEdit, Section } from "./ui";
 
 const NO_DUE: Due = { dueDate: null, dueTime: false };
@@ -93,6 +93,7 @@ export function NextAction(p: Props) {
           <button className="btn-press rounded-xl bg-terracotta px-3 text-sm font-bold text-cream">Set</button>
         </form>
       )}
+      {!next && <DueChips value={due} onChange={setDue} />}
     </Section>
   );
 }
@@ -164,6 +165,7 @@ export function TaskList(p: Props) {
         <DuePicker value={due} onChange={setDue} variant="field" />
         <button className="btn-press rounded-xl bg-moss px-3 text-sm font-bold text-cream">Add</button>
       </form>
+      {title.trim() && <DueChips value={due} onChange={setDue} />}
 
       {done.length > 0 && (
         <div className="mt-2">

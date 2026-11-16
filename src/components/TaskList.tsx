@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { addStandaloneTask, deleteTask, updateTask } from "@/app/actions";
 import { dueLabel, isOverdue } from "@/lib/format";
-import { DuePicker, type Due } from "./DuePicker";
+import { DueChips, DuePicker, type Due } from "./DuePicker";
 import { ConfirmButton, InlineEdit } from "./ui";
 
 export type TaskRowData = {
@@ -50,6 +50,9 @@ export function QuickAddTask() {
       <button disabled={busy || !title.trim()} className="btn-press rounded-xl bg-moss px-3 py-1.5 text-sm font-bold text-cream disabled:opacity-50">
         Add
       </button>
+      <div className="basis-full">
+        <DueChips value={due} onChange={setDue} />
+      </div>
     </form>
   );
 }

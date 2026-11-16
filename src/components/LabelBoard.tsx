@@ -197,14 +197,13 @@ export function LabelBoard({
   const primaryOnly = false; // every inbox tab, so nothing is missed
   // The first column shows what's left to triage, or everything recent (newest
   // first, cards already in a status included) so nothing active is out of sight.
-  const recent = false; // the first column is always the one list of mail not yet in a status
   const [recentIds, setRecentIds] = useState<string[]>([]);
   // Labelled mail older than this counts as done (not used for the Inbox itself).
   const [triageFrom, setTriageFromState] = useState(initialTriageFrom);
   // The setting can change from the sidebar; follow it.
   useEffect(() => setTriageFromState(initialTriageFrom), [initialTriageFrom]);
   const [showOlder, setShowOlder] = useState(false);
-  const cutoffApplies = !!triageFrom && !showOlder && (!isInbox || recent);
+  const cutoffApplies = !!triageFrom && !showOlder && !isInbox;
   const [prefsReady, setPrefsReady] = useState(false);
   const [view, setView] = useState<BoardView>("lanes");
   // Done cards opened from File that have left the board: their finished status.
@@ -217,8 +216,8 @@ export function LabelBoard({
   const load = useCallback(
     async (q: string, pageToken?: string) => {
       setListState("loading");
-      const res = await fetchLabelEmails(recent && isInbox ? "ALL" : sourceLabelId, {
-        primaryOnly: primaryOnly && !recent,
+      const res = await fetchLabelEmails(sourceLabelId, {
+        primaryOnly,
         query: q,
         pageToken,
         includeOlder: showOlder,
@@ -229,7 +228,7 @@ export function LabelBoard({
         return;
       }
       mergeEmails(res.emails);
-      // Recent lists cards: an email added to a card shows as that card.
+      // The Inbox column lists cards: an email added to a card shows as that card.
       const cardIds = [...new Set(res.emails.map((e) => e.partOf ?? e.threadId))];
       setRecentIds((prev) => (pageToken ? [...prev, ...cardIds.filter((id) => !prev.includes(id))] : cardIds));
       const missing = cardIds.filter((id) => !emailsRef.current[id] && !res.emails.some((e) => e.threadId === id));
@@ -265,7 +264,7 @@ export function LabelBoard({
     },
     // triageFrom: the server applies it, so a new cut-off must reload the list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sourceLabelId, isInbox, recent, workspace.id, primaryOnly, showOlder, triageFrom, mergeEmails],
+    [sourceLabelId, isInbox, workspace.id, primaryOnly, showOlder, triageFrom, mergeEmails],
   );
 
   useEffect(() => {
@@ -440,15 +439,22 @@ export function LabelBoard({
     [lanes, emails, inLens],
   );
   const inFirstColumn = useMemo(() => unsorted.filter((t) => inLens(emails[t])), [unsorted, emails, inLens]);
-  // Recent picks up labelled mail that isn't tracked in a status yet (cards in
-  // a status are already on the board), newest first.
-  const inRecent = useMemo(
-    () => recentIds.filter((t) => emails[t] && inLens(emails[t]) && !placed.has(t) && !emails[t].homeId),
-    [recentIds, emails, inLens, placed],
-  );
-  // Hidden emails ("doesn't need tracking") fold into a list at the bottom of the column.
+  // A label's first column: what's left to triage (not in a status, not filed).
   const shownUnsorted = useMemo(() => inFirstColumn.filter((t) => !emails[t]?.hidden), [inFirstColumn, emails]);
-  const shownRecent = useMemo(() => inRecent.filter((t) => !emails[t]?.hidden), [inRecent, emails]);
+  // The Inbox column is Gmail's inbox as it is: every thread there, newest first,
+  // including cards in a status, Done or Filed (tagged). Archiving takes one out.
+  // Tickets with no email that aren't in a status sit at the top.
+  const shownInbox = useMemo(
+    () => [
+      ...inFirstColumn.filter((t) => emails[t]?.local),
+      ...recentIds.filter((t) => emails[t] && !emails[t].local && cardLabelIds(emails[t]).includes("INBOX")),
+    ],
+    [inFirstColumn, recentIds, emails],
+  );
+  const tagOf = (threadId: string) => {
+    const e = emails[threadId];
+    return statusOf(threadId) ?? (e?.done ? "Done" : e?.hidden ? "Filed" : undefined);
+  };
   const statusOf = (threadId: string) => lanes.find((l) => l.threadIds.includes(threadId))?.name;
   const shownPlaced = shownLanes.reduce((n, l) => n + l.threadIds.length, 0);
   // Rows with the most cards first, so empty sub-labels sink to the bottom.
@@ -467,7 +473,7 @@ export function LabelBoard({
   // ----- picking several emails in the first column -----
   // Tick emails (or shift-click a run of them), then file, archive, hide or
   // combine them together, or drag one and the rest come along.
-  const firstList = recent ? shownRecent : shownUnsorted;
+  const firstList = isInbox ? shownInbox : shownUnsorted;
   const [picked, setPicked] = useState<string[]>([]);
   const lastPicked = useRef<string | null>(null);
   const pickedShown = useMemo(() => firstList.filter((t) => picked.includes(t) && !placed.has(t)), [firstList, picked, placed]);
@@ -724,7 +730,7 @@ export function LabelBoard({
     statusOf: (threadId: string) => lanes.find((l) => l.threadIds.includes(threadId))?.id ?? null,
     moveTo: (threadId: string, statusId: string | null) => void place(threadId, statusId ?? UNSORTED),
     canArchive: (threadId: string) =>
-      isInbox && !recent && !emails[threadId]?.local && !lanes.some((l) => l.threadIds.includes(threadId)),
+      isInbox && !emails[threadId]?.local && !lanes.some((l) => l.threadIds.includes(threadId)),
     archive: (threadId: string) => void archive(threadId, selected === threadId),
     canHide: (threadId: string) => !lanes.some((l) => l.threadIds.includes(threadId)) && !emails[threadId]?.hidden,
     hide: (threadId: string) => void hide(threadId, true),
@@ -734,7 +740,7 @@ export function LabelBoard({
   // ----- triage: archive, and keys to file the open email -----
   // After filing or archiving the open email, open the next one in the first column.
   const openNext = (threadId: string) => {
-    const list = recent ? shownRecent : shownUnsorted;
+    const list = firstList;
     const i = list.indexOf(threadId);
     if (i < 0) return;
     setSelected(list[i + 1] ?? list[i - 1] ?? null);
@@ -879,7 +885,7 @@ export function LabelBoard({
       void placeMany(ids, laneId);
     },
     onArchive:
-      isInbox && !recent
+      isInbox
         ? () => {
             const ids = pickedShown;
             setPicked([]);
@@ -985,7 +991,8 @@ export function LabelBoard({
           isLens={!!lens}
           isInbox={isInbox}
           statusOf={statusOf}
-          threadIds={recent ? shownRecent : shownUnsorted}
+          threadIds={firstList}
+          tagOf={tagOf}
           emails={emails}
           sortedCount={shownPlaced}
           newReplies={newReplies}
@@ -995,7 +1002,7 @@ export function LabelBoard({
           hasMore={!!nextPage}
           laneCount={lanes.length}
           draggingFromStatus={!!activeId && lanes.some((l) => l.threadIds.includes(activeId)) && snapshot.current?.from !== UNSORTED}
-          cutoff={!isInbox || recent ? { from: triageFrom, applies: cutoffApplies } : null}
+          cutoff={!isInbox ? { from: triageFrom, applies: cutoffApplies } : null}
           onShowOlder={setShowOlder}
           onMarkOlderDone={async (clear) => {
             const at = await setTriageFrom(clear ? null : "now");
@@ -1004,7 +1011,7 @@ export function LabelBoard({
           }}
           onHide={(id) => void hide(id, true)}
           onTrash={(id) => void trash(id)}
-          onArchive={isInbox && !recent ? (id) => void archive(id, selected === id) : undefined}
+          onArchive={isInbox ? (id) => void archive(id, selected === id) : undefined}
           selected={selected}
           onRefresh={() => {
             void load("");
@@ -1275,6 +1282,7 @@ function UnsortedColumn(p: {
   isLens: boolean;
   isInbox: boolean;
   statusOf: (threadId: string) => string | undefined;
+  tagOf: (threadId: string) => string | undefined; // status, Done or Filed, for an Inbox email that isn't to triage
   threadIds: string[];
   emails: Record<string, BoardEmail>;
   sortedCount: number;
@@ -1328,7 +1336,7 @@ function UnsortedColumn(p: {
           </p>
         )}
         <p className="text-xs font-semibold text-muted">
-          {p.searching ? "Search results" : "Not in a status yet"}
+          {p.searching ? "Search results" : p.isInbox ? "Gmail inbox, newest first" : "Not in a status yet"}
           {` · ${p.threadIds.length}${p.hasMore ? "+" : ""}`}
           {p.sortedCount > 0 && ` · ${p.sortedCount} in statuses`}
           {p.newReplies > 0 && (
@@ -1361,6 +1369,7 @@ function UnsortedColumn(p: {
                 ) : (
                   <DraggableEmail
                     key={id}
+                    tag={p.tagOf(id)}
                     email={p.emails[id]}
                     labelId={p.labelId}
                     selected={p.selected === id}
@@ -1494,6 +1503,7 @@ function DropBack() {
 }
 
 function DraggableEmail({
+  tag,
   email,
   labelId,
   selected,
@@ -1505,6 +1515,7 @@ function DraggableEmail({
   onHide,
   onTrash,
 }: {
+  tag?: string;
   email: BoardEmail;
   labelId: string;
   selected: boolean;
@@ -1532,6 +1543,7 @@ function DraggableEmail({
             : ""
       }`}
     >
+      {tag && <span className="mb-1 block px-1 text-xs font-semibold text-muted">✓ {tag}</span>}
       <CardFace email={email} hideLabelId={labelId} />
       <button
         role="checkbox"
