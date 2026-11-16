@@ -93,6 +93,7 @@ model Email {
   summary     String       @default("") // where things stand and what was decided
   hiddenAt    DateTime? // hidden from the first column ("doesn't need tracking") until a newer message arrives
   lastSeenAt  DateTime? // latest message the user has opened; newer means a new reply
+  openedAt    DateTime? // when the user last opened it, for "recently opened" on Today
   createdAt   DateTime     @default(now())
   notes       Note[]
   tasks       Task[]
@@ -155,6 +156,7 @@ model Task {
   notes     String    @default("")
   done      Boolean   @default(false)
   dueDate   DateTime?
+  dueTime   Boolean   @default(false) // dueDate carries a time of day, not just a day
   position  Int       @default(0)
   createdAt DateTime  @default(now())
 

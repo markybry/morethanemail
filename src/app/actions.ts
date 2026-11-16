@@ -151,8 +151,8 @@ export async function fetchThread(threadId: string): Promise<{ thread: ThreadDet
       const snap = { threadId, subject: thread.subject, from: last.from, snippet, date: last.date };
       await db.email.upsert({
         where: { userId_threadId: { userId: user.id, threadId } },
-        create: { userId: user.id, threadId, ...snapshotData(snap), lastSeenAt: new Date(last.date) },
-        update: { from: last.from, date: new Date(last.date), lastSeenAt: new Date(last.date) },
+        create: { userId: user.id, threadId, ...snapshotData(snap), lastSeenAt: new Date(last.date), openedAt: new Date() },
+        update: { from: last.from, date: new Date(last.date), lastSeenAt: new Date(last.date), openedAt: new Date() },
       });
     }
     return { thread };
@@ -600,12 +600,13 @@ export async function deleteLink(linkId: string) {
 
 // ---------- tasks ----------
 
-const taskDTO = (t: { id: string; title: string; notes: string; done: boolean; dueDate: Date | null }): TaskDTO => ({
+const taskDTO = (t: { id: string; title: string; notes: string; done: boolean; dueDate: Date | null; dueTime: boolean }): TaskDTO => ({
   id: t.id,
   title: t.title,
   notes: t.notes,
   done: t.done,
   dueDate: t.dueDate?.toISOString() ?? null,
+  dueTime: t.dueTime,
 });
 
 const revalidateTaskPages = () => {
@@ -613,12 +614,12 @@ const revalidateTaskPages = () => {
   revalidatePath("/dashboard");
 };
 
-export async function addTask(thread: ThreadSnapshot, title: string, dueDate: string | null): Promise<TaskDTO> {
+export async function addTask(thread: ThreadSnapshot, title: string, dueDate: string | null, dueTime = false): Promise<TaskDTO> {
   const user = await requireUser();
   const email = await upsertEmail(user.id, thread);
   const count = await db.task.count({ where: { emailId: email.id } });
   const task = await db.task.create({
-    data: { userId: user.id, emailId: email.id, title: title.trim(), dueDate: dueDate ? new Date(dueDate) : null, position: count },
+    data: { userId: user.id, emailId: email.id, title: title.trim(), dueDate: dueDate ? new Date(dueDate) : null, dueTime: !!dueDate && dueTime, position: count },
   });
   await db.activity.create({ data: { userId: user.id, emailId: email.id, kind: "task", detail: task.title } });
   revalidateTaskPages();
@@ -626,10 +627,10 @@ export async function addTask(thread: ThreadSnapshot, title: string, dueDate: st
 }
 
 // A task on its own, added from My tasks.
-export async function addStandaloneTask(title: string, dueDate: string | null): Promise<TaskDTO> {
+export async function addStandaloneTask(title: string, dueDate: string | null, dueTime = false): Promise<TaskDTO> {
   const user = await requireUser();
   const task = await db.task.create({
-    data: { userId: user.id, title: title.trim().slice(0, 300) || "Untitled task", dueDate: dueDate ? new Date(dueDate) : null },
+    data: { userId: user.id, title: title.trim().slice(0, 300) || "Untitled task", dueDate: dueDate ? new Date(dueDate) : null, dueTime: !!dueDate && dueTime },
   });
   await db.activity.create({ data: { userId: user.id, kind: "task", detail: task.title } });
   revalidateTaskPages();
@@ -638,7 +639,7 @@ export async function addStandaloneTask(title: string, dueDate: string | null): 
 
 export async function updateTask(
   taskId: string,
-  patch: { done?: boolean; title?: string; notes?: string; dueDate?: string | null },
+  patch: { done?: boolean; title?: string; notes?: string; dueDate?: string | null; dueTime?: boolean },
 ) {
   const user = await requireUser();
   await db.task.updateMany({
@@ -647,7 +648,9 @@ export async function updateTask(
       ...(patch.done !== undefined ? { done: patch.done } : {}),
       ...(patch.title !== undefined ? { title: patch.title.trim().slice(0, 300) || "Untitled task" } : {}),
       ...(patch.notes !== undefined ? { notes: patch.notes.slice(0, 5000) } : {}),
-      ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate ? new Date(patch.dueDate) : null } : {}),
+      ...(patch.dueDate !== undefined
+        ? { dueDate: patch.dueDate ? new Date(patch.dueDate) : null, dueTime: !!patch.dueDate && !!patch.dueTime }
+        : {}),
     },
   });
   if (patch.done) {

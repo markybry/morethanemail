@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { dueLabel, isOverdue, timeAgo } from "@/lib/format";
+import { senderName, timeAgo } from "@/lib/format";
+import { DueText } from "@/components/DuePicker";
 import { TaskCheckbox } from "@/components/TaskCheckbox";
 
 const STALE_DAYS = 7;
@@ -16,7 +17,7 @@ export default async function TodayPage() {
   const staleBefore = new Date(Date.now() - STALE_DAYS * 86_400_000);
   const card = { threadId: true, subject: true, title: true } as const;
 
-  const [openTasks, replies, stale, activity] = await Promise.all([
+  const [openTasks, replies, stale, activity, opened] = await Promise.all([
     db.task.findMany({
       where: { done: false, userId: user.id },
       orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
@@ -48,7 +49,20 @@ export default async function TodayPage() {
       take: 25,
       include: { email: { select: card } },
     }),
+    // Opened lately, wherever they are: in a status, in the first column, or nowhere on the board.
+    db.email.findMany({
+      where: { userId: user.id, openedAt: { not: null } },
+      orderBy: { openedAt: "desc" },
+      take: 20,
+      select: { ...card, from: true, openedAt: true, parent: { select: card } },
+    }),
   ]);
+  // One row per card: a thread added to a card shows as that card.
+  const seen = new Set<string>();
+  const recent = opened
+    .map((e) => ({ c: e.parent ?? e, from: e.from, at: e.openedAt! }))
+    .filter((r) => !seen.has(r.c.threadId) && seen.add(r.c.threadId))
+    .slice(0, 10);
 
   const overdue = openTasks.filter((t) => t.dueDate && t.dueDate < startOfToday).length;
   const titleOf = (e: { title: string | null; subject: string }) => e.title || e.subject;
@@ -80,11 +94,7 @@ export default async function TodayPage() {
                       </Link>
                     )}
                   </div>
-                  {t.dueDate && (
-                    <span className={`shrink-0 text-xs ${isOverdue(t.dueDate.toISOString()) ? "text-red-600" : "text-muted"}`}>
-                      {dueLabel(t.dueDate.toISOString())}
-                    </span>
-                  )}
+                  <DueText dueDate={t.dueDate?.toISOString() ?? null} dueTime={t.dueTime} className="shrink-0 text-xs" />
                 </li>
               ))}
             </ul>
@@ -121,6 +131,23 @@ export default async function TodayPage() {
                   <span className="shrink-0 text-xs text-bad-ink">
                     {Math.floor((Date.now() - p.movedAt.getTime()) / 86_400_000)} days in {p.lane.name}
                   </span>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+
+          <Panel title="Recently opened">
+            {recent.length === 0 && <Empty>Emails you open show up here, whether or not they&apos;re on the board.</Empty>}
+            <ul className="divide-y divide-line">
+              {recent.map((r) => (
+                <li key={r.c.threadId} className="flex gap-2 py-1.5">
+                  <div className="min-w-0 flex-1">
+                    <Link href={cardLink(r.c.threadId)} className="block truncate text-sm text-walnut hover:text-terracotta">
+                      {titleOf(r.c)}
+                    </Link>
+                    <div className="truncate text-xs text-muted">{senderName(r.from)}</div>
+                  </div>
+                  <span className="shrink-0 text-xs text-muted">{timeAgo(r.at.toISOString())}</span>
                 </li>
               ))}
             </ul>

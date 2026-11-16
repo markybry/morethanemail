@@ -12,22 +12,23 @@ export function shortDate(iso: string) {
   return d.toLocaleDateString([], { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) });
 }
 
-export function dueLabel(iso: string) {
+// "Today", "Tomorrow", "3 Dec", with the time when one was set: "Today 14:30".
+export function dueLabel(iso: string, withTime = false) {
   const d = new Date(iso);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const day = new Date(d);
   day.setHours(0, 0, 0, 0);
   const diff = Math.round((day.getTime() - today.getTime()) / 86_400_000);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Tomorrow";
-  if (diff === -1) return "Yesterday";
-  return d.toLocaleDateString([], { day: "numeric", month: "short" });
+  const date =
+    diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : diff === -1 ? "Yesterday" : d.toLocaleDateString([], { day: "numeric", month: "short" });
+  return withTime ? `${date} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : date;
 }
 
-export function isOverdue(iso: string) {
+// Past due: past the time when one was set, otherwise once the day is over.
+export function isOverdue(iso: string, withTime = false) {
   const d = new Date(iso);
-  d.setHours(23, 59, 59, 999);
+  if (!withTime) d.setHours(23, 59, 59, 999);
   return d.getTime() < Date.now();
 }
 

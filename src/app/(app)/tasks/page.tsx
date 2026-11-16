@@ -29,6 +29,7 @@ export default async function TasksPage() {
       notes: t.notes,
       done: t.done,
       dueDate: t.dueDate?.toISOString() ?? null,
+      dueTime: t.dueTime,
       from: t.email && {
         href: `/l/${encodeURIComponent(where?.workspace.labelId ?? t.email.workspace?.labelId ?? "INBOX")}?thread=${encodeURIComponent(t.email.threadId)}`,
         text: `${where ? `${where.workspace.name} › ${where.lane.name} › ` : ""}${t.email.subject}`,
@@ -64,7 +65,7 @@ export default async function TasksPage() {
               <ul className="divide-y divide-line rounded-lg border border-line bg-cream">
                 {g.items.map((t) => (
                   // Keyed on what the server knows so a moved or edited task re-reads its data.
-                  <TaskRow key={`${t.id}:${t.done}:${t.dueDate?.getTime() ?? ""}`} task={row(t)} />
+                  <TaskRow key={`${t.id}:${t.done}:${t.dueDate?.getTime() ?? ""}:${t.dueTime}`} task={row(t)} />
                 ))}
               </ul>
             </section>

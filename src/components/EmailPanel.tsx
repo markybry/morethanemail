@@ -18,10 +18,11 @@ import {
   updateTicket,
 } from "@/app/actions";
 import type { BoardEmail, LaneDTO, TaskDTO, ThreadSnapshot } from "@/lib/types";
-import { dueLabel, fromDateInput, gmailLink, isLocalThread, isOverdue, senderName, shortDate, toDateInput } from "@/lib/format";
+import { gmailLink, isLocalThread, senderName, shortDate } from "@/lib/format";
 import { cardLabelIds, latestThread, senderAddress } from "@/lib/cards";
 import { Drawer, DrawerHeader } from "./Drawer";
 import { ThreadView } from "./ThreadView";
+import { DuePicker, type Due } from "./DuePicker";
 import { ConfirmButton, InlineEdit, Section } from "./ui";
 import { useMail } from "./MailContext";
 
@@ -120,6 +121,7 @@ export function EmailPanel(p: Props) {
         </div>
       </DrawerHeader>
 
+      {!email.local && <Labels email={email} here={p.workspaceLabelId} onLabelsChange={p.onLabelsChange} />}
       {email.local ? (
         <TextBlock
           title="Description"
@@ -141,10 +143,9 @@ export function EmailPanel(p: Props) {
           }}
         />
       )}
-      {/* What matters most first: the summary (above), next actions, then the emails. */}
+      {/* What matters most first: labels and the summary (above), next actions, then the emails. */}
       <Tasks email={email} onChange={onChange} />
       <Emails email={email} onSeenThread={p.onSeenThread} onAddThread={p.onAddThread} onRemoveThread={p.onRemoveThread} />
-      {!email.local && <Labels email={email} here={p.workspaceLabelId} onLabelsChange={p.onLabelsChange} />}
       <Links email={email} onChange={onChange} />
       <Notes email={email} onChange={onChange} />
       {!email.local && <AddToCard email={email} choices={p.cardChoices} onAdd={p.onAddToCard} />}
@@ -555,7 +556,7 @@ function Labels({
 
 function Tasks({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmail) => void }) {
   const [title, setTitle] = useState("");
-  const [due, setDue] = useState("");
+  const [due, setDue] = useState<Due>({ dueDate: null, dueTime: false });
   const setTasks = (tasks: TaskDTO[]) => onChange({ ...email, tasks });
 
   return (
@@ -573,18 +574,14 @@ function Tasks({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
               className="h-4 w-4 accent-moss transition active:scale-125"
             />
             <span className={`flex-1 text-sm ${t.done ? "text-muted line-through" : "text-walnut"}`}>{t.title}</span>
-            <input
-              type="date"
-              value={toDateInput(t.dueDate)}
-              onChange={async (e) => {
-                const dueDate = fromDateInput(e.target.value);
-                setTasks(email.tasks.map((x) => (x.id === t.id ? { ...x, dueDate } : x)));
-                await updateTask(t.id, { dueDate });
+            <DuePicker
+              value={{ dueDate: t.dueDate, dueTime: t.dueTime }}
+              done={t.done}
+              onChange={async (d) => {
+                setTasks(email.tasks.map((x) => (x.id === t.id ? { ...x, ...d } : x)));
+                await updateTask(t.id, d);
               }}
-              className={`rounded border-0 bg-transparent text-xs ${
-                t.dueDate && !t.done && isOverdue(t.dueDate) ? "text-red-600" : "text-muted"
-              } ${t.dueDate ? "" : "opacity-0 group-hover:opacity-100"}`}
-              title={t.dueDate ? dueLabel(t.dueDate) : "Set due date"}
+              className={t.dueDate ? "" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100 max-md:opacity-100"}
             />
             <button
               onClick={async () => {
@@ -604,10 +601,10 @@ function Tasks({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
         onSubmit={async (e) => {
           e.preventDefault();
           if (!title.trim()) return;
-          const task = await addTask(snapshot(email), title, fromDateInput(due));
+          const task = await addTask(snapshot(email), title, due.dueDate, due.dueTime);
           setTasks([...email.tasks, task]);
           setTitle("");
-          setDue("");
+          setDue({ dueDate: null, dueTime: false });
         }}
       >
         <input
@@ -616,12 +613,7 @@ function Tasks({ email, onChange }: { email: BoardEmail; onChange: (e: BoardEmai
           placeholder="Add a next action…"
           className="min-w-0 flex-1 field rounded-xl px-2.5 py-1.5 text-sm"
         />
-        <input
-          type="date"
-          value={due}
-          onChange={(e) => setDue(e.target.value)}
-          className="field rounded-xl px-2 text-sm text-bark"
-        />
+        <DuePicker value={due} onChange={setDue} variant="field" />
         <button className="btn-press rounded-xl bg-terracotta px-3 text-sm font-bold text-cream">Add</button>
       </form>
     </Section>

@@ -154,7 +154,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
               )}
               <span className={`min-w-0 flex-1 text-ink ${compact ? "truncate" : ""}`}>{t.title}</span>
               {t.dueDate && (
-                <span className={`shrink-0 font-semibold ${isOverdue(t.dueDate) ? "text-bad-ink" : "text-muted"}`}>{dueLabel(t.dueDate)}</span>
+                <span className={`shrink-0 font-semibold ${isOverdue(t.dueDate, t.dueTime) ? "text-bad-ink" : "text-muted"}`}>{dueLabel(t.dueDate, t.dueTime)}</span>
               )}
             </li>
           ))}

@@ -67,7 +67,7 @@ export function toBoardEmail(stored: EmailWithMeta | undefined, live?: ThreadSum
     labelIds: first.labelIds,
     notes: stored?.notes.map((n) => ({ id: n.id, body: n.body, createdAt: n.createdAt.toISOString() })) ?? [],
     tasks:
-      stored?.tasks.map((t) => ({ id: t.id, title: t.title, notes: t.notes, done: t.done, dueDate: t.dueDate?.toISOString() ?? null })) ?? [],
+      stored?.tasks.map((t) => ({ id: t.id, title: t.title, notes: t.notes, done: t.done, dueDate: t.dueDate?.toISOString() ?? null, dueTime: t.dueTime })) ?? [],
     links: stored?.links.map((l) => ({ id: l.id, url: l.url, title: l.title })) ?? [],
     newReply: threads.some((t) => t.newReply),
     local: isLocalThread(first.threadId),

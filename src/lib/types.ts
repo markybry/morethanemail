@@ -1,6 +1,6 @@
 // Plain, serializable shapes passed from server to client components.
 
-export type TaskDTO = { id: string; title: string; notes: string; done: boolean; dueDate: string | null };
+export type TaskDTO = { id: string; title: string; notes: string; done: boolean; dueDate: string | null; dueTime: boolean };
 export type NoteDTO = { id: string; body: string; createdAt: string };
 export type LinkDTO = { id: string; url: string; title: string };
 // Something the user did to a card, newest first. kind: moved | ticket | task | taskDone | thread (notes come from notes).

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { addStandaloneTask, deleteTask, updateTask } from "@/app/actions";
-import { dueLabel, fromDateInput, isOverdue, toDateInput } from "@/lib/format";
+import { dueLabel, isOverdue } from "@/lib/format";
+import { DuePicker, type Due } from "./DuePicker";
 import { ConfirmButton, InlineEdit } from "./ui";
 
 export type TaskRowData = {
@@ -12,6 +13,7 @@ export type TaskRowData = {
   notes: string;
   done: boolean;
   dueDate: string | null;
+  dueTime: boolean;
   // Where the task lives, if it's on an email or ticket.
   from: { href: string; text: string } | null;
 };
@@ -19,7 +21,7 @@ export type TaskRowData = {
 // Add a task that isn't on any email.
 export function QuickAddTask() {
   const [title, setTitle] = useState("");
-  const [due, setDue] = useState("");
+  const [due, setDue] = useState<Due>({ dueDate: null, dueTime: false });
   const [busy, setBusy] = useState(false);
   return (
     <form
@@ -29,9 +31,9 @@ export function QuickAddTask() {
         if (!title.trim()) return;
         setBusy(true);
         try {
-          await addStandaloneTask(title, fromDateInput(due));
+          await addStandaloneTask(title, due.dueDate, due.dueTime);
           setTitle("");
-          setDue("");
+          setDue({ dueDate: null, dueTime: false });
         } finally {
           setBusy(false);
         }
@@ -44,14 +46,7 @@ export function QuickAddTask() {
         placeholder="Add a next action…"
         className="field min-w-0 flex-1 rounded-xl px-2.5 py-1.5 text-sm"
       />
-      <input
-        type="date"
-        value={due}
-        disabled={busy}
-        onChange={(e) => setDue(e.target.value)}
-        className="field rounded-xl px-2 py-1.5 text-sm text-bark"
-        aria-label="Due date"
-      />
+      <DuePicker value={due} onChange={setDue} variant="field" />
       <button disabled={busy || !title.trim()} className="btn-press rounded-xl bg-moss px-3 py-1.5 text-sm font-bold text-cream disabled:opacity-50">
         Add
       </button>
@@ -64,7 +59,7 @@ export function TaskRow({ task }: { task: TaskRowData }) {
   const [t, setT] = useState(task);
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState(task.notes);
-  const save = async (patch: Partial<Pick<TaskRowData, "done" | "title" | "notes" | "dueDate">>) => {
+  const save = async (patch: Partial<Pick<TaskRowData, "done" | "title" | "notes" | "dueDate" | "dueTime">>) => {
     setT((prev) => ({ ...prev, ...patch }));
     await updateTask(t.id, patch);
   };
@@ -91,7 +86,9 @@ export function TaskRow({ task }: { task: TaskRowData }) {
           {t.notes ? "✎ details" : "✎"}
         </button>
         {t.dueDate && !open && (
-          <span className={`shrink-0 text-xs ${!t.done && isOverdue(t.dueDate) ? "text-red-600" : "text-muted"}`}>{dueLabel(t.dueDate)}</span>
+          <span className={`shrink-0 text-xs ${!t.done && isOverdue(t.dueDate, t.dueTime) ? "text-red-600" : "text-muted"}`}>
+            {dueLabel(t.dueDate, t.dueTime)}
+          </span>
         )}
       </div>
       {open && (
@@ -105,15 +102,8 @@ export function TaskRow({ task }: { task: TaskRowData }) {
             className="field w-full rounded-xl px-2.5 py-1.5 text-sm"
           />
           <div className="flex items-center gap-2 text-sm">
-            <label className="flex items-center gap-1.5 text-muted">
-              Due
-              <input
-                type="date"
-                value={toDateInput(t.dueDate)}
-                onChange={(e) => save({ dueDate: fromDateInput(e.target.value) })}
-                className="field rounded-xl px-2 py-1 text-bark"
-              />
-            </label>
+            <span className="text-muted">Due</span>
+            <DuePicker value={{ dueDate: t.dueDate, dueTime: t.dueTime }} onChange={save} variant="field" align="left" done={t.done} />
             <div className="ml-auto">
               <ConfirmButton label="Delete" confirmLabel="Delete action?" onConfirm={() => deleteTask(t.id)} small />
             </div>
