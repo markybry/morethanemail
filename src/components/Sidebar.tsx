@@ -43,7 +43,7 @@ export function Sidebar({ user, mobileOpen, onClose, slotRef }: Props) {
             pathname === "/l/INBOX" ? "bg-side-strong/15 text-side-strong shadow-[inset_0_1px_3px_rgb(0_0_0/0.3)]" : ""
           }`}
         >
-          <span className="w-4 text-center">🗂️</span> Workspace
+          <ThemeIcon icon={theme.icons.workspace} size={16} /> Workspace
         </Link>
         <Link
           href="/dashboard"

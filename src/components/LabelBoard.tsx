@@ -65,9 +65,9 @@ import type { Due } from "./DuePicker";
 const VIEW_KEY = "mte.boardView"; // "lanes", "calendar" or "list"
 type BoardView = "lanes" | "calendar" | "list";
 const VIEWS: { id: BoardView; name: string }[] = [
+  { id: "list", name: "☰ List" },
   { id: "lanes", name: "▥ Lanes" },
   { id: "calendar", name: "▦ Calendar" },
-  { id: "list", name: "☰ List" },
 ];
 
 // Each lane gets its own colour (defined per theme in globals.css) and an
@@ -211,7 +211,7 @@ export function LabelBoard({
   const [showOlder, setShowOlder] = useState(false);
   const cutoffApplies = !!triageFrom && !showOlder;
   const [prefsReady, setPrefsReady] = useState(false);
-  const [view, setView] = useState<BoardView>("lanes");
+  const [view, setView] = useState<BoardView>("list");
   // Senders ignored earlier (listed in Settings) stay out of the Inbox column.
   const ignored = useMemo(() => new Set(initialIgnored), [initialIgnored]);
   // A finished status that just took a card: it says so for a moment.
@@ -222,7 +222,6 @@ export function LabelBoard({
     return () => clearTimeout(t);
   }, [justDone]);
   // Done cards opened from File that have left the board: their finished status.
-  const [doneLanes, setDoneLanes] = useState<Record<string, string>>({});
   const [loadedQuery, setLoadedQuery] = useState("");
   const [nextPage, setNextPage] = useState<string | undefined>();
   const [listState, setListState] = useState<"loading" | "idle" | "error">("loading");
@@ -285,7 +284,7 @@ export function LabelBoard({
   useEffect(() => {
     try {
       const v = localStorage.getItem(VIEW_KEY);
-      if (v === "calendar" || v === "list") setView(v);
+      if (v === "calendar" || v === "lanes") setView(v);
       else if (v === "file") setView("list"); // the view was called File before
     } catch {}
     setPrefsReady(true);
@@ -1129,7 +1128,6 @@ export function LabelBoard({
               inLens={inLens}
               statusOf={statusOf}
               mergeEmails={mergeEmails}
-              onDoneLanes={setDoneLanes}
               onNew={async (t) => {
                 if (lens) return newCard(t, { filed: true });
                 const card = await newCard(t);
@@ -1305,9 +1303,6 @@ export function LabelBoard({
             if (!labelIds.includes(sourceLabelId)) setUnsorted((prev) => prev.filter((x) => x !== t));
             else if (!containerOf(t, { lanes, unsorted })) setUnsorted((prev) => byDate([...prev, t]));
           }}
-          lanes={lanes}
-          laneId={containerOf(selectedEmail.threadId, { lanes, unsorted }) ?? selectedEmail.doneLaneId ?? doneLanes[selectedEmail.threadId] ?? UNSORTED}
-          onPlace={(laneId) => place(selectedEmail.threadId, laneId)}
           onChange={(e) => mergeEmails([e])}
           onSeenThread={(t) => seenThread(selectedEmail.threadId, t)}
           cardChoices={cardChoices}
@@ -1634,7 +1629,7 @@ function DraggableEmail({
       }`}
     >
       {tag && <span className="mb-1 block px-1 text-xs font-semibold text-muted">✓ {tag}</span>}
-      <CardFace email={email} hideLabelId={labelId} />
+      <CardFace email={email} hideLabelId={labelId} tall />
       <button
         role="checkbox"
         aria-checked={picked}

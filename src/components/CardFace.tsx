@@ -59,7 +59,17 @@ function latestHappenings(email: BoardEmail, me: string): Happening[] {
 
 // A card on the board, in the first column or in a status. At a glance: what it
 // is (title, and its summary or newest message) and what needs to happen next.
-export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; hideLabelId?: string; dragging?: boolean }) {
+export function CardFace({
+  email,
+  hideLabelId,
+  dragging,
+  tall,
+}: {
+  email: BoardEmail;
+  hideLabelId?: string;
+  dragging?: boolean;
+  tall?: boolean; // in the first column: more of the email shows, and room for the buttons
+}) {
   const { labelNames, colorOf, me } = useMail();
   const compact = useTheme().density === "compact";
   const board = useContext(CardBoardContext);
@@ -86,7 +96,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
 
   return (
     <div
-      className={`card-tactile group/card animate-rise relative cursor-grab overflow-hidden rounded-2xl ${compact ? "p-2.5 pl-4" : "p-3 pl-4"} transition duration-200 hover:-translate-y-0.5 active:translate-y-px ${
+      className={`card-tactile group/card animate-rise relative cursor-grab overflow-hidden rounded-2xl ${compact ? "p-2.5 pl-4" : "p-3 pl-4"} ${tall ? "min-h-28 md:pb-9" : ""} transition duration-200 hover:-translate-y-0.5 active:translate-y-px ${
         email.newReply ? "ring-2 ring-mustard/70" : age?.stale ? "ring-2 ring-bad-ink/40" : ""
       } ${dragging ? "w-68 rotate-2 cursor-grabbing" : ""}`}
     >
@@ -113,7 +123,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
               <span className="w-3.5 shrink-0 text-center text-muted" aria-hidden>
                 {h.icon}
               </span>
-              <span className={`line-clamp-2 min-w-0 flex-1 ${h.fresh ? "text-ink" : "text-bark"}`}>
+              <span className={`${tall && happenings.length === 1 ? "line-clamp-5" : "line-clamp-2"} min-w-0 flex-1 ${h.fresh ? "text-ink" : "text-bark"}`}>
                 {h.who && <span className={`font-semibold ${h.fresh ? "text-walnut" : "text-ink"}`}>{h.who}: </span>}
                 {h.text}
               </span>
@@ -124,7 +134,7 @@ export function CardFace({ email, hideLabelId, dragging }: { email: BoardEmail; 
           ))}
         </ul>
       ) : (
-        !summary && <div className="mt-0.5 truncate text-xs text-muted">{latest.snippet}</div>
+        !summary && <div className={`mt-0.5 text-xs text-muted ${tall ? "line-clamp-4" : "truncate"}`}>{latest.snippet}</div>
       )}
       {next && (
         // Keyed by task, so the one after it slides in when it's ticked off.

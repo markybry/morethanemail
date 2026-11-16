@@ -6,6 +6,7 @@ export type ThemeId = "woodland" | "georgian" | "pixel" | "dev" | "dark" | "ligh
 
 export type ThemeIcons = {
   logo: string;
+  workspace: string; // the whole board
   dashboard: string;
   tasks: string;
   addLane: string;
@@ -30,6 +31,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: "🦊 Woodland",
     icons: {
       logo: "🦊",
+      workspace: "🌳",
       dashboard: "🏡",
       tasks: "🐝",
       addLane: "🌱",
@@ -47,6 +49,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: "🖋️ Georgian writing desk",
     icons: {
       logo: "🖋️",
+      workspace: "🗄️",
       dashboard: "🧭",
       tasks: "📜",
       addLane: "🪶",
@@ -68,6 +71,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: "👾 Pixel office",
     icons: {
       logo: "sprite:envelope",
+      workspace: "sprite:folder",
       dashboard: "sprite:monitor",
       tasks: "sprite:clipboard",
       addLane: "sprite:plus",
@@ -97,6 +101,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: "⌨️ Dev (compact)",
     icons: {
       logo: "▣",
+      workspace: "▤",
       dashboard: "◫",
       tasks: "☑",
       addLane: "+",
@@ -115,6 +120,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: "🌙 Dark",
     icons: {
       logo: "◆",
+      workspace: "▤",
       dashboard: "◧",
       tasks: "☑",
       addLane: "+",
@@ -133,6 +139,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     name: "☀️ Light",
     icons: {
       logo: "◆",
+      workspace: "▤",
       dashboard: "◧",
       tasks: "☑",
       addLane: "+",

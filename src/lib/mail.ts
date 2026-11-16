@@ -179,13 +179,32 @@ export async function modifyThreadLabels(user: User, threadId: string, add: stri
 }
 
 // A new Gmail label, which is also a new workspace. "Parent/Child" nests it.
+// "Clients/JR" is a sub-label: each level is matched to an existing label
+// whatever its case (so "clients/JR" lands under "Clients"), and any missing
+// parent is created first so Gmail nests it. An existing label is reused.
 export async function createLabel(user: User, name: string): Promise<MailLabel> {
   if (user.isDemo) return demoCreateLabel(name);
-  const res = await gmailFor(user).users.labels.create({
-    userId: "me",
-    requestBody: { name, labelListVisibility: "labelShow", messageListVisibility: "show" },
-  });
-  return { id: res.data.id!, name: res.data.name!, unread: 0 };
+  const gmail = gmailFor(user);
+  const existing = ((await gmail.users.labels.list({ userId: "me" })).data.labels ?? [])
+    .filter((l) => l.id && l.name)
+    .map((l) => ({ id: l.id!, name: l.name! }));
+  const find = (path: string) => existing.find((l) => l.name.toLowerCase() === path.toLowerCase());
+  let path = "";
+  let label: { id: string; name: string } | undefined;
+  for (const part of name.split("/")) {
+    path = path ? `${path}/${part}` : part;
+    label = find(path);
+    if (!label) {
+      const res = await gmail.users.labels.create({
+        userId: "me",
+        requestBody: { name: path, labelListVisibility: "labelShow", messageListVisibility: "show" },
+      });
+      label = { id: res.data.id!, name: res.data.name! };
+      existing.push(label);
+    }
+    path = label.name; // keep the existing label's own casing for the next level
+  }
+  return { id: label!.id, name: label!.name, unread: 0 };
 }
 
 export async function getThread(user: User, threadId: string): Promise<ThreadDetail | null> {

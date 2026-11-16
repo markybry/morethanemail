@@ -98,6 +98,8 @@ export function demoModifyLabels(threadId: string, add: string[], remove: string
 }
 
 export function demoCreateLabel(name: string): MailLabel {
+  const found = LABELS.find((l) => l.name.toLowerCase() === name.toLowerCase());
+  if (found) return found;
   const label = { id: `Label_${Date.now()}`, name, unread: 0 };
   LABELS.push(label);
   LABELS.sort((a, b) => a.name.localeCompare(b.name));

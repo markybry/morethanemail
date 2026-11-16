@@ -17,7 +17,11 @@ type MailContextValue = {
   setPins: (labelIds: string[]) => void; // a new order
   openCount: (labelId: string) => number; // open cards carrying the label or a sub-label
   reloadPins: () => void;
+  recentLabels: string[]; // label ids most recently applied, newest first
+  noteLabelUsed: (labelId: string) => void;
 };
+
+const RECENT_KEY = "mte.recentLabels";
 
 const MailContext = createContext<MailContextValue | null>(null);
 
@@ -67,6 +71,25 @@ export function MailProvider({ me, children }: { me: string; children: React.Rea
     },
     [labelNames, openCards],
   );
+  // Labels applied lately, offered first when labelling (this browser only).
+  const [recent, setRecent] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+      if (Array.isArray(v)) setRecent(v.filter((x) => typeof x === "string"));
+    } catch {}
+  }, []);
+  const noteLabelUsed = useCallback((labelId: string) => {
+    if (!labelId.startsWith("Label_")) return;
+    setRecent((prev) => {
+      const next = [labelId, ...prev.filter((x) => x !== labelId)].slice(0, 12);
+      try {
+        localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+  const recentLabels = useMemo(() => recent.filter((id) => labelNames.has(id)), [recent, labelNames]);
   const colorOfPath = useMemo(() => makeLabelColorer(labels), [labels]);
   const colorOf = useCallback(
     (labelId: string) => {
@@ -77,7 +100,7 @@ export function MailProvider({ me, children }: { me: string; children: React.Rea
   );
 
   return (
-    <MailContext.Provider value={{ me, labels, labelNames, colorOfPath, colorOf, reloadLabels, pinned, togglePin, setPins, openCount, reloadPins }}>
+    <MailContext.Provider value={{ me, labels, labelNames, colorOfPath, colorOf, reloadLabels, pinned, togglePin, setPins, openCount, reloadPins, recentLabels, noteLabelUsed }}>
       {children}
     </MailContext.Provider>
   );

@@ -20,7 +20,6 @@ export function ListView({
   inLens,
   statusOf,
   mergeEmails,
-  onDoneLanes,
   onOpen,
   onUnfile,
   onNew,
@@ -32,7 +31,6 @@ export function ListView({
   inLens: (e: BoardEmail | undefined) => boolean;
   statusOf: (threadId: string) => string | undefined;
   mergeEmails: (list: BoardEmail[]) => void;
-  onDoneLanes: (laneOf: Record<string, string>) => void; // so an opened Done card shows its status
   onOpen: (threadId: string) => void;
   onUnfile: (threadId: string) => void;
   onNew: (title: string) => Promise<BoardEmail>; // a new card kept as information, filed in the List
@@ -49,7 +47,6 @@ export function ListView({
       if (res.error) setError(res.error);
       // Cards already on the board keep their live state; the rest join it so they can be opened.
       mergeEmails([...res.done, ...res.filed].map((f) => f.card).filter((c) => !emails[c.threadId]));
-      onDoneLanes(Object.fromEntries(res.done.map((d) => [d.card.threadId, d.laneId!])));
       setDone(res.done);
       setFiled(res.filed);
     });

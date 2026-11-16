@@ -14,7 +14,7 @@ import {
   updateCard,
   updateTicket,
 } from "@/app/actions";
-import type { BoardEmail, LaneDTO, ThreadSnapshot } from "@/lib/types";
+import type { BoardEmail, ThreadSnapshot } from "@/lib/types";
 import { gmailLink, isLocalThread, senderName, shortDate } from "@/lib/format";
 import { cardLabelIds, latestThread, senderAddress } from "@/lib/cards";
 import { Drawer, DrawerHeader } from "./Drawer";
@@ -32,9 +32,6 @@ type Props = {
   email: BoardEmail;
   workspaceLabelId: string;
   onLabelsChange: (labelIds: string[]) => void;
-  lanes: LaneDTO[];
-  laneId: string; // UNSORTED when not in a lane
-  onPlace: (laneId: string) => void;
   onChange: (email: BoardEmail) => void;
   onSeenThread: (threadId: string) => void;
   cardChoices: CardChoice[];
@@ -102,19 +99,6 @@ export function EmailPanel(p: Props) {
               )}
             </>
           )}
-          <select
-            value={p.laneId}
-            onChange={(e) => p.onPlace(e.target.value)}
-            className="field ml-auto rounded-xl px-2 py-1 text-bark"
-            aria-label="Status"
-          >
-            <option value={UNSORTED}>Not in a status</option>
-            {p.lanes.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
         </div>
       </DrawerHeader>
 
@@ -422,7 +406,7 @@ function Labels({
   here: string;
   onLabelsChange: (labelIds: string[]) => void;
 }) {
-  const { labels, labelNames, reloadLabels } = useMail();
+  const { labels, labelNames, reloadLabels, recentLabels, noteLabelUsed, colorOf } = useMail();
   const router = useRouter();
   const [query, setQuery] = useState("");
   // "New label for this card": nested under the label being looked through.
@@ -440,12 +424,15 @@ function Labels({
     .slice(0, 8);
   const exact = [{ name: "Inbox" }, ...labels].some((l) => l.name.toLowerCase() === q);
 
-  async function run(fn: () => Promise<{ labelIds?: string[]; error?: string }>) {
+  const recent = recentLabels.filter((id) => !email.labelIds.includes(id)).slice(0, 6);
+
+  async function run(fn: () => Promise<{ labelIds?: string[]; error?: string; label?: { id: string } }>, used?: string) {
     setBusy(true);
     setError("");
     const res = await fn();
     setBusy(false);
     if (res.error) return setError(res.error);
+    if (used ?? res.label?.id) noteLabelUsed((used ?? res.label?.id)!);
     if (res.labelIds) onLabelsChange(res.labelIds);
     setQuery("");
     reloadLabels();
@@ -476,31 +463,55 @@ function Labels({
         ))}
         {current.length === 0 && <span className="text-sm text-muted">No labels.</span>}
       </div>
+      {recent.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-muted">Recent:</span>
+          {recent.map((id) => (
+            <button
+              key={id}
+              disabled={busy}
+              onClick={() => run(() => setEmailLabels(email.threadId, [id], []), id)}
+              className="btn-press inline-flex items-center gap-1 rounded-full border border-dashed border-line-strong px-2 py-0.5 text-xs font-semibold text-bark hover:border-terracotta hover:text-terracotta disabled:opacity-50"
+              title="Add this label"
+            >
+              <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: colorOf(id) }} />+ {labelNames.get(id)!.split("/").join(" › ")}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="relative mt-2">
         <input
           value={query}
           disabled={busy}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Add a label… (type to search or create one)"
+          placeholder="Add a label… (type to search or create; Clients/JR makes a sub-label)"
           className="w-full field rounded-xl px-2.5 py-1.5 text-sm"
         />
         {q && (
           <div className="absolute z-10 mt-1 w-full rounded-md border border-line bg-cream py-1 shadow-lg">
             {options.map((l) => (
-              <button
-                key={l.id}
-                onClick={() => run(() => setEmailLabels(email.threadId, [l.id], []))}
-                className="block w-full truncate px-3 py-1 text-left text-sm hover:bg-oat"
-              >
-                {l.name.split("/").join(" › ")}
-              </button>
+              <div key={l.id} className="flex items-center hover:bg-oat">
+                <button
+                  onClick={() => run(() => setEmailLabels(email.threadId, [l.id], []), l.id)}
+                  className="min-w-0 flex-1 truncate px-3 py-1 text-left text-sm"
+                >
+                  {l.name.split("/").join(" › ")}
+                </button>
+                <button
+                  onClick={() => setQuery(`${l.name}/`)}
+                  className="shrink-0 px-2 py-1 text-xs font-semibold text-muted hover:text-terracotta"
+                  title={`Make a new label inside ${l.name.split("/").join(" › ")}`}
+                >
+                  + sub-label
+                </button>
+              </div>
             ))}
             {!exact && (
               <button
                 onClick={() => run(() => createLabelForEmail(email.threadId, query))}
                 className="block w-full truncate px-3 py-1 text-left text-sm text-terracotta hover:bg-oat"
               >
-                + Create label “{query.trim()}”
+                + Create label “{query.trim().split("/").filter(Boolean).join(" › ")}”
               </button>
             )}
           </div>
