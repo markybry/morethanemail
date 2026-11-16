@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { ThemeId } from "@/lib/themes";
 import { MailProvider } from "./MailContext";
+import { SearchBar } from "./SearchBar";
 import { Sidebar } from "./Sidebar";
 import { SidebarSlotProvider } from "./SidebarSlot";
 import { ThemeIcon, ThemeProvider, useTheme } from "./ThemeContext";
@@ -38,10 +39,19 @@ function Frame({ user, children }: { user: User; children: React.ReactNode }) {
           ☰
         </button>
         <ThemeIcon icon={theme.icons.logo} size={22} className="text-xl" />
-        <span className="font-display text-base font-semibold">More Than Email</span>
+        <Suspense>
+          <SearchBar className="min-w-0 flex-1" />
+        </Suspense>
       </header>
       <Sidebar user={user} mobileOpen={menuOpen} onClose={() => setMenuOpen(false)} slotRef={setSlot} />
-      <main className="min-h-0 min-w-0 flex-1">{children}</main>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="shrink-0 border-b border-line bg-cream px-4 py-2 max-md:hidden">
+          <Suspense>
+            <SearchBar className="max-w-2xl" />
+          </Suspense>
+        </div>
+        <main className="min-h-0 min-w-0 flex-1">{children}</main>
+      </div>
     </div>
     </SidebarSlotProvider>
   );

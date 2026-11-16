@@ -37,13 +37,15 @@ export type BoardEmail = ThreadSnapshot & {
   summary: string; // where things stand and what was decided
   threads: CardThread[];
   partOf: string | null; // for a thread added to another card: that card's threadId
-  hidden: boolean; // hidden from the first column until a newer message arrives
+  done: boolean; // in a finished status: off the board, in File > Done
+  doneLaneId: string | null; // that finished status
+  hidden: boolean; // filed (File > Filed) until a newer message arrives
   activity: ActivityDTO[]; // the card's latest few changes, newest first
 };
 
 // reopenOnReply: a new reply sends the email back to unsorted for triage.
 // finished: work here is done; its cards don't count as open, moving a card
-// here archives it in Gmail, and it drops off after two weeks.
+// here takes it off the board into File > Done (Gmail is left alone).
 // since: when each card came into this status (ISO), by threadId.
 export type LaneDTO = {
   id: string;

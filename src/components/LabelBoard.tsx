@@ -27,7 +27,6 @@ import {
   applyLaneTemplate,
   arrangeEmails,
   createLane,
-  createTicket,
   deleteLaneTemplate,
   deleteTicket,
   deleteLane,
@@ -47,7 +46,6 @@ import {
   updateTask,
 } from "@/app/actions";
 import type { BoardEmail, LaneDTO, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "@/lib/types";
-import { GROUP_BY, GROUP_BY_NAMES, groupThreads, isGroupBy, type GroupBy } from "@/lib/grouping";
 import { CardFace, CardBoardContext, type CardAge } from "./CardFace";
 import { EmailPanel, UNSORTED, type CardChoice } from "./EmailPanel";
 import { cardLabelIds, senderAddress } from "@/lib/cards";
@@ -60,9 +58,6 @@ import { CalendarBoard } from "./CalendarBoard";
 import { FileView } from "./FileView";
 import type { Due } from "./DuePicker";
 
-const PRIMARY_KEY = "mte.inboxPrimaryOnly";
-const RECENT_KEY = "mte.firstColumnRecent";
-const GROUP_KEY = "mte.unsortedGroupBy";
 const VIEW_KEY = "mte.boardView"; // "lanes", "calendar" or "file"
 type BoardView = "lanes" | "calendar" | "file";
 const VIEWS: { id: BoardView; name: string }[] = [
@@ -188,6 +183,10 @@ export function LabelBoard({
 
   const placed = useMemo(() => new Set(lanes.flatMap((l) => l.threadIds)), [lanes]);
   const placedRef = useRef(placed);
+  const lanesRef = useRef(lanes);
+  useEffect(() => {
+    lanesRef.current = lanes;
+  }, [lanes]);
   const emailsRef = useRef(emails);
   useEffect(() => {
     placedRef.current = placed;
@@ -195,10 +194,10 @@ export function LabelBoard({
   }, [placed, emails]);
 
   // ----- the label's emails from Gmail (unsorted column) -----
-  const [primaryOnly, setPrimaryOnly] = useState(true);
+  const primaryOnly = false; // every inbox tab, so nothing is missed
   // The first column shows what's left to triage, or everything recent (newest
   // first, cards already in a status included) so nothing active is out of sight.
-  const [recent, setRecent] = useState(false);
+  const recent = false; // the first column is always the one list of mail not yet in a status
   const [recentIds, setRecentIds] = useState<string[]>([]);
   // Labelled mail older than this counts as done (not used for the Inbox itself).
   const [triageFrom, setTriageFromState] = useState(initialTriageFrom);
@@ -210,7 +209,6 @@ export function LabelBoard({
   const [view, setView] = useState<BoardView>("lanes");
   // Done cards opened from File that have left the board: their finished status.
   const [doneLanes, setDoneLanes] = useState<Record<string, string>>({});
-  const [query, setQuery] = useState("");
   const [loadedQuery, setLoadedQuery] = useState("");
   const [nextPage, setNextPage] = useState<string | undefined>();
   const [listState, setListState] = useState<"loading" | "idle" | "error">("loading");
@@ -236,9 +234,23 @@ export function LabelBoard({
       setRecentIds((prev) => (pageToken ? [...prev, ...cardIds.filter((id) => !prev.includes(id))] : cardIds));
       const missing = cardIds.filter((id) => !emailsRef.current[id] && !res.emails.some((e) => e.threadId === id));
       if (missing.length) void refreshEmails(missing).then((r) => mergeEmails(r.emails));
-      // Cards already in a status, and emails added to a card, aren't unsorted.
+      // Cards already in a status, Done cards, and emails added to a card, aren't unsorted.
+      // A Done card with a new reply comes back to triage (and out of Done).
+      const reopens = new Set(lanesRef.current.filter((l) => l.reopenOnReply).map((l) => l.id));
+      const reopenedDone = res.emails
+        .filter((e) => e.done && e.newReply && !e.partOf && !!e.doneLaneId && reopens.has(e.doneLaneId))
+        .map((e) => e.threadId);
+      if (reopenedDone.length) {
+        setEmails((prev) => {
+          const next = { ...prev };
+          for (const id of reopenedDone) if (next[id]) next[id] = { ...next[id], done: false, doneLaneId: null };
+          return next;
+        });
+        void save(() => arrangeEmails(workspace.id, { lanes: [], unsorted: reopenedDone, snapshots: [] }), () => {});
+      }
       const ids = res.emails
         .filter((e) => !placedRef.current.has(e.threadId) && !(e.homeId && e.homeId !== workspace.id) && !e.partOf)
+        .filter((e) => !e.done || reopenedDone.includes(e.threadId))
         .map((e) => e.threadId);
       // Tickets with no email aren't in Gmail's list; keep the unsorted ones (matching a search).
       const needle = q.toLowerCase();
@@ -258,8 +270,6 @@ export function LabelBoard({
 
   useEffect(() => {
     try {
-      setPrimaryOnly(localStorage.getItem(PRIMARY_KEY) !== "false");
-      setRecent(localStorage.getItem(RECENT_KEY) === "true");
       const v = localStorage.getItem(VIEW_KEY);
       if (v === "calendar" || v === "file") setView(v);
     } catch {}
@@ -284,20 +294,6 @@ export function LabelBoard({
     setView(v);
     try {
       localStorage.setItem(VIEW_KEY, v);
-    } catch {}
-  };
-
-  const changeRecent = (v: boolean) => {
-    setRecent(v);
-    try {
-      localStorage.setItem(RECENT_KEY, String(v));
-    } catch {}
-  };
-
-  const changePrimaryOnly = (v: boolean) => {
-    setPrimaryOnly(v);
-    try {
-      localStorage.setItem(PRIMARY_KEY, String(v));
     } catch {}
   };
 
@@ -346,15 +342,9 @@ export function LabelBoard({
     if (from !== to && to !== UNSORTED) {
       const now = new Date().toISOString();
       setLanes((prev) => prev.map((l) => (l.id === to ? { ...l, since: { ...l.since, [threadId]: now } } : l)));
-      // A finished status archives the card in Gmail (done on the server); show it here too.
-      if (lanes.find((l) => l.id === to)?.finished)
-        setEmails((prev) => {
-          const e = prev[threadId];
-          if (!e) return prev;
-          const out = (ids: string[]) => ids.filter((x) => x !== "INBOX");
-          return { ...prev, [threadId]: { ...e, labelIds: out(e.labelIds), threads: e.threads.map((t) => ({ ...t, labelIds: out(t.labelIds) })) } };
-        });
     }
+    // A finished status takes the card off the board (it's in File > Done); Gmail is left alone.
+    const finished = from !== to && !!lanes.find((l) => l.id === to)?.finished;
     const affected = new Set([from, to].filter((x): x is string => !!x && x !== UNSORTED));
     const email = emails[threadId];
     await save(
@@ -366,6 +356,13 @@ export function LabelBoard({
         }),
       () => apply(before),
     );
+    if (!finished && emails[threadId]?.done)
+      setEmails((prev) => (prev[threadId] ? { ...prev, [threadId]: { ...prev[threadId], done: false, doneLaneId: null } } : prev));
+    if (finished) {
+      setLanes((prev) => prev.map((l) => (l.id === to ? { ...l, threadIds: l.threadIds.filter((x) => x !== threadId) } : l)));
+      setEmails((prev) => (prev[threadId] ? { ...prev, [threadId]: { ...prev[threadId], done: true, doneLaneId: to } } : prev));
+      if (selected === threadId) setSelected(null);
+    }
   };
 
   // Several emails into one status (and row) at once, saved one after another.
@@ -452,10 +449,6 @@ export function LabelBoard({
   // Hidden emails ("doesn't need tracking") fold into a list at the bottom of the column.
   const shownUnsorted = useMemo(() => inFirstColumn.filter((t) => !emails[t]?.hidden), [inFirstColumn, emails]);
   const shownRecent = useMemo(() => inRecent.filter((t) => !emails[t]?.hidden), [inRecent, emails]);
-  const hiddenIds = useMemo(
-    () => (recent ? inRecent : inFirstColumn).filter((t) => emails[t]?.hidden),
-    [recent, inRecent, inFirstColumn, emails],
-  );
   const statusOf = (threadId: string) => lanes.find((l) => l.threadIds.includes(threadId))?.name;
   const shownPlaced = shownLanes.reduce((n, l) => n + l.threadIds.length, 0);
   // Rows with the most cards first, so empty sub-labels sink to the bottom.
@@ -987,20 +980,15 @@ export function LabelBoard({
           picked={pickedShown}
           onPick={pick}
           bulk={bulk}
-          title={recent && isInbox ? "Recent" : title}
+          title={title}
           labelId={sourceLabelId}
           isLens={!!lens}
           isInbox={isInbox}
-          recent={recent}
-          onRecentChange={changeRecent}
           statusOf={statusOf}
-          primaryOnly={primaryOnly}
-          onPrimaryOnlyChange={changePrimaryOnly}
           threadIds={recent ? shownRecent : shownUnsorted}
           emails={emails}
           sortedCount={shownPlaced}
           newReplies={newReplies}
-          query={query}
           searching={!!loadedQuery}
           state={listState}
           error={listError}
@@ -1014,26 +1002,15 @@ export function LabelBoard({
             setTriageFromState(at);
             setShowOlder(false);
           }}
-          hiddenIds={hiddenIds}
           onHide={(id) => void hide(id, true)}
           onTrash={(id) => void trash(id)}
-          onUnhide={(id) => void hide(id, false)}
           onArchive={isInbox && !recent ? (id) => void archive(id, selected === id) : undefined}
           selected={selected}
-          onQueryChange={setQuery}
-          onSearch={() => {
-            void load(query.trim());
+          onRefresh={() => {
+            void load("");
             reloadLabels();
           }}
           onLoadMore={() => load(loadedQuery, nextPage)}
-          onNewTicket={(title) =>
-            save(async () => {
-              const ticket = await createTicket(workspace.id, title, lens?.labelId);
-              mergeEmails([ticket]);
-              setUnsorted((prev) => [ticket.threadId, ...prev]);
-              setSelected(ticket.threadId);
-            }, () => {})
-          }
           onOpen={setSelected}
           look={look}
         />
@@ -1227,7 +1204,7 @@ export function LabelBoard({
             else if (!containerOf(t, { lanes, unsorted })) setUnsorted((prev) => byDate([...prev, t]));
           }}
           lanes={lanes}
-          laneId={containerOf(selectedEmail.threadId, { lanes, unsorted }) ?? doneLanes[selectedEmail.threadId] ?? UNSORTED}
+          laneId={containerOf(selectedEmail.threadId, { lanes, unsorted }) ?? selectedEmail.doneLaneId ?? doneLanes[selectedEmail.threadId] ?? UNSORTED}
           onPlace={(laneId) => place(selectedEmail.threadId, laneId)}
           onChange={(e) => mergeEmails([e])}
           onSeenThread={(t) => seenThread(selectedEmail.threadId, t)}
@@ -1290,58 +1267,30 @@ function UnsortedColumn(p: {
   cutoff: { from: string | null; applies: boolean } | null; // null in the Inbox's own triage column
   onShowOlder: (v: boolean) => void;
   onMarkOlderDone: (clear: boolean) => Promise<void>;
-  hiddenIds: string[];
   onHide: (threadId: string) => void;
   onTrash: (threadId: string) => void;
-  onUnhide: (threadId: string) => void;
   onArchive?: (threadId: string) => void;
   title: string;
   labelId: string;
   isLens: boolean;
   isInbox: boolean;
-  recent: boolean;
-  onRecentChange: (v: boolean) => void;
   statusOf: (threadId: string) => string | undefined;
-  primaryOnly: boolean;
-  onPrimaryOnlyChange: (v: boolean) => void;
   threadIds: string[];
   emails: Record<string, BoardEmail>;
   sortedCount: number;
   newReplies: number;
-  query: string;
   searching: boolean;
   state: "loading" | "idle" | "error";
   error: string;
   hasMore: boolean;
   selected: string | null;
-  onQueryChange: (q: string) => void;
-  onSearch: () => void;
+  onRefresh: () => void;
   onLoadMore: () => void;
-  onNewTicket: (title: string) => Promise<void>;
   onOpen: (threadId: string) => void;
   look: ReturnType<typeof useTheme>["theme"];
 }) {
-  const [ticket, setTicket] = useState<string | null>(null);
   const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${UNSORTED}` });
   const w = useStoredWidth("mte.w.unsorted", 320, 220, 720);
-  const { labelNames } = useMail();
-  const [groupBy, setGroupBy] = useState<GroupBy>("none");
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(GROUP_KEY);
-      if (isGroupBy(saved)) setGroupBy(saved);
-    } catch {}
-  }, []);
-  const changeGroupBy = (v: GroupBy) => {
-    setGroupBy(v);
-    try {
-      localStorage.setItem(GROUP_KEY, v);
-    } catch {}
-  };
-  const groups = useMemo(
-    () => groupThreads(p.threadIds, p.emails, groupBy, { labelNames, hereLabelId: p.labelId }),
-    [p.threadIds, p.emails, groupBy, labelNames, p.labelId],
-  );
   return (
     <aside
       id="col-unsorted"
@@ -1361,111 +1310,27 @@ function UnsortedColumn(p: {
           {p.laneCount > 0 && (
             <span
               className="shrink-0 cursor-help text-sm text-muted"
-              title={`Keys, with an email open: 1–${Math.min(p.laneCount, 9)} files it into a status${p.onArchive ? ", e archives it" : ""}, h hides it, # deletes it, x picks it. Shift-click picks a run of emails. Drop an email onto a card to add it to that card.`}
+              title={`Keys, with an email open: 1–${Math.min(p.laneCount, 9)} files it into a status${p.onArchive ? ", e archives it" : ""}, f files it, # deletes it, x picks it. Shift-click picks a run of emails. Drop an email onto a card to add it to that card.`}
             >
               ⌨
             </span>
           )}
-          {p.isInbox && !p.recent && (
-            <div className="flex shrink-0 overflow-hidden rounded-full border border-line-strong bg-cream text-xs font-semibold">
-              {[true, false].map((v) => (
-                <button
-                  key={String(v)}
-                  onClick={() => p.onPrimaryOnlyChange(v)}
-                  className={`px-2.5 py-0.5 transition ${
-                    p.primaryOnly === v ? "bg-moss text-cream" : "text-bark hover:bg-oat"
-                  }`}
-                >
-                  {v ? "Primary" : "All tabs"}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex overflow-hidden rounded-full border border-line-strong bg-cream text-xs font-semibold">
-          {[false, true].map((v) => (
-            <button
-              key={String(v)}
-              onClick={() => p.onRecentChange(v)}
-              className={`flex-1 px-2.5 py-0.5 transition ${p.recent === v ? "bg-moss text-cream" : "text-bark hover:bg-oat"}`}
-              title={v ? "Labelled mail that isn't in a status yet, newest first" : "Emails not yet in a status"}
-            >
-              {v ? "Recent" : "To triage"}
-            </button>
-          ))}
+          <button onClick={p.onRefresh} className="btn-press shrink-0 rounded-lg bg-oat px-2 py-0.5 text-sm text-bark" title="Refresh" aria-label="Refresh">
+            ↻
+          </button>
         </div>
         {p.isLens && (
           <p className="text-xs text-muted">
             Your workflow, showing only this label&apos;s cards.{" "}
             <Link href="/l/INBOX" className="font-semibold text-terracotta hover:underline">
-              Back to Inbox
+              Back to Workspace
             </Link>
           </p>
         )}
-        <form
-          className="flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            p.onSearch();
-          }}
-        >
-          <input
-            value={p.query}
-            onChange={(e) => p.onQueryChange(e.target.value)}
-            placeholder="🔎 Search this label"
-            className="field min-w-0 flex-1 rounded-xl px-2.5 py-1.5 text-sm"
-          />
-          <button className="btn-press rounded-xl bg-oat px-2.5 text-sm text-bark" title="Search / refresh">
-            ↻
-          </button>
-        </form>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-        {ticket === null ? (
-          <button onClick={() => setTicket("")} className="text-xs font-semibold text-terracotta hover:underline">
-            + New ticket (no email)
-          </button>
-        ) : (
-          <form
-            className="flex w-full gap-1.5"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!ticket.trim()) return;
-              await p.onNewTicket(ticket);
-              setTicket(null);
-            }}
-          >
-            <input
-              autoFocus
-              value={ticket}
-              onChange={(e) => setTicket(e.target.value)}
-              onKeyDown={(e) => e.key === "Escape" && setTicket(null)}
-              placeholder="What needs doing?"
-              className="field min-w-0 flex-1 rounded-xl px-2.5 py-1 text-sm"
-            />
-            <button disabled={!ticket.trim()} className="btn-press rounded-xl bg-moss px-2.5 text-sm font-bold text-cream disabled:opacity-50">
-              Add
-            </button>
-          </form>
-        )}
-        <label className="flex items-center gap-1.5 text-xs font-semibold text-muted">
-          Group by
-          <select
-            value={groupBy}
-            onChange={(e) => changeGroupBy(e.target.value as GroupBy)}
-            className="field rounded-lg px-1.5 py-0.5 text-xs text-bark"
-          >
-            {GROUP_BY.map((g) => (
-              <option key={g} value={g}>
-                {GROUP_BY_NAMES[g]}
-              </option>
-            ))}
-          </select>
-        </label>
-        </div>
         <p className="text-xs font-semibold text-muted">
-          {p.searching ? "Search results" : p.recent ? (p.isInbox ? "Labelled, not in a status yet, newest first" : "Not in a status yet, newest first") : "Not in a status yet"}
-          {!p.recent && ` · ${p.threadIds.length}${p.hasMore ? "+" : ""}`}
-          {!p.recent && p.sortedCount > 0 && ` · ${p.sortedCount} in statuses`}
+          {p.searching ? "Search results" : "Not in a status yet"}
+          {` · ${p.threadIds.length}${p.hasMore ? "+" : ""}`}
+          {p.sortedCount > 0 && ` · ${p.sortedCount} in statuses`}
           {p.newReplies > 0 && (
             <span className="text-accent-ink">
               {" · "}
@@ -1478,15 +1343,7 @@ function UnsortedColumn(p: {
         {p.draggingFromStatus && <DropBack />}
         {p.picked.length > 0 && <BulkBar count={p.picked.length} {...p.bulk} />}
         {p.state === "error" && <p className="p-2 text-sm text-red-600">{p.error}</p>}
-        {groups.map((g) => (
-          <div key={g.key} className="space-y-2.5">
-            {g.title && (
-              <h4 className="sticky top-0 z-[1] -mx-2.5 flex items-baseline gap-2 bg-paper/95 px-3 pt-1 pb-0.5 text-xs font-bold text-bark">
-                <span className="min-w-0 flex-1 truncate">{g.title}</span>
-                <span className="text-muted">{g.threadIds.length}</span>
-              </h4>
-            )}
-            {g.threadIds.map((id) =>
+            {p.threadIds.map((id) =>
               p.emails[id] ? (
                 p.statusOf(id) ? (
                   // Already in a status: shown for the record, opened with a click.
@@ -1518,8 +1375,6 @@ function UnsortedColumn(p: {
                 )
               ) : null,
             )}
-          </div>
-        ))}
         {p.state === "loading" && (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
@@ -1564,25 +1419,6 @@ function UnsortedColumn(p: {
               </>
             )}
           </div>
-        )}
-        {p.hiddenIds.length > 0 && (
-          <details className="rounded-2xl border border-dashed border-line px-3 py-2">
-            <summary className="cursor-pointer text-xs font-semibold text-muted">
-              Filed · {p.hiddenIds.length} <span className="font-normal">(just information; all of it is in the File view)</span>
-            </summary>
-            <ul className="mt-2 space-y-1">
-              {p.hiddenIds.map((id) => (
-                <li key={id} className="flex items-baseline gap-2 text-sm">
-                  <button onClick={() => p.onOpen(id)} className="min-w-0 flex-1 truncate text-left text-bark hover:text-terracotta">
-                    {p.emails[id]?.title}
-                  </button>
-                  <button onClick={() => p.onUnhide(id)} className="shrink-0 text-xs font-semibold text-muted hover:text-terracotta">
-                    Back to triage
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </details>
         )}
         {p.state === "idle" && p.hasMore && (
           <button onClick={p.onLoadMore} className="btn-press w-full rounded-xl bg-oat p-2 text-sm font-semibold text-bark">
@@ -1804,7 +1640,7 @@ function Lane({
           </span>
         )}
         {lane.finished && (
-          <span className="text-xs text-muted" title="Finished: cards here are archived in Gmail and drop off after two weeks">
+          <span className="text-xs text-muted" title="Finished: cards dropped here leave the board and go to File > Done">
             ✓
           </span>
         )}
@@ -1826,8 +1662,8 @@ function Lane({
             className={`px-1 text-xs ${lane.finished ? "font-bold text-terracotta" : "text-muted"}`}
             title={
               lane.finished
-                ? "Finished: cards moved here are archived in Gmail and drop off after two weeks. Click to stop."
-                : "Mark as finished: cards moved here are archived in Gmail and drop off after two weeks"
+                ? "Finished: cards dropped here leave the board and go to File > Done. Click to stop."
+                : "Mark as finished: cards dropped here leave the board and go to File > Done"
             }
             aria-pressed={lane.finished}
           >
@@ -1843,6 +1679,11 @@ function Lane({
         </div>
       </div>
       <div ref={setNodeRef} className={`flex min-h-24 flex-1 flex-col gap-2.5 overflow-y-auto px-2.5 pb-2.5 ${isOver && !rows ? "rounded-2xl bg-cream/50" : ""}`}>
+        {lane.finished && lane.threadIds.length === 0 && (
+          <p className="rounded-2xl border-2 border-dashed border-line px-3 py-4 text-center text-xs text-muted">
+            Drop a card here when it&apos;s done. It leaves the board and is kept in File › Done.
+          </p>
+        )}
         {rows ? (
           rows.map((r) => {
             const ids = lane.threadIds.filter((t) => rowOf(emails[t]) === r.key);

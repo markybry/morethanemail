@@ -96,7 +96,7 @@ export function FileView({
       </div>
 
       <p className="mb-2 text-xs text-muted">
-        {tab === "done" && "Cards that reached a finished status. They leave the board after two weeks but stay here."}
+        {tab === "done" && "Cards moved to a finished status. They leave the board and are kept here; Gmail is left as it is."}
         {tab === "filed" && "Emails filed from triage as information: no status, no tracking. A new message brings one back to triage."}
         {tab === "all" &&
           (isInbox

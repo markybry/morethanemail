@@ -12,7 +12,7 @@ export const emailInclude = {
   notes: { orderBy: { createdAt: "desc" } },
   tasks: { orderBy: { position: "asc" } },
   links: { orderBy: { createdAt: "asc" } },
-  placements: { select: { workspaceId: true } },
+  placements: { select: { workspaceId: true, lane: { select: { id: true, finished: true } } } },
   threads: { select: threadFields },
   parent: { select: { threadId: true } },
   // Notes are shown from notes themselves, so they're left out here.
@@ -24,7 +24,7 @@ type EmailWithMeta = Email & {
   notes: Note[];
   tasks: Task[];
   links: TicketLink[];
-  placements?: { workspaceId: string }[];
+  placements?: { workspaceId: string; lane: { id: string; finished: boolean } }[];
   threads?: StoredThread[];
   parent?: { threadId: string } | null;
   activity?: { kind: string; detail: string; createdAt: Date }[];
@@ -76,6 +76,8 @@ export function toBoardEmail(stored: EmailWithMeta | undefined, live?: ThreadSum
     summary: stored?.summary ?? "",
     threads,
     partOf: stored?.parent?.threadId ?? null,
+    done: !!stored?.placements?.some((p) => p.lane.finished),
+    doneLaneId: stored?.placements?.find((p) => p.lane.finished)?.lane.id ?? null,
     hidden: !!stored?.hiddenAt && new Date(threads[0].date).getTime() <= stored.hiddenAt.getTime(),
     activity: stored?.activity?.map((a) => ({ kind: a.kind, detail: a.detail, at: a.createdAt.toISOString() })) ?? [],
   };
@@ -120,9 +122,6 @@ export function upsertEmail(userId: string, t: ThreadSnapshot) {
     update: snapshotData(t),
   });
 }
-
-// How long a finished card stays on the board.
-export const FINISHED_SHOWN_DAYS = 14;
 
 // The statuses a new main workflow starts with. Waiting and Done send a card
 // back to the Inbox column when a reply arrives.
@@ -185,13 +184,8 @@ export async function loadWorkspace(
       },
     },
   });
-  // Finished cards drop off the board two weeks after they got there (they're
-  // still found through their labels, Recent and search).
-  const cutoff = Date.now() - FINISHED_SHOWN_DAYS * 86_400_000;
-  const lanes = ws.lanes.map((l) => ({
-    ...l,
-    shown: l.placements.filter((p) => !(l.finished && p.movedAt.getTime() < cutoff)),
-  }));
+  // Finished cards leave the board straight away; they're in File > Done.
+  const lanes = ws.lanes.map((l) => ({ ...l, shown: l.finished ? [] : l.placements }));
   const placedIds = new Set(ws.lanes.flatMap((l) => l.placements.map((p) => p.email.threadId)));
   const emails: Record<string, BoardEmail> = {};
   for (const l of lanes) for (const p of l.shown) emails[p.email.threadId] = toBoardEmail(p.email);

@@ -129,6 +129,52 @@ export async function searchMail(query: string): Promise<ListResult> {
   }
 }
 
+// The search bar: all mail (Gmail's own search, so from:, subject:, has:attachment
+// and the rest work), plus cards whose title, summary, notes or tasks match.
+export type CardHit = { threadId: string; title: string; from: string; date: string; local: boolean; where: string };
+export async function searchEverything(
+  query: string,
+  pageToken?: string,
+): Promise<{ emails: BoardEmail[]; cards: CardHit[]; nextPageToken?: string; error?: string }> {
+  const user = await requireUser();
+  const q = query.trim().slice(0, 500);
+  if (!q) return { emails: [], cards: [] };
+  const contains = { contains: q, mode: "insensitive" as const };
+  const cardsQuery = pageToken
+    ? Promise.resolve([])
+    : db.email.findMany({
+        where: {
+          userId: user.id,
+          parentId: null,
+          OR: [
+            { title: contains },
+            { summary: contains },
+            { workspaceId: { not: null }, snippet: contains }, // a ticket's description
+            { notes: { some: { body: contains } } },
+            { tasks: { some: { title: contains } } },
+          ],
+        },
+        orderBy: { date: "desc" },
+        take: 20,
+        select: { threadId: true, title: true, subject: true, from: true, date: true, workspaceId: true, summary: true, notes: { where: { body: contains }, take: 1, select: { body: true } }, tasks: { where: { title: contains }, take: 1, select: { title: true } } },
+      });
+  try {
+    const [res, stored] = await Promise.all([listThreads(user, { query: q, pageToken }), cardsQuery]);
+    const cards = stored.map((c) => ({
+      threadId: c.threadId,
+      title: c.title || c.subject,
+      from: c.from,
+      date: c.date.toISOString(),
+      local: c.workspaceId !== null,
+      where: c.tasks[0] ? `Task: ${c.tasks[0].title}` : c.notes[0] ? `Note: ${c.notes[0].body}` : c.summary,
+    }));
+    return { emails: await withStoredMeta(user.id, res.threads), cards, nextPageToken: res.nextPageToken };
+  } catch (e) {
+    console.error("searchEverything failed", e);
+    return { emails: [], cards: [], error: mailErrorMessage(e) };
+  }
+}
+
 export async function fetchLabels(): Promise<{ labels: MailLabel[]; error?: string }> {
   const user = await requireUser();
   try {
@@ -257,7 +303,7 @@ export async function setLaneReopenOnReply(laneId: string, reopenOnReply: boolea
   revalidateBoards();
 }
 
-// A finished status: moving a card there archives it, and it drops off later.
+// A finished status: moving a card there takes it off the board and into File > Done. Gmail is left as it is.
 export async function setLaneFinished(laneId: string, finished: boolean) {
   await ownLane(laneId);
   await db.lane.update({ where: { id: laneId }, data: { finished } });
@@ -533,26 +579,6 @@ export async function arrangeEmails(
     ),
     db.activity.createMany({ data: moves.map((m) => ({ userId: user.id, workspaceId, kind: "moved", ...m })) }),
   ]);
-  // Cards that just reached a finished status are archived in Gmail, every thread.
-  const finishedLanes = new Set(
-    (await db.lane.findMany({ where: { id: { in: laneIds }, finished: true }, select: { id: true } })).map((l) => l.id),
-  );
-  const finishedIds = change.lanes
-    .filter((l) => finishedLanes.has(l.laneId))
-    .flatMap((l) => l.threadIds)
-    .filter((t) => idOf.has(t) && laneBefore.get(idOf.get(t)!) !== change.lanes.find((x) => x.threadIds.includes(t))?.laneId);
-  if (finishedIds.length) {
-    const cards = await db.email.findMany({
-      where: { userId: user.id, threadId: { in: finishedIds } },
-      select: { threadId: true, labelIds: true, threads: { select: { threadId: true, labelIds: true } } },
-    });
-    const inInbox = cards.flatMap((c) => [c, ...c.threads]).filter((t) => t.labelIds.includes("INBOX")).map((t) => t.threadId);
-    try {
-      await archiveFor(user, inInbox);
-    } catch (e) {
-      console.error("Archiving finished cards failed", e);
-    }
-  }
   revalidateBoards();
 }
 
