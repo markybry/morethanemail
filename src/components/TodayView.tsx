@@ -10,7 +10,7 @@ import { WaitingForReplies } from "./WaitingForReplies";
 
 type OnBoard = { card: BoardEmail; status: string };
 
-// Today, seen through the open label (All shows everything): replies you're
+// Summary (the "today" view), seen through the open label (All shows everything): replies you're
 // owed, one next action per card, new replies, cards stuck too long, and what
 // you opened lately. Each section has its own place so nothing gets lost.
 export function TodayView({

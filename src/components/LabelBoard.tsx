@@ -63,13 +63,13 @@ import { TodayView } from "./TodayView";
 import { FileUnder } from "./FileUnder";
 import type { Due } from "./DuePicker";
 
-const VIEW_KEY = "mte.boardView"; // "list", "lanes", "calendar" or "today"
+const VIEW_KEY = "mte.view"; // the last view picked: "today" (Summary, the default), "list", "lanes" or "calendar"
 type BoardView = "lanes" | "calendar" | "list" | "today";
 const VIEWS: { id: BoardView; name: string }[] = [
+  { id: "today", name: "☀ Summary" },
   { id: "list", name: "☰ List" },
   { id: "lanes", name: "▥ Lanes" },
   { id: "calendar", name: "▦ Calendar" },
-  { id: "today", name: "☀ Today" },
 ];
 
 // Each lane gets its own colour (defined per theme in globals.css) and an
@@ -222,7 +222,7 @@ export function LabelBoard({
   const [showOlder, setShowOlder] = useState(false);
   const cutoffApplies = !!triageFrom && !showOlder;
   const [prefsReady, setPrefsReady] = useState(false);
-  const [view, setView] = useState<BoardView>("list");
+  const [view, setView] = useState<BoardView>("today");
   // Senders ignored earlier (listed in Settings) stay out of the Inbox column.
   const ignored = useMemo(() => new Set(initialIgnored), [initialIgnored]);
   // A finished status that just took a card: it says so for a moment.
@@ -295,8 +295,7 @@ export function LabelBoard({
   useEffect(() => {
     try {
       const v = localStorage.getItem(VIEW_KEY);
-      if (v === "calendar" || v === "lanes" || v === "today") setView(v);
-      else if (v === "file") setView("list"); // the view was called File before
+      if (v === "calendar" || v === "lanes" || v === "list") setView(v);
     } catch {}
     setPrefsReady(true);
   }, []);
@@ -1069,7 +1068,7 @@ export function LabelBoard({
           columns={[
             { id: "unsorted", name: isInbox ? "Inbox" : "To triage", count: shownUnsorted.length },
             ...(view !== "lanes"
-              ? [{ id: view, name: view === "list" ? "List" : view === "today" ? "Today" : "Calendar", count: null }]
+              ? [{ id: view, name: view === "list" ? "List" : view === "today" ? "Summary" : "Calendar", count: null }]
               : [...shownLanes.map((l) => ({ id: l.id, name: l.name, count: l.threadIds.length })), { id: "add", name: "+ Status", count: null }]),
           ]}
         />
