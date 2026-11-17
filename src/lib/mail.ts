@@ -271,3 +271,37 @@ function decodeEntities(s: string) {
     .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&");
 }
+
+// Sent mail still waiting for an answer: threads from the last few weeks whose
+// newest message is the user's own (to someone else). Oldest first.
+export type AwaitingReply = { threadId: string; messageId: string; subject: string; to: string[]; date: string };
+export async function listAwaitingReply(user: User, days = 30): Promise<AwaitingReply[]> {
+  if (user.isDemo) return [];
+  const me = user.email.toLowerCase();
+  const addressOf = (v: string) => (v.match(/<([^>]+)>/)?.[1] ?? v).trim().toLowerCase();
+  const gmail = gmailFor(user);
+  const res = await gmail.users.threads.list({ userId: "me", q: `in:sent newer_than:${days}d -in:chats`, maxResults: 50 });
+  const ids = (res.data.threads ?? []).map((t) => t.id!).filter(Boolean);
+  const found = await Promise.all(
+    ids.map(async (id): Promise<AwaitingReply | null> => {
+      try {
+        const t = await gmail.users.threads.get({ userId: "me", id, format: "metadata", metadataHeaders: ["From", "To", "Cc", "Subject"] });
+        // Drafts and trashed messages don't count as the last word.
+        const msgs = (t.data.messages ?? []).filter((m) => !m.labelIds?.includes("DRAFT") && !m.labelIds?.includes("TRASH"));
+        const last = msgs[msgs.length - 1];
+        if (!last || addressOf(header(last, "From")) !== me) return null;
+        const to = [header(last, "To"), header(last, "Cc")]
+          .join(",")
+          .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+          .map((x) => x.trim())
+          .filter((x) => x && addressOf(x) !== me);
+        if (to.length === 0) return null; // a note to self
+        return { threadId: id, messageId: last.id!, subject: header(last, "Subject"), to, date: messageDate(last) };
+      } catch (e) {
+        if ((e as { code?: number }).code === 404) return null;
+        throw e;
+      }
+    }),
+  );
+  return found.filter((x): x is AwaitingReply => x !== null).sort((a, b) => a.date.localeCompare(b.date));
+}

@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { senderName, timeAgo } from "@/lib/format";
 import { DueText } from "@/components/DuePicker";
 import { TaskCheckbox } from "@/components/TaskCheckbox";
+import { WaitingForReplies } from "@/components/WaitingForReplies";
 
 const STALE_DAYS = 7;
 const cardLink = (threadId: string) => `/l/INBOX?thread=${encodeURIComponent(threadId)}`;
@@ -78,6 +79,9 @@ export default async function TodayPage() {
           <Stat i={2} label="New replies" value={replies.length} alert={replies.length > 0} />
           <Stat i={3} label={`Waiting ${STALE_DAYS}+ days`} value={stale.length} alert={stale.length > 0} />
         </div>
+
+        {/* Its own place, so replies you're owed don't get lost among the actions. */}
+        <WaitingForReplies />
 
         <div className="grid gap-6 md:grid-cols-2">
           <Panel title="Next actions">

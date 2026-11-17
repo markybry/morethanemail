@@ -13,6 +13,7 @@ import {
   listThreads,
   mailErrorMessage,
   summarizeThreads,
+  listAwaitingReply,
   type MailLabel,
   type ThreadDetail,
 } from "@/lib/mail";
@@ -872,4 +873,52 @@ export async function saveTheme(theme: string) {
   const user = await requireUser();
   if (!isThemeId(theme)) return;
   await db.user.update({ where: { id: user.id }, data: { theme } });
+}
+
+// ---------- waiting for a reply ----------
+
+export type Waiting = {
+  threadId: string;
+  messageId: string;
+  subject: string;
+  to: string[];
+  date: string;
+  cardId: string | null; // the card it's on, to open (a thread added to a card opens that card)
+  status: string | null; // its status on the Workspace, if it's in one
+  done: boolean; // in a finished status
+};
+
+// Sent emails nobody has answered yet, minus the ones marked "No reply needed".
+export async function fetchWaiting(): Promise<{ items: Waiting[]; error?: string }> {
+  const user = await requireUser();
+  try {
+    const skip = new Set(user.notWaiting);
+    const sent = (await listAwaitingReply(user)).filter((w) => !skip.has(w.messageId));
+    // Where each one is on the Workspace: its card's status, done, or not on the board.
+    const lane = { select: { lane: { select: { name: true, finished: true } } } } as const;
+    const rows = await db.email.findMany({
+      where: { userId: user.id, threadId: { in: sent.map((w) => w.threadId) } },
+      select: { threadId: true, placements: lane, parent: { select: { threadId: true, placements: lane } } },
+    });
+    const byThread = new Map(rows.map((r) => [r.threadId, r]));
+    const items = sent.map((w): Waiting => {
+      const row = byThread.get(w.threadId);
+      const card = row?.parent ?? row;
+      const at = card?.placements[0]?.lane;
+      return { ...w, cardId: card?.threadId ?? null, status: at?.name ?? null, done: !!at?.finished };
+    });
+    return { items };
+  } catch (e) {
+    console.error("fetchWaiting failed", e);
+    return { items: [], error: mailErrorMessage(e) };
+  }
+}
+
+// This sent message needs no answer. A later message in the thread is tracked again.
+export async function notWaiting(messageId: string): Promise<{ error?: string }> {
+  const user = await requireUser();
+  if (!/^[\w-]{1,64}$/.test(messageId)) return { error: "That message can't be found." };
+  const list = [...new Set([...user.notWaiting, messageId])].slice(-500);
+  await db.user.update({ where: { id: user.id }, data: { notWaiting: list } });
+  return {};
 }
