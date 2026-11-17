@@ -12,7 +12,13 @@ const cardLink = (threadId: string) => `/l/INBOX?thread=${encodeURIComponent(thr
 // Emails you sent that nobody has answered yet: the newest message in the thread
 // is yours. Oldest first; each leaves the list by itself when a reply arrives, or
 // with "No reply needed" for the ones that didn't ask for one.
-export function WaitingForReplies() {
+export function WaitingForReplies({
+  keep = () => true,
+  onOpen,
+}: {
+  keep?: (w: Waiting) => boolean; // e.g. only the open label's
+  onOpen?: (threadId: string) => void; // open in place, instead of following a link
+}) {
   const [items, setItems] = useState<Waiting[] | null>(null);
   const [error, setError] = useState("");
 
@@ -34,23 +40,24 @@ export function WaitingForReplies() {
   };
 
   const days = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  const nudges = items?.filter((w) => days(w.date) >= NUDGE_DAYS).length ?? 0;
+  const shown = items?.filter(keep) ?? null;
+  const nudges = shown?.filter((w) => days(w.date) >= NUDGE_DAYS).length ?? 0;
 
   return (
     <section className="paper animate-rise rounded-3xl border border-line p-4">
       <div className="mb-2 flex items-baseline gap-2">
         <h2 className="text-sm font-semibold text-terracotta">⏳ Waiting for a reply</h2>
-        {items && items.length > 0 && (
+        {shown && shown.length > 0 && (
           <span className="text-xs text-muted">
-            {items.length} sent, no answer yet{nudges > 0 && ` · ${nudges} waiting ${NUDGE_DAYS}+ days`}
+            {shown.length} sent, no answer yet{nudges > 0 && ` · ${nudges} waiting ${NUDGE_DAYS}+ days`}
           </span>
         )}
       </div>
       {!items && !error && <Loading text="Checking your sent mail" />}
       {error && <p className="text-sm text-bad-ink">{error}</p>}
-      {items?.length === 0 && <p className="text-sm text-muted">Nobody owes you a reply. Emails you send show here until they answer.</p>}
+      {shown?.length === 0 && <p className="text-sm text-muted">Nobody owes you a reply. Emails you send show here until they answer.</p>}
       <ul className="space-y-1.5">
-        {items?.map((w, i) => {
+        {shown?.map((w, i) => {
           const d = days(w.date);
           const nudge = d >= NUDGE_DAYS;
           return (
@@ -60,9 +67,18 @@ export function WaitingForReplies() {
               style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
             >
               <div className="min-w-0 flex-1">
-                <Link href={cardLink(w.cardId ?? w.threadId)} className="block truncate text-sm font-semibold text-walnut hover:text-terracotta">
-                  {w.subject || "(no subject)"}
-                </Link>
+                {onOpen ? (
+                  <button
+                    onClick={() => onOpen(w.cardId ?? w.threadId)}
+                    className="block max-w-full truncate text-left text-sm font-semibold text-walnut hover:text-terracotta"
+                  >
+                    {w.subject || "(no subject)"}
+                  </button>
+                ) : (
+                  <Link href={cardLink(w.cardId ?? w.threadId)} className="block truncate text-sm font-semibold text-walnut hover:text-terracotta">
+                    {w.subject || "(no subject)"}
+                  </Link>
+                )}
                 <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
                   {/* Where it is on the Workspace. */}
                   <span

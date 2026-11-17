@@ -47,6 +47,7 @@ const hrefFor = (labelId: string) => `/l/${encodeURIComponent(labelId)}`;
 // sub-labels has a › that steps into them, and the heading steps back out.
 // A label is a lens: opening it shows the workflow filtered to that label.
 export function MailNav() {
+  const { theme } = useTheme();
   const { labels, reloadLabels, pinned, togglePin, openCount, reloadPins, colorOf } = useMail();
   const pathname = usePathname();
   // Counts change as cards move; refresh them when moving between pages.
@@ -70,7 +71,6 @@ export function MailNav() {
   // A level that no longer exists (label renamed or deleted) falls back to the top.
   const shown = levelNode ? level : "";
   const rows = levelNode?.children ?? tree;
-  const topName = pinned.length > 0 ? "All labels" : "Labels";
 
   const q = filter.trim().toLowerCase();
   const matches = useMemo(
@@ -119,24 +119,8 @@ export function MailNav() {
         </>
       )}
 
-      <div className="mt-3 px-3 pb-1">
-        {shown && !q ? (
-          <button
-            onClick={() => setLevel(parentOf(shown))}
-            className="flex max-w-full min-w-0 items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold tracking-widest text-side-muted uppercase transition hover:bg-white/10 hover:text-side-accent"
-            title="Back"
-          >
-            <span aria-hidden className="text-sm leading-none">
-              ‹
-            </span>
-            <span className="truncate">{shown.includes("/") ? lastOf(parentOf(shown)) : topName}</span>
-          </button>
-        ) : (
-          <p className="px-2 py-0.5 text-xs font-bold tracking-widest text-side-muted uppercase">{topName}</p>
-        )}
-      </div>
       {labels.length > 6 && (
-        <div className="mx-2 mb-1">
+        <div className="mx-2 mt-3 mb-1">
           <input
             type="search"
             value={filter}
@@ -155,6 +139,25 @@ export function MailNav() {
         </div>
       )}
 
+      {/* All: every card, whatever its label (the whole workflow). */}
+      <NavRow href={hrefFor("INBOX")} active={activeId === "INBOX"}>
+        <ThemeIcon icon={theme.icons.workspace} size={16} className="mx-0.5 shrink-0" />
+        <span className="font-semibold text-side-strong">All</span>
+      </NavRow>
+      {shown && !q && (
+        <div className="mt-1 px-3 pb-1">
+          <button
+            onClick={() => setLevel(parentOf(shown))}
+            className="flex max-w-full min-w-0 items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold tracking-widest text-side-muted uppercase transition hover:bg-white/10 hover:text-side-accent"
+            title="Back"
+          >
+            <span aria-hidden className="text-sm leading-none">
+              ‹
+            </span>
+            <span className="truncate">{shown.includes("/") ? lastOf(parentOf(shown)) : "All labels"}</span>
+          </button>
+        </div>
+      )}
       {q ? (
         <div key="filter" className="animate-fade-in">
           {matches.map((l) => (

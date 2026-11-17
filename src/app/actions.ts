@@ -883,6 +883,7 @@ export type Waiting = {
   subject: string;
   to: string[];
   date: string;
+  labelIds: string[]; // the thread's Gmail labels, plus its card's
   cardId: string | null; // the card it's on, to open (a thread added to a card opens that card)
   status: string | null; // its status on the Workspace, if it's in one
   done: boolean; // in a finished status
@@ -898,14 +899,15 @@ export async function fetchWaiting(): Promise<{ items: Waiting[]; error?: string
     const lane = { select: { lane: { select: { name: true, finished: true } } } } as const;
     const rows = await db.email.findMany({
       where: { userId: user.id, threadId: { in: sent.map((w) => w.threadId) } },
-      select: { threadId: true, placements: lane, parent: { select: { threadId: true, placements: lane } } },
+      select: { threadId: true, placements: lane, parent: { select: { threadId: true, labelIds: true, placements: lane } } },
     });
     const byThread = new Map(rows.map((r) => [r.threadId, r]));
     const items = sent.map((w): Waiting => {
       const row = byThread.get(w.threadId);
       const card = row?.parent ?? row;
       const at = card?.placements[0]?.lane;
-      return { ...w, cardId: card?.threadId ?? null, status: at?.name ?? null, done: !!at?.finished };
+      const labelIds = [...new Set([...w.labelIds, ...(row?.parent?.labelIds ?? [])])];
+      return { ...w, labelIds, cardId: card?.threadId ?? null, status: at?.name ?? null, done: !!at?.finished };
     });
     return { items };
   } catch (e) {
@@ -921,4 +923,27 @@ export async function notWaiting(messageId: string): Promise<{ error?: string }>
   const list = [...new Set([...user.notWaiting, messageId])].slice(-500);
   await db.user.update({ where: { id: user.id }, data: { notWaiting: list } });
   return {};
+}
+
+// Opened lately, wherever they are (a thread added to a card shows as the card),
+// with labels so Today can show just the open label's.
+export type RecentOpen = { threadId: string; title: string; from: string; at: string; labelIds: string[] };
+export async function fetchRecentlyOpened(): Promise<RecentOpen[]> {
+  const user = await requireUser();
+  const card = { threadId: true, subject: true, title: true, labelIds: true } as const;
+  const rows = await db.email.findMany({
+    where: { userId: user.id, openedAt: { not: null } },
+    orderBy: { openedAt: "desc" },
+    take: 60,
+    select: { ...card, from: true, openedAt: true, parent: { select: card } },
+  });
+  const seen = new Set<string>();
+  const out: RecentOpen[] = [];
+  for (const r of rows) {
+    const c = r.parent ?? r;
+    if (seen.has(c.threadId)) continue;
+    seen.add(c.threadId);
+    out.push({ threadId: c.threadId, title: c.title || c.subject, from: r.from, at: r.openedAt!.toISOString(), labelIds: [...new Set([...r.labelIds, ...c.labelIds])] });
+  }
+  return out;
 }

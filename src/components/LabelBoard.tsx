@@ -59,15 +59,17 @@ import { InSidebar } from "./SidebarSlot";
 import { CalendarBoard } from "./CalendarBoard";
 import { NewCardForm } from "./NewCard";
 import { ListView } from "./ListView";
+import { TodayView } from "./TodayView";
 import { FileUnder } from "./FileUnder";
 import type { Due } from "./DuePicker";
 
-const VIEW_KEY = "mte.boardView"; // "lanes", "calendar" or "list"
-type BoardView = "lanes" | "calendar" | "list";
+const VIEW_KEY = "mte.boardView"; // "list", "lanes", "calendar" or "today"
+type BoardView = "lanes" | "calendar" | "list" | "today";
 const VIEWS: { id: BoardView; name: string }[] = [
   { id: "list", name: "☰ List" },
   { id: "lanes", name: "▥ Lanes" },
   { id: "calendar", name: "▦ Calendar" },
+  { id: "today", name: "☀ Today" },
 ];
 
 // Each lane gets its own colour (defined per theme in globals.css) and an
@@ -136,6 +138,15 @@ export function LabelBoard({
       if (!e) return false;
       const prefix = `${labelNames.get(lens.labelId) ?? lens.name}/`;
       return cardLabelIds(e).some((id) => id === lens.labelId || !!labelNames.get(id)?.startsWith(prefix));
+    },
+    [lens, labelNames],
+  );
+  // The same test for bare label ids (Today's sent mail and recently opened).
+  const inLensIds = useCallback(
+    (ids: string[]) => {
+      if (!lens) return true;
+      const prefix = `${labelNames.get(lens.labelId) ?? lens.name}/`;
+      return ids.some((id) => id === lens.labelId || !!labelNames.get(id)?.startsWith(prefix));
     },
     [lens, labelNames],
   );
@@ -284,7 +295,7 @@ export function LabelBoard({
   useEffect(() => {
     try {
       const v = localStorage.getItem(VIEW_KEY);
-      if (v === "calendar" || v === "lanes") setView(v);
+      if (v === "calendar" || v === "lanes" || v === "today") setView(v);
       else if (v === "file") setView("list"); // the view was called File before
     } catch {}
     setPrefsReady(true);
@@ -303,6 +314,15 @@ export function LabelBoard({
   useEffect(() => {
     void refreshEmails(refreshIds).then((r) => mergeEmails(r.emails));
   }, [refreshIds, mergeEmails]);
+
+  // Open a card or email, fetching it first if the board hasn't loaded it.
+  const openAny = (threadId: string) => {
+    if (emails[threadId]) return setSelected(threadId);
+    void refreshEmails([threadId]).then((r) => {
+      mergeEmails(r.emails);
+      if (r.emails.some((e) => e.threadId === threadId)) setSelected(threadId);
+    });
+  };
 
   const changeView = (v: BoardView) => {
     setView(v);
@@ -1049,7 +1069,7 @@ export function LabelBoard({
           columns={[
             { id: "unsorted", name: isInbox ? "Inbox" : "To triage", count: shownUnsorted.length },
             ...(view !== "lanes"
-              ? [{ id: view, name: view === "list" ? "List" : "Calendar", count: null }]
+              ? [{ id: view, name: view === "list" ? "List" : view === "today" ? "Today" : "Calendar", count: null }]
               : [...shownLanes.map((l) => ({ id: l.id, name: l.name, count: l.threadIds.length })), { id: "add", name: "+ Status", count: null }]),
           ]}
         />
@@ -1139,6 +1159,19 @@ export function LabelBoard({
                 void file(id, false);
                 if (!containerOf(id, { lanes, unsorted })) setUnsorted((prev) => byDate([...prev, id]));
               }}
+            />
+          </section>
+        ) : view === "today" ? (
+          <section
+            id="col-today"
+            className="animate-fade-in board-bg flex min-h-0 min-w-0 flex-1 p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:w-[calc(100vw-1.5rem)] max-md:flex-none max-md:shrink-0 max-md:snap-start max-md:p-3"
+          >
+            <TodayView
+              onBoard={shownLanes.flatMap((l) => l.threadIds.filter((t) => emails[t]).map((t) => ({ card: emails[t], status: l.name })))}
+              inLensIds={inLensIds}
+              ageOf={ageOf}
+              toggleTask={toggleTask}
+              onOpen={openAny}
             />
           </section>
         ) : view === "calendar" ? (
@@ -1431,7 +1464,7 @@ function UnsortedColumn(p: {
           <p className="text-xs text-muted">
             Your workflow, showing only this label&apos;s cards.{" "}
             <Link href="/l/INBOX" className="font-semibold text-terracotta hover:underline">
-              Back to Workspace
+              Back to All
             </Link>
           </p>
         )}

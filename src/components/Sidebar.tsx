@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MailNav } from "./LabelTree";
 import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
-import { ThemeIcon, useTheme } from "./ThemeContext";
 import { Logo } from "./Logo";
 
 type Props = {
@@ -18,7 +17,6 @@ type Props = {
 export function Sidebar({ user, mobileOpen, onClose, slotRef }: Props) {
   const pathname = usePathname();
   const w = useStoredWidth("mte.w.side", 380, 200, 720);
-  const { theme } = useTheme();
 
   return (
     <>
@@ -37,31 +35,6 @@ export function Sidebar({ user, mobileOpen, onClose, slotRef }: Props) {
             ×
           </button>
         </div>
-
-        <Link
-          href="/l/INBOX"
-          className={`mx-2 flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold transition hover:bg-white/10 ${
-            pathname === "/l/INBOX" ? "bg-side-strong/15 text-side-strong shadow-[inset_0_1px_3px_rgb(0_0_0/0.3)]" : ""
-          }`}
-        >
-          <ThemeIcon icon={theme.icons.workspace} size={16} /> Workspace
-        </Link>
-        <Link
-          href="/dashboard"
-          className={`mx-2 flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold transition hover:bg-white/10 ${
-            pathname === "/dashboard" ? "bg-side-strong/15 text-side-strong shadow-[inset_0_1px_3px_rgb(0_0_0/0.3)]" : ""
-          }`}
-        >
-          <ThemeIcon icon={theme.icons.dashboard} size={16} /> Today
-        </Link>
-        <Link
-          href="/tasks"
-          className={`mx-2 flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-semibold transition hover:bg-white/10 ${
-            pathname === "/tasks" ? "bg-side-strong/15 text-side-strong shadow-[inset_0_1px_3px_rgb(0_0_0/0.3)]" : ""
-          }`}
-        >
-          <ThemeIcon icon={theme.icons.tasks} size={16} /> Next actions
-        </Link>
 
         <div className="mt-2 min-h-0 flex-1 overflow-y-auto pb-4">
           <MailNav />

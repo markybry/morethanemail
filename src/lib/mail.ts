@@ -274,7 +274,7 @@ function decodeEntities(s: string) {
 
 // Sent mail still waiting for an answer: threads from the last few weeks whose
 // newest message is the user's own (to someone else). Oldest first.
-export type AwaitingReply = { threadId: string; messageId: string; subject: string; to: string[]; date: string };
+export type AwaitingReply = { threadId: string; messageId: string; subject: string; to: string[]; date: string; labelIds: string[] };
 export async function listAwaitingReply(user: User, days = 30): Promise<AwaitingReply[]> {
   if (user.isDemo) return [];
   const me = user.email.toLowerCase();
@@ -296,7 +296,8 @@ export async function listAwaitingReply(user: User, days = 30): Promise<Awaiting
           .map((x) => x.trim())
           .filter((x) => x && addressOf(x) !== me);
         if (to.length === 0) return null; // a note to self
-        return { threadId: id, messageId: last.id!, subject: header(last, "Subject"), to, date: messageDate(last) };
+        const labelIds = [...new Set(msgs.flatMap((m) => m.labelIds ?? []))];
+        return { threadId: id, messageId: last.id!, subject: header(last, "Subject"), to, date: messageDate(last), labelIds };
       } catch (e) {
         if ((e as { code?: number }).code === 404) return null;
         throw e;
