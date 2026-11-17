@@ -102,7 +102,8 @@ export function EmailPanel(p: Props) {
         </div>
       </DrawerHeader>
 
-      {!email.local && <Labels email={email} here={p.workspaceLabelId} onLabelsChange={p.onLabelsChange} />}
+      {/* The message first: the email(s), or a ticket's description. Then what's
+          kept on the card: labels, summary, next action, links, notes, tasks. */}
       {email.local ? (
         <TextBlock
           title="Description"
@@ -114,6 +115,10 @@ export function EmailPanel(p: Props) {
           }}
         />
       ) : (
+        <Emails email={email} onSeenThread={p.onSeenThread} onAddThread={p.onAddThread} onRemoveThread={p.onRemoveThread} />
+      )}
+      {!email.local && <Labels email={email} here={p.workspaceLabelId} onLabelsChange={p.onLabelsChange} />}
+      {!email.local && (
         <TextBlock
           title="Summary"
           value={email.summary}
@@ -124,9 +129,8 @@ export function EmailPanel(p: Props) {
           }}
         />
       )}
-      {/* What matters most first: labels and the summary (above), the next action, then the emails. */}
       <NextAction email={email} snapshot={snapshot(email)} onChange={onChange} />
-      <Emails email={email} onSeenThread={p.onSeenThread} onAddThread={p.onAddThread} onRemoveThread={p.onRemoveThread} />
+      {email.local && <Emails email={email} onSeenThread={p.onSeenThread} onAddThread={p.onAddThread} onRemoveThread={p.onRemoveThread} />}
       <Links email={email} onChange={onChange} />
       <Notes email={email} onChange={onChange} />
       <TaskList email={email} snapshot={snapshot(email)} onChange={onChange} />
