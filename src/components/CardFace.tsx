@@ -21,6 +21,7 @@ export const CardBoardContext = createContext<{
   archive: (threadId: string) => void;
   canFile: (threadId: string) => boolean;
   file: (threadId: string) => void; // filed in the List: just information
+  label: (threadId: string) => void; // add a label, without filing
   remove: (threadId: string) => void; // to Gmail's Trash
 } | null>(null);
 
@@ -183,6 +184,11 @@ export function CardFace({
           {board.canArchive(email.threadId) && (
             <button onClick={() => board.archive(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-sm" title="Archive in Gmail" aria-label="Archive">
               🗄️
+            </button>
+          )}
+          {!email.local && (
+            <button onClick={() => board.label(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-sm" title="Add a label" aria-label="Add a label">
+              🏷️
             </button>
           )}
           {board.canFile(email.threadId) && (

@@ -8,10 +8,12 @@ import { useMail } from "./MailContext";
 // ("Clients/JR" nests it). Anything not worth a label is ignored or deleted instead.
 export function FileUnder({
   count,
+  labelOnly = false,
   onPick,
   onClose,
 }: {
   count: number; // how many are being filed
+  labelOnly?: boolean; // just add a label: nothing is filed
   onPick: (label: { id: string } | { name: string }) => Promise<string | undefined>; // an error, if any
   onClose: () => void;
 }) {
@@ -49,10 +51,12 @@ export function FileUnder({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[15vh]">
       <div className="animate-fade-in absolute inset-0 bg-shadow/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-label="File under a label" className="animate-zoom-in relative w-full max-w-md rounded-3xl border border-line bg-cream p-4 shadow-2xl shadow-shadow/40">
-        <h2 className="text-base font-bold text-walnut">File under…</h2>
+      <div role="dialog" aria-modal="true" aria-label={labelOnly ? "Add a label" : "File under a label"} className="animate-zoom-in relative w-full max-w-md rounded-3xl border border-line bg-cream p-4 shadow-2xl shadow-shadow/40">
+        <h2 className="text-base font-bold text-walnut">{labelOnly ? "Add a label" : "File under…"}</h2>
         <p className="mt-0.5 text-xs text-muted">
-          Only labelled things are filed. Pick a label for {count === 1 ? "this" : `these ${count}`}, or ignore or delete {count === 1 ? "it" : "them"} instead.
+          {labelOnly
+            ? `Pick a label for ${count === 1 ? "this" : `these ${count}`}, or type a new one. ${count === 1 ? "It stays" : "They stay"} where ${count === 1 ? "it is" : "they are"}.`
+            : `Only labelled things are filed. Pick a label for ${count === 1 ? "this" : `these ${count}`}, or ignore or delete ${count === 1 ? "it" : "them"} instead.`}
         </p>
         <form
           className="mt-3"
@@ -100,7 +104,7 @@ export function FileUnder({
         {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
         <div className="mt-3 flex justify-end">
           <button onClick={onClose} className="text-sm font-semibold text-muted hover:text-bark">
-            {busy ? "Filing…" : "Cancel"}
+            {busy ? (labelOnly ? "Adding…" : "Filing…") : "Cancel"}
           </button>
         </div>
       </div>

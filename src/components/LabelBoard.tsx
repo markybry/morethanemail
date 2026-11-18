@@ -855,6 +855,7 @@ export function LabelBoard({
     archive: (threadId: string) => void archive(threadId, selected === threadId),
     canFile: (threadId: string) => !lanes.some((l) => l.threadIds.includes(threadId)) && !emails[threadId]?.hidden,
     file: (threadId: string) => void file(threadId, true),
+    label: (threadId: string) => setLabelAsk([threadId]),
     remove: (threadId: string) => void trash(threadId),
   };
 
@@ -984,12 +985,16 @@ export function LabelBoard({
     if (filed && selected === threadId) openNext(threadId);
     const set = (v: boolean) => setEmails((prev) => (prev[threadId] ? { ...prev, [threadId]: { ...prev[threadId], hidden: v } } : prev));
     set(filed);
+    // Filed is dealt with, so it leaves Gmail's inbox too (a new message brings it back).
+    if (filed) void archiveInGmail(threadId);
     await save(() => setHidden(snapshotOf(e), filed), () => set(!filed));
   };
 
   // Only labelled things are filed: anything without a label asks for one first
   // (the rest of the mail is ignored or deleted, not filed).
   const [fileAsk, setFileAsk] = useState<string[] | null>(null);
+  // Quick label: add a label to an email without filing it.
+  const [labelAsk, setLabelAsk] = useState<string[] | null>(null);
   const file = (threadId: string, filed: boolean) => fileMany([threadId], filed);
   const fileMany = (ids: string[], filed = true) => {
     const known = ids.filter((id) => emails[id]);
@@ -1000,7 +1005,7 @@ export function LabelBoard({
     if (ask.length) setFileAsk(ask);
   };
   // Label them, then file them. Returns an error to show in the dialog.
-  const fileUnder = async (ids: string[], label: { id: string } | { name: string }): Promise<string | undefined> => {
+  const fileUnder = async (ids: string[], label: { id: string } | { name: string }, andFile = true): Promise<string | undefined> => {
     let labelId: string;
     if ("id" in label) labelId = label.id;
     else {
@@ -1018,9 +1023,10 @@ export function LabelBoard({
         if (!cur) return prev;
         return { ...prev, [id]: { ...cur, labelIds, threads: cur.threads.map((t) => (t.threadId === id ? { ...t, labelIds } : t)) } };
       });
-      void fileNow(id, true);
+      if (andFile) void fileNow(id, true);
     }
     setFileAsk(null);
+    setLabelAsk(null);
     return undefined;
   };
 
@@ -1096,6 +1102,11 @@ export function LabelBoard({
       setPicked([]);
       fileMany(ids);
     },
+    onLabel: () => {
+      const ids = pickedShown.filter((id) => !emails[id]?.local);
+      setPicked([]);
+      if (ids.length) setLabelAsk(ids);
+    },
     onCombine: () => {
       const ids = pickedShown;
       setPicked([]);
@@ -1119,6 +1130,9 @@ export function LabelBoard({
       } else if (ev.key === "e" && isInbox && fromFirst) {
         ev.preventDefault();
         void archive(selected, true);
+      } else if (ev.key === "l" && !emails[selected]?.local && !labelAsk && !fileAsk) {
+        ev.preventDefault();
+        setLabelAsk([selected]);
       } else if (ev.key === "#" && !emails[selected]?.local) {
         ev.preventDefault();
         void trash(selected);
@@ -1221,6 +1235,7 @@ export function LabelBoard({
             });
           }}
           onFile={(id) => void file(id, true)}
+          onLabel={(id) => setLabelAsk([id])}
           onTrash={(id) => void trash(id)}
           onArchive={isInbox ? (id) => void archive(id, selected === id) : undefined}
           selected={selected}
@@ -1493,6 +1508,9 @@ export function LabelBoard({
         />
       )}
       {fileAsk && <FileUnder count={fileAsk.length} onPick={(label) => fileUnder(fileAsk, label)} onClose={() => setFileAsk(null)} />}
+      {labelAsk && (
+        <FileUnder count={labelAsk.length} labelOnly onPick={(label) => fileUnder(labelAsk, label, false)} onClose={() => setLabelAsk(null)} />
+      )}
     </DndContext>
     </MergeDragContext.Provider>
     </CardBoardContext.Provider>
@@ -1510,6 +1528,7 @@ function UnsortedColumn(p: {
     onMove: (laneId: string) => void;
     onArchive?: () => void;
     onFile: () => void;
+    onLabel: () => void;
     onCombine: () => void;
     onClear: () => void;
   };
@@ -1519,6 +1538,7 @@ function UnsortedColumn(p: {
   onShowOlder: (v: boolean) => void;
   onClearQueue: () => Promise<void>;
   onFile: (threadId: string) => void;
+  onLabel: (threadId: string) => void;
   onTrash: (threadId: string) => void;
   onArchive?: (threadId: string) => void;
   title: string;
@@ -1562,7 +1582,7 @@ function UnsortedColumn(p: {
           {p.laneCount > 0 && (
             <span
               className="shrink-0 cursor-help text-sm text-muted"
-              title={`Keys, with an email open: 1–${Math.min(p.laneCount, 9)} files it into a status${p.onArchive ? ", e archives it" : ""}, f files it, # deletes it, x picks it. Shift-click picks a run of emails. Drop an email onto a card to add it to that card.`}
+              title={`Keys, with an email open: 1–${Math.min(p.laneCount, 9)} files it into a status${p.onArchive ? ", e archives it" : ""}, f files it, l adds a label, # deletes it, x picks it. Shift-click picks a run of emails. Drop an email onto a card to add it to that card.`}
             >
               ⌨
             </span>
@@ -1643,6 +1663,7 @@ function UnsortedColumn(p: {
                     onOpen={() => p.onOpen(id)}
                     onArchive={p.onArchive && !p.emails[id].local ? () => p.onArchive!(id) : undefined}
                     onFile={() => p.onFile(id)}
+                    onLabel={!p.emails[id].local ? () => p.onLabel(id) : undefined}
                     onTrash={!p.emails[id].local ? () => p.onTrash(id) : undefined}
                   />
                 )
@@ -1695,6 +1716,7 @@ function BulkBar(p: {
   onMove: (laneId: string) => void;
   onArchive?: () => void;
   onFile: () => void;
+  onLabel: () => void;
   onCombine: () => void;
   onClear: () => void;
 }) {
@@ -1725,6 +1747,9 @@ function BulkBar(p: {
           🗄️
         </button>
       )}
+      <button onClick={p.onLabel} className={btn} title="Add a label" aria-label="Add a label">
+        🏷️
+      </button>
       <button onClick={p.onFile} className={btn} title="File: just information, no tracking. Find it in the List." aria-label="File">
         👍
       </button>
@@ -1762,6 +1787,7 @@ function DraggableEmail({
   onOpen,
   onArchive,
   onFile,
+  onLabel,
   onTrash,
 }: {
   tag?: string;
@@ -1774,6 +1800,7 @@ function DraggableEmail({
   onOpen: () => void;
   onArchive?: () => void;
   onFile?: () => void;
+  onLabel?: () => void;
   onTrash?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `${T}${email.threadId}` });
@@ -1816,6 +1843,7 @@ function DraggableEmail({
         // Desktop: on hover. Phones use the buttons on the card itself.
         <div className="absolute right-2 bottom-2 flex gap-1 opacity-0 transition group-hover/drag:opacity-100 max-md:hidden">
           {[
+            { label: "Add a label", icon: "🏷️", title: "Add a label (l). It stays here until you file it.", run: onLabel },
             { label: "File", icon: "👍", title: "File: just information, no tracking (f). Find it in the List; a new message brings it back.", run: onFile },
             { label: "Archive", icon: "🗄️", title: "Archive in Gmail: needs nothing (e)", run: onArchive },
             { label: "Delete", icon: "❌", title: "Delete: move to Gmail's Trash (#). Undo straight after, or restore from Trash for 30 days.", run: onTrash },
