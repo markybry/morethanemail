@@ -310,8 +310,12 @@ export function LabelBoard({
   const [refreshIds] = useState(() => [
     ...new Set([...workspace.lanes.flatMap((l) => l.threadIds), ...(initialThreadId ? [initialThreadId] : [])]),
   ]);
+  const [refreshed, setRefreshed] = useState(false);
   useEffect(() => {
-    void refreshEmails(refreshIds).then((r) => mergeEmails(r.emails));
+    void refreshEmails(refreshIds).then((r) => {
+      mergeEmails(r.emails);
+      if (!r.error) setRefreshed(true);
+    });
   }, [refreshIds, mergeEmails]);
   // Then keep checking while the board is open: when the tab comes back into
   // view, and every couple of minutes while it's visible.
@@ -395,8 +399,11 @@ export function LabelBoard({
       const now = new Date().toISOString();
       setLanes((prev) => prev.map((l) => (l.id === to ? { ...l, since: { ...l.since, [threadId]: now } } : l)));
     }
-    // A finished status takes the card off the board (it's in the List); Gmail is left alone.
+    // A finished status takes the card off the board (it's in the List).
     const finished = from !== to && !!lanes.find((l) => l.id === to)?.finished;
+    // Gmail's inbox holds what isn't dealt with yet: a card put in a status is
+    // archived there, and a reply brings it back until the card is opened here.
+    if (from !== to && to !== UNSORTED) void archiveInGmail(threadId);
     const affected = new Set([from, to].filter((x): x is string => !!x && x !== UNSORTED));
     const email = emails[threadId];
     await save(
@@ -857,6 +864,46 @@ export function LabelBoard({
     });
   };
 
+  // Take a card's threads (or just `only`) out of Gmail's inbox, quietly: the
+  // card stays where it is, and only threads in the inbox are touched.
+  const archiveInGmail = async (cardId: string, only?: string[]) => {
+    const e = emailsRef.current[cardId];
+    if (!e) return;
+    const ids = e.threads
+      .filter((t) => !t.threadId.startsWith("local:") && t.labelIds.includes("INBOX") && (!only || only.includes(t.threadId)))
+      .map((t) => t.threadId);
+    if (!ids.length) return;
+    const res = await archiveThreads(ids);
+    if (res.error || !res.labelIds) return setSaveError(res.error ?? "Couldn't archive that card in Gmail.");
+    const labels = res.labelIds;
+    setEmails((prev) => {
+      const cur = prev[cardId];
+      if (!cur) return prev;
+      return {
+        ...prev,
+        [cardId]: {
+          ...cur,
+          labelIds: labels[cur.threadId] ?? cur.labelIds,
+          threads: cur.threads.map((t) => ({ ...t, labelIds: labels[t.threadId] ?? t.labelIds })),
+        },
+      };
+    });
+  };
+
+  // Keep Gmail in step: a card in a status with nothing new shouldn't sit in
+  // Gmail's inbox. Waits for fresh Gmail state so a just-arrived reply isn't
+  // archived unseen; each card is tried once per visit.
+  const swept = useRef(new Set<string>());
+  useEffect(() => {
+    if (!refreshed) return;
+    for (const id of placed) {
+      const e = emails[id];
+      if (!e || e.newReply || swept.current.has(id) || !cardLabelIds(e).includes("INBOX")) continue;
+      swept.current.add(id);
+      void archiveInGmail(id);
+    }
+  }, [refreshed, placed, emails]);
+
   // Delete: the card's emails go to Gmail's Trash and the card leaves the board.
   // Undo (for a few seconds) brings them back to the first column.
   const [undo, setUndo] = useState<{ text: string; run: () => void } | null>(null);
@@ -1056,14 +1103,17 @@ export function LabelBoard({
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  // Opening a thread on a card marks that thread seen.
-  const seenThread = (cardId: string, threadId: string) =>
+  // Opening a thread on a card marks that thread seen. On a card in a status,
+  // it also goes back out of Gmail's inbox (where a reply had put it).
+  const seenThread = (cardId: string, threadId: string) => {
+    if (placed.has(cardId)) void archiveInGmail(cardId, [threadId]);
     setEmails((prev) => {
       const e = prev[cardId];
       if (!e) return prev;
       const threads = e.threads.map((t) => (t.threadId === threadId ? { ...t, newReply: false } : t));
       return { ...prev, [cardId]: { ...e, threads, newReply: threads.some((t) => t.newReply), unread: threadId === cardId ? false : e.unread } };
     });
+  };
 
   const selectedEmail = selected ? emails[selected] : undefined;
   const activeEmail = activeId ? emails[activeId] : undefined;

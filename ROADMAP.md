@@ -220,7 +220,7 @@ One choice has a default so work can start. It can be changed before its step.
 
 | Decision | Default | Step |
 |---|---|---|
-| Does moving a card to a finished status archive it in Gmail? | Yes. Moving to any other status leaves Gmail's inbox alone. | 4 |
+| Does putting a card in a status archive it in Gmail? | Yes, any status (decided 18 Nov). Gmail's inbox means "not dealt with yet": a reply brings the card back to it, and opening the card in the app archives it again. | 4 |
 
 ## What was dropped from the first draft, and why
 
