@@ -601,6 +601,9 @@ export async function arrangeEmails(
         ),
     ),
     db.activity.createMany({ data: moves.map((m) => ({ userId: user.id, workspaceId, kind: "moved", ...m })) }),
+    // A card put in a status counts as seen up to its latest message (if it never
+    // was), so the next reply shows as new even if it was never opened here.
+    db.$executeRaw`UPDATE "Email" SET "lastSeenAt" = "date" WHERE "lastSeenAt" IS NULL AND "id" = ANY(${[...idOf.values()]})`,
   ]);
   revalidateBoards();
 }

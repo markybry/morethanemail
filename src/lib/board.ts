@@ -114,11 +114,12 @@ export const snapshotData = (t: ThreadSnapshot) => ({
   ...(t.labelIds ? { labelIds: t.labelIds } : {}),
 });
 
-// Find or create the Email record for a thread the user is acting on.
+// Find or create the Email record for a thread the user is acting on. A new
+// record counts as seen up to its latest message, so later replies show as new.
 export function upsertEmail(userId: string, t: ThreadSnapshot) {
   return db.email.upsert({
     where: { userId_threadId: { userId, threadId: t.threadId } },
-    create: { userId, threadId: t.threadId, ...snapshotData(t) },
+    create: { userId, threadId: t.threadId, ...snapshotData(t), lastSeenAt: new Date(t.date) },
     update: snapshotData(t),
   });
 }

@@ -87,6 +87,7 @@ const LANE = "lane:"; // droppable column ids; "lane:<id>#<row>" for one row of 
 const fromId = (id: string) => id.slice(T.length);
 const GENERAL = "__general"; // the row for cards with no sub-label
 const STALE_DAYS = 7; // a card waiting this long is flagged
+const REFRESH_MS = 2 * 60_000; // how often cards in a status are checked for new replies
 // True while an email from the first column is dragged: a card in a status is
 // then a drop target ("add to this card") rather than a place in the list.
 const MergeDragContext = createContext(false);
@@ -306,13 +307,31 @@ export function LabelBoard({
 
   // Emails sorted into lanes may be far down the label; refresh them directly
   // so new replies show. Also fetch an email linked to directly (?thread=).
-  // Only on first load: saving a change re-renders the page with new props.
   const [refreshIds] = useState(() => [
     ...new Set([...workspace.lanes.flatMap((l) => l.threadIds), ...(initialThreadId ? [initialThreadId] : [])]),
   ]);
   useEffect(() => {
     void refreshEmails(refreshIds).then((r) => mergeEmails(r.emails));
   }, [refreshIds, mergeEmails]);
+  // Then keep checking while the board is open: when the tab comes back into
+  // view, and every couple of minutes while it's visible.
+  useEffect(() => {
+    let last = Date.now();
+    const check = () => {
+      if (document.visibilityState !== "visible" || Date.now() - last < 30_000) return;
+      last = Date.now();
+      const ids = [...new Set(lanesRef.current.flatMap((l) => l.threadIds))];
+      void refreshEmails(ids).then((r) => mergeEmails(r.emails));
+    };
+    const timer = setInterval(check, REFRESH_MS);
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+    };
+  }, [mergeEmails]);
 
   // Open a card or email, fetching it first if the board hasn't loaded it.
   const openAny = (threadId: string) => {
@@ -510,6 +529,12 @@ export function LabelBoard({
     return [...rows].sort((a, b) => (count.get(b.key) ?? 0) - (count.get(a.key) ?? 0));
   }, [rows, shownLanes, rowOf, emails]);
   const newReplies = shownLanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply).length;
+  // New replies anywhere on the board show in the tab title, so they're seen from other tabs.
+  const allNewReplies = lanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply).length;
+  useEffect(() => {
+    const base = document.title.replace(/^\(\d+\) /, "");
+    document.title = allNewReplies ? `(${allNewReplies}) ${base}` : base;
+  }, [allNewReplies]);
 
 
   // ----- picking several emails in the first column -----
