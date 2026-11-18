@@ -32,6 +32,7 @@ import {
   deleteTicket,
   deleteLane,
   fetchLabelEmails,
+  fetchSentStarted,
   refreshEmails,
   removeThreadFromCard,
   renameLane,
@@ -218,6 +219,9 @@ export function LabelBoard({
   // The first column shows what's left to triage, or everything recent (newest
   // first, cards already in a status included) so nothing active is out of sight.
   const [recentIds, setRecentIds] = useState<string[]>([]);
+  // New emails you sent (conversations you started, not in the inbox): the Inbox
+  // column shows them too, so they can go on the board like incoming mail.
+  const [sentIds, setSentIds] = useState<string[]>([]);
   // Labelled mail older than this counts as done (not used for the Inbox itself).
   const [triageFrom, setTriageFromState] = useState(initialTriageFrom);
   // The setting can change from the sidebar; follow it.
@@ -289,6 +293,17 @@ export function LabelBoard({
       setNextPage(res.nextPageToken);
       setLoadedQuery(q);
       setListState("idle");
+      if (isInbox && !pageToken && !q) {
+        const sent = await fetchSentStarted();
+        if (!sent.error) {
+          mergeEmails(sent.emails);
+          const fresh = sent.emails
+            .filter((e) => !placedRef.current.has(e.threadId) && !(e.homeId && e.homeId !== workspace.id) && !e.done)
+            .map((e) => e.threadId);
+          setSentIds(sent.emails.map((e) => e.threadId));
+          setUnsorted((prev) => [...prev, ...fresh.filter((id) => !prev.includes(id))]);
+        }
+      }
     },
     // triageFrom: the server applies it, so a new cut-off must reload the list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -517,18 +532,24 @@ export function LabelBoard({
   // The Inbox column is Gmail's inbox as it is: every thread there, newest first,
   // including cards in a status, Done or Filed (tagged). Archiving takes one out.
   // Tickets with no email that aren't in a status sit at the top.
+  function isSentOnly(t: string) {
+    const e = emails[t];
+    return !!e && !e.partOf && !e.done && !e.hidden && !cardLabelIds(e).includes("INBOX") && !lanes.some((l) => l.threadIds.includes(t));
+  }
   const shownInbox = useMemo(
     () => [
       ...inFirstColumn.filter((t) => emails[t]?.local && !emails[t].hidden),
-      ...recentIds
-        .filter((t) => emails[t] && !emails[t].local && cardLabelIds(emails[t]).includes("INBOX") && !isIgnored(emails[t]))
-        .sort((a, b) => byCardDate(emails[a], emails[b])),
+      ...[
+        ...recentIds.filter((t) => emails[t] && !emails[t].local && cardLabelIds(emails[t]).includes("INBOX") && !isIgnored(emails[t])),
+        ...sentIds.filter((t) => isSentOnly(t) && !recentIds.includes(t)),
+      ].sort((a, b) => byCardDate(emails[a], emails[b])),
     ],
-    [inFirstColumn, recentIds, emails, isIgnored],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inFirstColumn, recentIds, sentIds, emails, isIgnored, lanes],
   );
   const tagOf = (threadId: string) => {
     const e = emails[threadId];
-    return statusOf(threadId) ?? (e?.done ? "Done" : e?.hidden ? "Filed" : undefined);
+    return statusOf(threadId) ?? (e?.done ? "Done" : e?.hidden ? "Filed" : sentIds.includes(threadId) && !cardLabelIds(e).includes("INBOX") ? "Sent" : undefined);
   };
   const statusOf = (threadId: string) => lanes.find((l) => l.threadIds.includes(threadId))?.name;
   const shownPlaced = shownLanes.reduce((n, l) => n + l.threadIds.length, 0);
@@ -848,6 +869,7 @@ export function LabelBoard({
 
   const archive = async (threadId: string, advance: boolean) => {
     const e = emails[threadId];
+    if (e && !cardLabelIds(e).includes("INBOX")) return void fileNow(threadId, true);
     const ids = (e?.threads ?? []).map((t) => t.threadId).filter((t) => !t.startsWith("local:"));
     if (!e || ids.length === 0) return;
     if (advance) openNext(threadId);
@@ -1770,7 +1792,7 @@ function DraggableEmail({
             : ""
       }`}
     >
-      {tag && <span className="mb-1 block px-1 text-xs font-semibold text-muted">✓ {tag}</span>}
+      {tag && <span className="mb-1 block px-1 text-xs font-semibold text-muted">{tag === "Sent" ? "↗ You sent this" : `✓ ${tag}`}</span>}
       <CardFace email={email} hideLabelId={labelId} tall />
       <button
         role="checkbox"

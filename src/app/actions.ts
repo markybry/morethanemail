@@ -14,6 +14,7 @@ import {
   mailErrorMessage,
   summarizeThreads,
   listAwaitingReply,
+  listStartedByMe,
   type MailLabel,
   type ThreadDetail,
 } from "@/lib/mail";
@@ -80,6 +81,19 @@ export async function fetchLabelEmails(
     return { emails: await withStoredMeta(user.id, res.threads), nextPageToken: res.nextPageToken };
   } catch (e) {
     console.error("fetchLabelEmails failed", e);
+    return { emails: [], error: mailErrorMessage(e) };
+  }
+}
+
+// New emails the user sent recently (conversations they started that aren't in
+// the inbox), for the Inbox column. Threads already on another card are left out.
+export async function fetchSentStarted(): Promise<{ emails: BoardEmail[]; error?: string }> {
+  const user = await requireUser();
+  try {
+    const emails = await withStoredMeta(user.id, await listStartedByMe(user));
+    return { emails: emails.filter((e) => !e.partOf) };
+  } catch (e) {
+    console.error("fetchSentStarted failed", e);
     return { emails: [], error: mailErrorMessage(e) };
   }
 }

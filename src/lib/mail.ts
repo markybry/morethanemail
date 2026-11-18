@@ -272,6 +272,30 @@ function decodeEntities(s: string) {
     .replace(/&amp;/g, "&");
 }
 
+// Conversations the user started recently that aren't in the inbox (a new email
+// they sent), newest first, so they can be put on the board like incoming mail.
+export async function listStartedByMe(user: User, days = 14): Promise<ThreadSummary[]> {
+  if (user.isDemo) return [];
+  const me = user.email.toLowerCase();
+  const addressOf = (v: string) => (v.match(/<([^>]+)>/)?.[1] ?? v).trim().toLowerCase();
+  const gmail = gmailFor(user);
+  const res = await gmail.users.threads.list({ userId: "me", q: `in:sent -in:inbox -in:chats -in:trash newer_than:${days}d`, maxResults: 25 });
+  const ids = (res.data.threads ?? []).map((t) => t.id!).filter(Boolean);
+  const found = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const t = await gmail.users.threads.get({ userId: "me", id, format: "metadata", metadataHeaders: ["Subject", "From", "Date"] });
+        const first = (t.data.messages ?? []).find((m) => !m.labelIds?.includes("DRAFT"));
+        return first && addressOf(header(first, "From")) === me ? summarize(t.data) : null;
+      } catch (e) {
+        if ((e as { code?: number }).code === 404) return null;
+        throw e;
+      }
+    }),
+  );
+  return found.filter((t): t is ThreadSummary => t !== null);
+}
+
 // Sent mail still waiting for an answer: threads from the last few weeks whose
 // newest message is the user's own (to someone else). Oldest first.
 export type AwaitingReply = { threadId: string; messageId: string; subject: string; to: string[]; date: string; labelIds: string[] };
