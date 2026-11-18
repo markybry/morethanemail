@@ -29,7 +29,7 @@ Stack: Next.js 15 (App Router, server actions) · Prisma + Postgres · Gmail API
      - `http://localhost:3000/api/auth/google/callback`
 2. **Vercel project.** Import this GitHub repo in Vercel. Pushes to `main` deploy to production; pull requests get preview deployments.
 3. **Database.** In the Vercel project, open **Storage** and add **Prisma Postgres**. This sets `DATABASE_URL`, which the app uses for queries and migrations. Tick the Development environment too if you want `vercel env pull` to work locally.
-4. **Environment variables.** Set `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET` (see `.env.example`). Who can sign in is managed in Google Cloud: add each person as a test user on the OAuth consent screen. The app has no allow list of its own, so publishing the OAuth app opens sign-in to any Google account.
+4. **Environment variables.** Set `SESSION_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `ALLOWED_EMAILS` (see `.env.example`).
 5. **Redeploy.** The `vercel-build` script runs `prisma migrate deploy` before building, so the database schema stays in step with each deploy.
 
 GitHub Actions (`.github/workflows/ci.yml`) lints, typechecks, checks that migrations apply and match the schema, and builds on every push and PR.

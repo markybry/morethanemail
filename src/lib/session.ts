@@ -59,3 +59,11 @@ export async function requireUser() {
 
 export const isDemoAvailable = () =>
   !process.env.GOOGLE_CLIENT_ID || process.env.ENABLE_DEMO === "true";
+
+export function isEmailAllowed(email: string) {
+  const list = (process.env.ALLOWED_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return list.length === 0 || list.includes(email.toLowerCase());
+}

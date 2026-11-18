@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { db } from "@/lib/db";
 import { appUrl, GMAIL_SCOPE, oauthClient } from "@/lib/google";
-import { setSession } from "@/lib/session";
+import { isEmailAllowed, setSession } from "@/lib/session";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -22,8 +22,8 @@ export async function GET(req: NextRequest) {
     return fail("Gmail access wasn't granted. Sign in again and tick the Gmail permission (“Read, compose and send emails”, or “View and modify”).");
   client.setCredentials(tokens);
   const { data: profile } = await google.oauth2({ version: "v2", auth: client }).userinfo.get();
-  // Who may sign in is managed in Google Cloud (test users on the OAuth consent screen).
   if (!profile.email) return fail("Google did not return an email address.");
+  if (!isEmailAllowed(profile.email)) return fail(`${profile.email} is not allowed to use this app.`);
 
   const tokenData = {
     accessToken: tokens.access_token ?? null,
