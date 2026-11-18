@@ -1721,12 +1721,12 @@ function BulkBar(p: {
         </button>
       )}
       {p.onArchive && (
-        <button onClick={p.onArchive} className={btn} title="Archive in Gmail">
-          Archive
+        <button onClick={p.onArchive} className={btn} title="Archive in Gmail" aria-label="Archive">
+          🗄️
         </button>
       )}
-      <button onClick={p.onFile} className={btn} title="File: just information, no tracking. Find it in the List.">
-        File
+      <button onClick={p.onFile} className={btn} title="File: just information, no tracking. Find it in the List." aria-label="File">
+        👍
       </button>
       <button onClick={p.onClear} className="ml-auto text-xs font-semibold text-muted hover:text-terracotta" title="Clear (Esc)">
         ✕
@@ -1816,9 +1816,9 @@ function DraggableEmail({
         // Desktop: on hover. Phones use the buttons on the card itself.
         <div className="absolute right-2 bottom-2 flex gap-1 opacity-0 transition group-hover/drag:opacity-100 max-md:hidden">
           {[
-            { label: "File", title: "File: just information, no tracking (f). Find it in the List; a new message brings it back.", run: onFile },
-            { label: "Archive", title: "Archive in Gmail: needs nothing (e)", run: onArchive },
-            { label: "Delete", title: "Move to Gmail's Trash (#). Undo straight after, or restore from Trash for 30 days.", run: onTrash },
+            { label: "File", icon: "👍", title: "File: just information, no tracking (f). Find it in the List; a new message brings it back.", run: onFile },
+            { label: "Archive", icon: "🗄️", title: "Archive in Gmail: needs nothing (e)", run: onArchive },
+            { label: "Delete", icon: "❌", title: "Delete: move to Gmail's Trash (#). Undo straight after, or restore from Trash for 30 days.", run: onTrash },
           ]
             .filter((b) => b.run)
             .map((b) => (
@@ -1829,10 +1829,11 @@ function DraggableEmail({
                   e.stopPropagation();
                   b.run!();
                 }}
-                className="btn-press rounded-lg bg-oat px-2 py-0.5 text-xs font-semibold text-bark hover:text-terracotta"
+                className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none"
                 title={b.title}
+                aria-label={b.label}
               >
-                {b.label}
+                {b.icon}
               </button>
             ))}
         </div>

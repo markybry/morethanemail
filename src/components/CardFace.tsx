@@ -181,18 +181,18 @@ export function CardFace({
             ))}
           </select>
           {board.canArchive(email.threadId) && (
-            <button onClick={() => board.archive(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-xs font-semibold text-bark">
-              Archive
+            <button onClick={() => board.archive(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-sm" title="Archive in Gmail" aria-label="Archive">
+              🗄️
             </button>
           )}
           {board.canFile(email.threadId) && (
-            <button onClick={() => board.file(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-xs font-semibold text-bark">
-              File
+            <button onClick={() => board.file(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-sm" title="File" aria-label="File">
+              👍
             </button>
           )}
           {board.canFile(email.threadId) && !email.local && (
-            <button onClick={() => board.remove(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-xs font-semibold text-bad-ink">
-              Delete
+            <button onClick={() => board.remove(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-sm" title="Delete (move to Gmail's Trash)" aria-label="Delete">
+              ❌
             </button>
           )}
         </div>
