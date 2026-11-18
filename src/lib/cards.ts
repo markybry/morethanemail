@@ -9,6 +9,14 @@ export const hasOwnLabel = (e: BoardEmail) => cardLabelIds(e).some((id) => id.st
 // The card's newest message, whichever thread it is in.
 export const latestThread = (e: BoardEmail): CardThread | Pick<BoardEmail, "from" | "snippet" | "date"> => e.threads[0] ?? e;
 
+// When the card last had mail: its newest message across all its threads.
+export const cardDate = (e: BoardEmail): string =>
+  e.threads.reduce((max, t) => (t.date > max ? t.date : max), e.date ?? "");
+
+// Newest first, for the first column.
+export const byCardDate = (a: BoardEmail | undefined, b: BoardEmail | undefined) =>
+  (b ? cardDate(b) : "").localeCompare(a ? cardDate(a) : "");
+
 // "Sarah Chen <sarah@acme.co>" -> "sarah@acme.co"
 export const senderAddress = (from: string) => (from.match(/<([^>]+)>/)?.[1] ?? from).trim().toLowerCase();
 

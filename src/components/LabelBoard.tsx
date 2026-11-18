@@ -50,7 +50,7 @@ import {
 import type { BoardEmail, LaneDTO, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "@/lib/types";
 import { CardFace, CardBoardContext, type CardAge } from "./CardFace";
 import { EmailPanel, UNSORTED, type CardChoice } from "./EmailPanel";
-import { cardLabelIds, hasOwnLabel, senderAddress } from "@/lib/cards";
+import { byCardDate, cardLabelIds, hasOwnLabel, senderAddress } from "@/lib/cards";
 import { useMail } from "./MailContext";
 import { ConfirmButton, InlineEdit } from "./ui";
 import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
@@ -508,7 +508,10 @@ export function LabelBoard({
     [isInbox, ignored],
   );
   const shownUnsorted = useMemo(
-    () => inFirstColumn.filter((t) => !emails[t]?.hidden && !isIgnored(emails[t])),
+    () =>
+      inFirstColumn
+        .filter((t) => !emails[t]?.hidden && !isIgnored(emails[t]))
+        .sort((a, b) => Number(!!emails[b]?.local) - Number(!!emails[a]?.local) || byCardDate(emails[a], emails[b])),
     [inFirstColumn, emails, isIgnored],
   );
   // The Inbox column is Gmail's inbox as it is: every thread there, newest first,
@@ -517,7 +520,9 @@ export function LabelBoard({
   const shownInbox = useMemo(
     () => [
       ...inFirstColumn.filter((t) => emails[t]?.local && !emails[t].hidden),
-      ...recentIds.filter((t) => emails[t] && !emails[t].local && cardLabelIds(emails[t]).includes("INBOX") && !isIgnored(emails[t])),
+      ...recentIds
+        .filter((t) => emails[t] && !emails[t].local && cardLabelIds(emails[t]).includes("INBOX") && !isIgnored(emails[t]))
+        .sort((a, b) => byCardDate(emails[a], emails[b])),
     ],
     [inFirstColumn, recentIds, emails, isIgnored],
   );
