@@ -20,6 +20,7 @@ import { cardLabelIds, latestThread, senderAddress } from "@/lib/cards";
 import { Drawer, DrawerHeader } from "./Drawer";
 import { ThreadView } from "./ThreadView";
 import { NextAction, TaskList } from "./CardTasks";
+import { Meetings } from "./CardMeetings";
 import { ConfirmButton, InlineEdit, Section } from "./ui";
 import { useMail } from "./MailContext";
 
@@ -130,6 +131,7 @@ export function EmailPanel(p: Props) {
         />
       )}
       <NextAction email={email} snapshot={snapshot(email)} onChange={onChange} />
+      <Meetings email={email} snapshot={snapshot(email)} onChange={onChange} />
       {email.local && <Emails email={email} onSeenThread={p.onSeenThread} onAddThread={p.onAddThread} onRemoveThread={p.onRemoveThread} />}
       <Links email={email} onChange={onChange} />
       <Notes email={email} onChange={onChange} />

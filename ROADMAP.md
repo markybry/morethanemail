@@ -166,6 +166,15 @@ Done when: you can get the Inbox column to empty, and stale waiting cards are ob
 - README and demo data rewritten around the workflow, lenses and one pinned label with several cards.
 - The word "workspace" removed from the app.
 
+### Step 7: meetings from Google Calendar (done)
+
+_Added 18 November 2026._
+
+- A card's **Meetings** section: link an upcoming event from your Google Calendar (events with people from the card's emails listed first), or create a new one, optionally inviting people from the card.
+- Linking puts "Meeting: …" at the top of the card's tasks with the event's time, so it's the next action on Today and in the calendar view.
+- Opening the card checks Calendar: a moved meeting moves its task, a deleted one shows as cancelled.
+- Needs the `calendar.events` permission. Accounts that signed in before this see "Connect it", which signs in again.
+
 ## Part 2: other email providers (planned, not started)
 
 _Added 13 November 2026._

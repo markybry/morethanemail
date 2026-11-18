@@ -7,7 +7,11 @@ import { db } from "./db";
 // It can't delete mail permanently.
 export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
 
-export const GOOGLE_SCOPES = ["openid", "email", "profile", GMAIL_SCOPE];
+// Read and change events on the user's calendars (to link and create meetings).
+// Optional: without it the app works, and Meetings asks to connect.
+export const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+
+export const GOOGLE_SCOPES = ["openid", "email", "profile", GMAIL_SCOPE, CALENDAR_SCOPE];
 
 export function appUrl() {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
@@ -23,8 +27,8 @@ export function oauthClient() {
   );
 }
 
-// An authorized Gmail client for a user. Refreshed tokens are written back to the DB.
-export function gmailFor(user: User) {
+// An authorized Google client for a user. Refreshed tokens are written back to the DB.
+function authFor(user: User) {
   const auth = oauthClient();
   auth.setCredentials({
     access_token: user.accessToken ?? undefined,
@@ -41,5 +45,8 @@ export function gmailFor(user: User) {
       },
     });
   });
-  return google.gmail({ version: "v1", auth });
+  return auth;
 }
+
+export const gmailFor = (user: User) => google.gmail({ version: "v1", auth: authFor(user) });
+export const calendarFor = (user: User) => google.calendar({ version: "v3", auth: authFor(user) });

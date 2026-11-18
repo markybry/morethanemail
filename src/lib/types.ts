@@ -3,6 +3,19 @@
 export type TaskDTO = { id: string; title: string; notes: string; done: boolean; dueDate: string | null; dueTime: boolean };
 export type NoteDTO = { id: string; body: string; createdAt: string };
 export type LinkDTO = { id: string; url: string; title: string };
+// A Google Calendar event, as listed for picking.
+export type CalendarEvent = {
+  eventId: string;
+  title: string;
+  start: string; // ISO; an all-day event's day at midnight UTC
+  end: string;
+  allDay: boolean;
+  htmlLink: string;
+  attendees: string[]; // lower-case addresses
+  cancelled: boolean;
+};
+// A calendar event linked to a card.
+export type EventDTO = { id: string; eventId: string; title: string; start: string; end: string; allDay: boolean; htmlLink: string; cancelled: boolean };
 // Something the user did to a card, newest first. kind: moved | ticket | task | taskDone | thread (notes come from notes).
 export type ActivityDTO = { kind: string; detail: string; at: string };
 
@@ -30,6 +43,7 @@ export type BoardEmail = ThreadSnapshot & {
   notes: NoteDTO[];
   tasks: TaskDTO[];
   links: LinkDTO[];
+  events: EventDTO[]; // linked calendar events, soonest first
   newReply: boolean; // has messages newer than the user last opened
   local: boolean; // a ticket with no email: subject is its title, snippet its description
   homeId: string | null; // the workflow it sits in a status of, if any (a card has one home)

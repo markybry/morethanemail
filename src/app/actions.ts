@@ -19,11 +19,12 @@ import {
 } from "@/lib/mail";
 import { requireUser } from "@/lib/session";
 import { isThemeId } from "@/lib/themes";
-import type { BoardEmail, FiledCard, LaneDTO, LaneTemplateDTO, LinkDTO, NoteDTO, TaskDTO, TemplateLane, ThreadSnapshot } from "@/lib/types";
+import type { BoardEmail, CalendarEvent, EventDTO, FiledCard, LaneDTO, LaneTemplateDTO, LinkDTO, NoteDTO, TaskDTO, TemplateLane, ThreadSnapshot } from "@/lib/types";
 import { parseTemplateLanes } from "@/lib/laneTemplates";
 import { isLocalThread, LOCAL_PREFIX } from "@/lib/format";
 import { randomUUID } from "crypto";
-import { boardEmailsFor, emailInclude, snapshotData, toBoardEmail, upsertEmail } from "@/lib/board";
+import { boardEmailsFor, emailInclude, eventDTO, snapshotData, toBoardEmail, upsertEmail } from "@/lib/board";
+import { calendarErrorMessage, createEvent, getEvent, listEvents } from "@/lib/calendar";
 
 // ---------- ownership guards ----------
 
@@ -450,12 +451,16 @@ export async function addThreadToCard(cardThreadId: string, thread: ThreadSnapsh
     const labelIds = add.length ? await modifyThreadLabels(user, thread.threadId, add, []) : undefined;
     const child = await upsertEmail(user.id, { ...thread, ...(labelIds ? { labelIds } : {}) });
     const childPlacement = await db.placement.findUnique({ where: { emailId: child.id } });
+    const cardEvents = (await db.cardEvent.findMany({ where: { emailId: card.id }, select: { eventId: true } })).map((e) => e.eventId);
     await db.$transaction([
       db.email.updateMany({ where: { parentId: child.id }, data: { parentId: card.id } }),
       db.email.update({ where: { id: child.id }, data: { parentId: card.id } }),
       db.note.updateMany({ where: { emailId: child.id }, data: { emailId: card.id } }),
       db.task.updateMany({ where: { emailId: child.id }, data: { emailId: card.id } }),
       db.ticketLink.updateMany({ where: { emailId: child.id }, data: { emailId: card.id } }),
+      // An event linked to both stays once, on the card.
+      db.cardEvent.deleteMany({ where: { emailId: child.id, eventId: { in: cardEvents } } }),
+      db.cardEvent.updateMany({ where: { emailId: child.id }, data: { emailId: card.id } }),
       db.activity.updateMany({ where: { emailId: child.id }, data: { emailId: card.id } }),
       // A card has one status: the card's own, or this email's if the card had none.
       ...(childPlacement
@@ -739,6 +744,178 @@ export async function deleteTask(taskId: string) {
   const user = await requireUser();
   await db.task.deleteMany({ where: { id: taskId, userId: user.id } });
   revalidateTaskPages();
+}
+
+// ---------- meetings (Google Calendar) ----------
+
+// What changes on a card when its meetings change: the events, and the tasks
+// (linking adds the meeting as a task with its time).
+type MeetingResult = { events?: EventDTO[]; tasks?: TaskDTO[]; error?: string };
+
+async function meetingsOf(emailId: string): Promise<{ events: EventDTO[]; tasks: TaskDTO[] }> {
+  const [events, tasks] = await Promise.all([
+    db.cardEvent.findMany({ where: { emailId }, orderBy: { start: "asc" } }),
+    db.task.findMany({ where: { emailId }, orderBy: { position: "asc" } }),
+  ]);
+  return { events: events.map(eventDTO), tasks: tasks.map(taskDTO) };
+}
+
+const meetingTitle = (title: string) => `Meeting: ${title}`.slice(0, 300);
+// A task's due date for an event: its start, or midday of an all-day event's day
+// (as date-only tasks are kept).
+const dueOf = (ev: { start: string; allDay: boolean }) => new Date(ev.allDay ? `${ev.start.slice(0, 10)}T12:00:00Z` : ev.start);
+
+// Upcoming events to link, those with people from this card first.
+export async function findEvents(query: string, people: string[]): Promise<{ events: CalendarEvent[]; error?: string }> {
+  const user = await requireUser();
+  try {
+    const events = await listEvents(user, query.slice(0, 200));
+    const known = new Set(people.map((p) => p.toLowerCase()).filter((p) => p !== user.email.toLowerCase()));
+    const shared = (e: CalendarEvent) => e.attendees.some((a) => known.has(a));
+    const soon = events.filter((e) => new Date(e.end).getTime() >= Date.now() - 86_400_000);
+    return { events: [...soon.filter(shared), ...soon.filter((e) => !shared(e))] };
+  } catch (e) {
+    console.error("findEvents failed", e);
+    return { events: [], error: calendarErrorMessage(e) };
+  }
+}
+
+// Link an event to the card, and put it at the top of the card's tasks with its
+// time, so it's the next action (on Today and in the calendar view).
+async function linkToCard(userId: string, emailId: string, ev: CalendarEvent) {
+  const existing = await db.cardEvent.findUnique({ where: { emailId_eventId: { emailId, eventId: ev.eventId } } });
+  if (existing) return;
+  const top = await db.task.aggregate({ where: { emailId }, _min: { position: true } });
+  const task = await db.task.create({
+    data: {
+      userId,
+      emailId,
+      title: meetingTitle(ev.title),
+      dueDate: dueOf(ev),
+      dueTime: !ev.allDay,
+      position: (top._min.position ?? 0) - 1,
+    },
+  });
+  await db.cardEvent.create({
+    data: {
+      emailId,
+      eventId: ev.eventId,
+      title: ev.title,
+      start: new Date(ev.start),
+      end: new Date(ev.end),
+      allDay: ev.allDay,
+      htmlLink: ev.htmlLink,
+      taskId: task.id,
+    },
+  });
+  await db.activity.create({ data: { userId, emailId, kind: "task", detail: task.title } });
+  revalidateTaskPages();
+}
+
+export async function linkEvent(thread: ThreadSnapshot, eventId: string): Promise<MeetingResult> {
+  const user = await requireUser();
+  try {
+    const ev = await getEvent(user, eventId);
+    if (!ev || ev.cancelled) return { error: "That event no longer exists." };
+    const email = await upsertEmail(user.id, thread);
+    await linkToCard(user.id, email.id, ev);
+    return meetingsOf(email.id);
+  } catch (e) {
+    console.error("linkEvent failed", e);
+    return { error: calendarErrorMessage(e) };
+  }
+}
+
+const isAddress = (s: string) => /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(s);
+
+// A new event in the user's calendar, linked to the card. People listed are
+// invited (Google emails them).
+export async function createCardEvent(
+  thread: ThreadSnapshot,
+  input: { title: string; start: string; end: string; timeZone: string; attendees: string[]; description: string },
+): Promise<MeetingResult> {
+  const user = await requireUser();
+  const start = new Date(input.start);
+  const end = new Date(input.end);
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return { error: "Pick a start, and an end after it." };
+  try {
+    const ev = await createEvent(user, {
+      title: input.title.trim().slice(0, 300) || thread.subject,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      timeZone: input.timeZone.slice(0, 64) || "UTC",
+      attendees: [...new Set(input.attendees.map((a) => a.trim().toLowerCase()))].filter(isAddress).slice(0, 50),
+      description: input.description.slice(0, 5000),
+    });
+    const email = await upsertEmail(user.id, thread);
+    await linkToCard(user.id, email.id, ev);
+    return meetingsOf(email.id);
+  } catch (e) {
+    console.error("createCardEvent failed", e);
+    return { error: calendarErrorMessage(e) };
+  }
+}
+
+// Take an event off the card (the event itself stays in Calendar). Its task
+// goes too, unless it was ticked off.
+export async function unlinkEvent(id: string): Promise<MeetingResult> {
+  const user = await requireUser();
+  const row = await db.cardEvent.findFirst({ where: { id, email: { userId: user.id } } });
+  if (!row) return {};
+  await db.$transaction([
+    db.cardEvent.delete({ where: { id: row.id } }),
+    ...(row.taskId ? [db.task.deleteMany({ where: { id: row.taskId, userId: user.id, done: false } })] : []),
+  ]);
+  revalidateTaskPages();
+  return meetingsOf(row.emailId);
+}
+
+// Bring a card's linked events up to date with Calendar: a moved meeting moves
+// its task; a deleted one is marked cancelled.
+export async function refreshCardEvents(cardThreadId: string): Promise<MeetingResult> {
+  const user = await requireUser();
+  const card = await db.email.findUnique({
+    where: { userId_threadId: { userId: user.id, threadId: cardThreadId } },
+    include: { events: true },
+  });
+  if (!card || card.events.length === 0) return {};
+  try {
+    let changed = false;
+    for (const row of card.events) {
+      const ev = await getEvent(user, row.eventId);
+      if (!ev || ev.cancelled) {
+        if (!row.cancelled) {
+          await db.cardEvent.update({ where: { id: row.id }, data: { cancelled: true } });
+          changed = true;
+        }
+        continue;
+      }
+      const same =
+        ev.start === row.start.toISOString() &&
+        ev.end === row.end.toISOString() &&
+        ev.allDay === row.allDay &&
+        ev.title === row.title &&
+        ev.htmlLink === row.htmlLink &&
+        !row.cancelled;
+      if (same) continue;
+      changed = true;
+      await db.cardEvent.update({
+        where: { id: row.id },
+        data: { title: ev.title, start: new Date(ev.start), end: new Date(ev.end), allDay: ev.allDay, htmlLink: ev.htmlLink, cancelled: false },
+      });
+      if (row.taskId)
+        await db.task.updateMany({
+          where: { id: row.taskId, userId: user.id, done: false },
+          data: { title: meetingTitle(ev.title), dueDate: dueOf(ev), dueTime: !ev.allDay },
+        });
+    }
+    if (changed) revalidateTaskPages();
+    return changed ? meetingsOf(card.id) : {};
+  } catch (e) {
+    // Not connected, offline...: keep showing what was last seen.
+    console.error("refreshCardEvents failed", e);
+    return { error: calendarErrorMessage(e) };
+  }
 }
 
 // ---------- deleting (Gmail's Trash) ----------

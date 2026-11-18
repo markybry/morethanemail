@@ -1,5 +1,5 @@
 import "server-only";
-import type { Email, Note, Task, TicketLink, User } from "@prisma/client";
+import type { CardEvent, Email, Note, Task, TicketLink, User } from "@prisma/client";
 import { db } from "./db";
 import { isLocalThread } from "./format";
 import { getLabelName, INBOX, type ThreadSummary } from "./mail";
@@ -12,6 +12,7 @@ export const emailInclude = {
   notes: { orderBy: { createdAt: "desc" } },
   tasks: { orderBy: { position: "asc" } },
   links: { orderBy: { createdAt: "asc" } },
+  events: { orderBy: { start: "asc" } },
   placements: { select: { workspaceId: true, lane: { select: { id: true, finished: true } } } },
   threads: { select: threadFields },
   parent: { select: { threadId: true } },
@@ -24,11 +25,23 @@ type EmailWithMeta = Email & {
   notes: Note[];
   tasks: Task[];
   links: TicketLink[];
+  events?: CardEvent[];
   placements?: { workspaceId: string; lane: { id: string; finished: boolean } }[];
   threads?: StoredThread[];
   parent?: { threadId: string } | null;
   activity?: { kind: string; detail: string; createdAt: Date }[];
 };
+
+export const eventDTO = (e: CardEvent) => ({
+  id: e.id,
+  eventId: e.eventId,
+  title: e.title,
+  start: e.start.toISOString(),
+  end: e.end.toISOString(),
+  allDay: e.allDay,
+  htmlLink: e.htmlLink,
+  cancelled: e.cancelled,
+});
 
 // A thread has a new reply when its latest message is newer than the one last opened.
 const isNewer = (date: string, seen: Date | null | undefined) => !!seen && new Date(date).getTime() > seen.getTime() + 1000;
@@ -69,6 +82,7 @@ export function toBoardEmail(stored: EmailWithMeta | undefined, live?: ThreadSum
     tasks:
       stored?.tasks.map((t) => ({ id: t.id, title: t.title, notes: t.notes, done: t.done, dueDate: t.dueDate?.toISOString() ?? null, dueTime: t.dueTime })) ?? [],
     links: stored?.links.map((l) => ({ id: l.id, url: l.url, title: l.title })) ?? [],
+    events: stored?.events?.map(eventDTO) ?? [],
     newReply: threads.some((t) => t.newReply),
     local: isLocalThread(first.threadId),
     homeId: stored?.placements?.[0]?.workspaceId ?? null,

@@ -100,6 +100,7 @@ model Email {
   notes       Note[]
   tasks       Task[]
   links       TicketLink[]
+  events      CardEvent[]
   placements  Placement[]
   activity    Activity[]
 
@@ -144,6 +145,26 @@ model TicketLink {
   title     String   @default("")
   createdAt DateTime @default(now())
 
+  @@index([emailId])
+}
+
+// A Google Calendar event linked to a card, as last seen. Linking also adds a
+// task for it (taskId), whose due date follows the event when it moves.
+model CardEvent {
+  id        String   @id @default(cuid())
+  emailId   String
+  email     Email    @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  eventId   String // on the user's primary calendar
+  title     String
+  start     DateTime
+  end       DateTime
+  allDay    Boolean  @default(false)
+  htmlLink  String   @default("")
+  cancelled Boolean  @default(false) // deleted or cancelled in Calendar
+  taskId    String?
+  createdAt DateTime @default(now())
+
+  @@unique([emailId, eventId])
   @@index([emailId])
 }
 
