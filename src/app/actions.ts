@@ -680,7 +680,17 @@ export async function addTask(thread: ThreadSnapshot, title: string, dueDate: st
   return taskDTO(task);
 }
 
-// A task on its own, added from My tasks.
+// Open tasks that aren't on a card, for Summary's next actions.
+export async function fetchStandaloneTasks(): Promise<TaskDTO[]> {
+  const user = await requireUser();
+  const tasks = await db.task.findMany({
+    where: { userId: user.id, emailId: null, done: false },
+    orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
+  });
+  return tasks.map(taskDTO);
+}
+
+// A task on its own (no card), added from Summary.
 export async function addStandaloneTask(title: string, dueDate: string | null, dueTime = false): Promise<TaskDTO> {
   const user = await requireUser();
   const task = await db.task.create({
