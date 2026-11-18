@@ -60,13 +60,15 @@ import { CalendarBoard } from "./CalendarBoard";
 import { NewCardForm } from "./NewCard";
 import { ListView } from "./ListView";
 import { TodayView } from "./TodayView";
+import { TasksView } from "./TasksView";
 import { FileUnder } from "./FileUnder";
 import type { Due } from "./DuePicker";
 
-const VIEW_KEY = "mte.view"; // the last view picked: "today" (Summary, the default), "list", "lanes" or "calendar"
-type BoardView = "lanes" | "calendar" | "list" | "today";
+const VIEW_KEY = "mte.view"; // the last view picked: "today" (Summary, the default), "tasks", "list", "lanes" or "calendar"
+type BoardView = "lanes" | "calendar" | "list" | "today" | "tasks";
 const VIEWS: { id: BoardView; name: string }[] = [
   { id: "today", name: "☀ Summary" },
+  { id: "tasks", name: "✓ Tasks" },
   { id: "list", name: "☰ List" },
   { id: "lanes", name: "▥ Lanes" },
   { id: "calendar", name: "▦ Calendar" },
@@ -296,7 +298,7 @@ export function LabelBoard({
   useEffect(() => {
     try {
       const v = localStorage.getItem(VIEW_KEY);
-      if (v === "calendar" || v === "lanes" || v === "list") setView(v);
+      if (v === "calendar" || v === "lanes" || v === "list" || v === "tasks") setView(v);
     } catch {}
     setPrefsReady(true);
   }, []);
@@ -775,7 +777,10 @@ export function LabelBoard({
   // A new card with no email, from the "+" in each view: in a status (Lanes), due
   // on a day (Calendar) or filed as information (File). One made in a finished
   // status goes straight to the List.
-  const newCard = async (title: string, opts: { laneId?: string; dueDate?: string | null; dueTime?: boolean; filed?: boolean } = {}) => {
+  const newCard = async (
+    title: string,
+    opts: { laneId?: string; dueDate?: string | null; dueTime?: boolean; filed?: boolean; task?: boolean } = {},
+  ) => {
     const card = await createTicket(workspace.id, title, lens?.labelId, opts);
     mergeEmails([card]);
     if (opts.laneId && card.done) setJustDone(opts.laneId);
@@ -1143,7 +1148,7 @@ export function LabelBoard({
           columns={[
             { id: "unsorted", name: isInbox ? "Inbox" : "To triage", count: shownUnsorted.length },
             ...(view !== "lanes"
-              ? [{ id: view, name: view === "list" ? "List" : view === "today" ? "Summary" : "Calendar", count: null }]
+              ? [{ id: view, name: view === "list" ? "List" : view === "today" ? "Summary" : view === "tasks" ? "Tasks" : "Calendar", count: null }]
               : [...shownLanes.map((l) => ({ id: l.id, name: l.name, count: l.threadIds.length })), { id: "add", name: "+ Status", count: null }]),
           ]}
         />
@@ -1244,6 +1249,20 @@ export function LabelBoard({
               onBoard={shownLanes.flatMap((l) => l.threadIds.filter((t) => emails[t]).map((t) => ({ card: emails[t], status: l.name })))}
               inLensIds={inLensIds}
               ageOf={ageOf}
+              toggleTask={toggleTask}
+              onOpen={openAny}
+            />
+          </section>
+        ) : view === "tasks" ? (
+          <section
+            id="col-tasks"
+            className="animate-fade-in board-bg flex min-h-0 min-w-0 flex-1 p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:w-[calc(100vw-1.5rem)] max-md:flex-none max-md:shrink-0 max-md:snap-start max-md:p-3"
+          >
+            <TasksView
+              onBoard={shownLanes.flatMap((l) => l.threadIds.filter((t) => emails[t]).map((t) => ({ card: emails[t], status: l.name })))}
+              inLensIds={inLensIds}
+              labelName={lens?.name ?? null}
+              onCreate={(t, due) => newCard(t, { filed: true, task: true, ...due })}
               toggleTask={toggleTask}
               onOpen={openAny}
             />

@@ -1,25 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  addStandaloneTask,
-  fetchRecentlyOpened,
-  fetchStandaloneTasks,
-  updateTask,
-  type RecentOpen,
-  type Waiting,
-} from "@/app/actions";
-import type { BoardEmail, TaskDTO } from "@/lib/types";
+import { fetchRecentlyOpened, type RecentOpen, type Waiting } from "@/app/actions";
+import type { BoardEmail } from "@/lib/types";
 import { nextAction } from "@/lib/cards";
 import { isOverdue, senderName, timeAgo } from "@/lib/format";
-import { DuePicker, DueText, type Due } from "./DuePicker";
-
-const NO_DUE: Due = { dueDate: null, dueTime: false };
-// Next actions: one per card, plus tasks on their own (no card).
-type ActionRow = { task: TaskDTO; card?: BoardEmail; status?: string };
 import { WaitingForReplies } from "./WaitingForReplies";
-
-type OnBoard = { card: BoardEmail; status: string };
+import { byDue, TaskLine, useOffBoardCards, type OnBoard, type TaskRow } from "./TasksView";
 
 // Summary (the "today" view), seen through the open label (All shows everything): replies you're
 // owed, one next action per card, new replies, cards stuck too long, and what
@@ -37,37 +24,21 @@ export function TodayView({
   toggleTask: (cardId: string, taskId: string, done: boolean) => void;
   onOpen: (threadId: string) => void;
 }) {
-  // Tasks on their own have no label, so they show whichever label is open.
-  const [own, setOwn] = useState<TaskDTO[]>([]);
-  useEffect(() => {
-    void fetchStandaloneTasks().then(setOwn);
-  }, []);
-  const [title, setTitle] = useState("");
-  const [due, setDue] = useState<Due>(NO_DUE);
-  const addOwn = async () => {
-    if (!title.trim()) return;
-    const task = await addStandaloneTask(title, due.dueDate, due.dueTime);
-    setOwn((prev) => [...prev, task]);
-    setTitle("");
-    setDue(NO_DUE);
-  };
-  const finishOwn = (id: string) => {
-    const before = own;
-    setOwn((prev) => prev.filter((t) => t.id !== id));
-    void updateTask(id, { done: true }).catch(() => setOwn(before));
-  };
+  // Cards not in a status (filed tickets from the Tasks tab, first-column
+  // emails) count too, when they have something to do.
+  const off = useOffBoardCards(onBoard, inLensIds);
+  const onBoardIds = useMemo(() => new Set(onBoard.map((x) => x.card.threadId)), [onBoard]);
 
-  // One next action per card, and each task on its own: by due date, undated last.
-  const actions = useMemo<ActionRow[]>(
+  // One next action per card, by due date, undated last.
+  const actions = useMemo<TaskRow[]>(
     () =>
-      [
-        ...onBoard.flatMap(({ card, status }) => {
+      [...onBoard, ...off.cards.map((card) => ({ card, status: undefined }))]
+        .flatMap(({ card, status }) => {
           const task = nextAction(card.tasks);
           return task ? [{ card, status, task }] : [];
-        }),
-        ...own.map((task) => ({ task })),
-      ].sort((a, b) => (a.task.dueDate ?? "9999").localeCompare(b.task.dueDate ?? "9999")),
-    [onBoard, own],
+        })
+        .sort(byDue),
+    [onBoard, off.cards],
   );
   const overdue = actions.filter((a) => a.task.dueDate && isOverdue(a.task.dueDate, a.task.dueTime)).length;
   const replies = onBoard.filter((x) => x.card.newReply);
@@ -93,49 +64,19 @@ export function TodayView({
         <WaitingForReplies keep={keepWaiting} onOpen={onOpen} />
 
         <div className="grid gap-5 md:grid-cols-2">
-          <Panel title="Next actions" hint="One per card (its first open task), and any on their own">
-            <form
-              className="mb-2 flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void addOwn();
-              }}
-            >
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Add a next action (no email needed)"
-                aria-label="New next action"
-                className="field min-w-0 flex-1 rounded-xl px-2.5 py-1.5 text-sm"
-              />
-              <DuePicker value={due} onChange={setDue} variant="field" />
-              <button className="btn-press rounded-xl bg-terracotta px-3 text-sm font-bold text-cream">Add</button>
-            </form>
+          <Panel title="Next actions" hint="One per card: the first open task. Add tasks in the Tasks tab.">
             {actions.length === 0 && <Empty>No next actions here.</Empty>}
             <ul className="space-y-1.5">
-              {actions.map(({ card, status, task }, i) => (
-                <li
-                  key={task.id}
-                  className="list-row animate-rise flex items-center gap-3 px-3 py-2"
-                  style={{ animationDelay: `${Math.min(i, 12) * 30}ms` }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={false}
-                    onChange={() => (card ? toggleTask(card.threadId, task.id, true) : finishOwn(task.id))}
-                    className="h-4 w-4 shrink-0 accent-moss"
-                    aria-label={`Done: ${task.title}`}
-                  />
-                  <button
-                    onClick={() => card && onOpen(card.threadId)}
-                    disabled={!card}
-                    className="min-w-0 flex-1 text-left disabled:cursor-default"
-                  >
-                    <div className="truncate text-sm text-walnut">{task.title}</div>
-                    <div className="truncate text-xs text-muted">{card ? `${card.title} · ${status}` : "On its own"}</div>
-                  </button>
-                  <DueText dueDate={task.dueDate} dueTime={task.dueTime} className="shrink-0 text-xs" />
-                </li>
+              {actions.map((r, i) => (
+                <TaskLine
+                  key={r.task.id}
+                  row={r}
+                  i={i}
+                  onDone={() =>
+                    onBoardIds.has(r.card.threadId) ? toggleTask(r.card.threadId, r.task.id, true) : off.finish(r.card.threadId, r.task.id)
+                  }
+                  onOpen={onOpen}
+                />
               ))}
             </ul>
           </Panel>

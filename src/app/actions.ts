@@ -361,7 +361,7 @@ export async function createTicket(
   workspaceId: string,
   title: string,
   labelId?: string,
-  opts: { laneId?: string; dueDate?: string | null; dueTime?: boolean; filed?: boolean } = {},
+  opts: { laneId?: string; dueDate?: string | null; dueTime?: boolean; filed?: boolean; task?: boolean } = {},
 ): Promise<BoardEmail> {
   const { user } = await ownWorkspace(workspaceId);
   const name = title.trim().slice(0, 200) || "Untitled ticket";
@@ -379,8 +379,19 @@ export async function createTicket(
       date: now,
       labelIds: labelId && isAssignableLabel(labelId) && labelId !== "INBOX" ? [labelId] : [],
       hiddenAt: opts.filed ? now : null,
-      ...(opts.dueDate
-        ? { tasks: { create: { userId: user.id, title: name, dueDate: new Date(opts.dueDate), dueTime: !!opts.dueTime, position: 0 } } }
+      // A due date, or `task` (a task added from the Tasks tab), makes the title its next action.
+      ...(opts.dueDate || opts.task
+        ? {
+            tasks: {
+              create: {
+                userId: user.id,
+                title: name,
+                dueDate: opts.dueDate ? new Date(opts.dueDate) : null,
+                dueTime: !!opts.dueDate && !!opts.dueTime,
+                position: 0,
+              },
+            },
+          }
         : {}),
       ...(lane ? { placements: { create: { workspaceId, laneId: lane.id, position: (last?._max.position ?? -1) + 1 } } } : {}),
     },
@@ -680,25 +691,16 @@ export async function addTask(thread: ThreadSnapshot, title: string, dueDate: st
   return taskDTO(task);
 }
 
-// Open tasks that aren't on a card, for Summary's next actions.
-export async function fetchStandaloneTasks(): Promise<TaskDTO[]> {
+// Cards with open tasks that aren't in a status (filed tickets made from the
+// Tasks tab, emails in the first column): the board doesn't load them itself.
+export async function fetchOffBoardTaskCards(): Promise<BoardEmail[]> {
   const user = await requireUser();
-  const tasks = await db.task.findMany({
-    where: { userId: user.id, emailId: null, done: false },
-    orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
+  const cards = await db.email.findMany({
+    where: { userId: user.id, parentId: null, placements: { none: {} }, tasks: { some: { done: false } } },
+    include: emailInclude,
+    take: 300,
   });
-  return tasks.map(taskDTO);
-}
-
-// A task on its own (no card), added from Summary.
-export async function addStandaloneTask(title: string, dueDate: string | null, dueTime = false): Promise<TaskDTO> {
-  const user = await requireUser();
-  const task = await db.task.create({
-    data: { userId: user.id, title: title.trim().slice(0, 300) || "Untitled task", dueDate: dueDate ? new Date(dueDate) : null, dueTime: !!dueDate && dueTime },
-  });
-  await db.activity.create({ data: { userId: user.id, kind: "task", detail: task.title } });
-  revalidateTaskPages();
-  return taskDTO(task);
+  return cards.map((c) => toBoardEmail(c));
 }
 
 export async function updateTask(
