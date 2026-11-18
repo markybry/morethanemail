@@ -542,7 +542,7 @@ export function LabelBoard({
     }
     return [...rows].sort((a, b) => (count.get(b.key) ?? 0) - (count.get(a.key) ?? 0));
   }, [rows, shownLanes, rowOf, emails]);
-  const newReplies = shownLanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply).length;
+  const newReplyIds = shownLanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply);
   // New replies anywhere on the board show in the tab title, so they're seen from other tabs.
   const allNewReplies = lanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply).length;
   useEffect(() => {
@@ -1175,7 +1175,7 @@ export function LabelBoard({
           tagOf={tagOf}
           emails={emails}
           sortedCount={shownPlaced}
-          newReplies={newReplies}
+          newReplyIds={newReplyIds}
           searching={!!loadedQuery}
           state={listState}
           error={listError}
@@ -1508,7 +1508,7 @@ function UnsortedColumn(p: {
   threadIds: string[];
   emails: Record<string, BoardEmail>;
   sortedCount: number;
-  newReplies: number;
+  newReplyIds: string[]; // cards in a status with a reply not yet opened
   searching: boolean;
   state: "loading" | "idle" | "error";
   error: string;
@@ -1570,11 +1570,22 @@ function UnsortedColumn(p: {
           {p.searching ? "Search results" : p.isInbox ? "Gmail inbox, newest first" : "Not in a status yet"}
           {` · ${p.threadIds.length}${p.hasMore ? "+" : ""}`}
           {p.sortedCount > 0 && ` · ${p.sortedCount} in statuses`}
-          {p.newReplies > 0 && (
-            <span className="text-accent-ink">
+          {p.newReplyIds.length > 0 && (
+            <>
               {" · "}
-              {p.newReplies} new {p.newReplies === 1 ? "reply" : "replies"} in statuses
-            </span>
+              <button
+                onClick={() => {
+                  // Open the next card with a new reply after the one open now.
+                  const ids = p.newReplyIds;
+                  const at = p.selected ? ids.indexOf(p.selected) : -1;
+                  p.onOpen(ids[(at + 1) % ids.length]);
+                }}
+                className="text-accent-ink underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                title={p.newReplyIds.length > 1 ? "Open the next one" : "Open it"}
+              >
+                {p.newReplyIds.length} new {p.newReplyIds.length === 1 ? "reply" : "replies"} in statuses
+              </button>
+            </>
           )}
         </p>
       </div>
