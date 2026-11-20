@@ -10,11 +10,10 @@ type Props = {
   user: { name: string; email: string; isDemo: boolean; triageFrom: string | null };
   mobileOpen: boolean;
   onClose: () => void;
-  slotRef: (el: HTMLElement | null) => void;
 };
 
 // On desktop the sidebar sits beside the board; on phones it slides in over it.
-export function Sidebar({ user, mobileOpen, onClose, slotRef }: Props) {
+export function Sidebar({ user, mobileOpen, onClose }: Props) {
   const pathname = usePathname();
   const w = useStoredWidth("mte.w.side", 380, 200, 720);
 
@@ -36,11 +35,10 @@ export function Sidebar({ user, mobileOpen, onClose, slotRef }: Props) {
           </button>
         </div>
 
+        {/* The label tree takes all the room left over, down to the footer. */}
         <div className="mt-2 min-h-0 flex-1 overflow-y-auto pb-4">
           <MailNav />
         </div>
-        {/* The board's Inbox / To-triage column lands here on desktop (see SidebarSlot). */}
-        <div ref={slotRef} className="flex min-h-0 flex-[2] flex-col border-t border-dashed border-side-strong/20 text-ink empty:hidden max-md:hidden" />
 
         <div className="space-y-2 border-t border-dashed border-side-strong/20 px-4 py-3 text-xs">
           <Link

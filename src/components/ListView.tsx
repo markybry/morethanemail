@@ -8,6 +8,7 @@ import { senderName, shortDate } from "@/lib/format";
 import { useMail } from "./MailContext";
 import { NewCardForm } from "./NewCard";
 import { Loading } from "./Loading";
+import { WaitingForReplies } from "./WaitingForReplies";
 
 // Everything under the label (all labelled mail in the Workspace), older mail
 // included, plus labelled cards with no email. Only labelled things are filed:
@@ -19,6 +20,7 @@ export function ListView({
   labelName,
   emails,
   inLens,
+  inLensIds,
   statusOf,
   mergeEmails,
   onOpen,
@@ -30,6 +32,7 @@ export function ListView({
   labelName: string;
   emails: Record<string, BoardEmail>;
   inLens: (e: BoardEmail | undefined) => boolean;
+  inLensIds: (labelIds: string[]) => boolean; // for the waiting section
   statusOf: (threadId: string) => string | undefined;
   mergeEmails: (list: BoardEmail[]) => void;
   onOpen: (threadId: string) => void;
@@ -94,6 +97,10 @@ export function ListView({
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
 
       <div className="paper min-h-0 flex-1 overflow-y-auto rounded-2xl border border-line">
+        {/* Sent mail nobody has answered yet, alongside the filed mail in this lens. */}
+        <div className="border-b border-dashed border-line-strong p-2">
+          <WaitingForReplies className="animate-rise" keep={(w) => inLensIds(w.labelIds)} onOpen={onOpen} />
+        </div>
         {done && filed && (
           <AllMail
             labelId={isInbox ? "ALL" : labelId}

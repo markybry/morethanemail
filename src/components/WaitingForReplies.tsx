@@ -15,9 +15,11 @@ const cardLink = (threadId: string) => `/l/INBOX?thread=${encodeURIComponent(thr
 export function WaitingForReplies({
   keep = () => true,
   onOpen,
+  className = "paper animate-rise rounded-3xl border border-line p-4",
 }: {
   keep?: (w: Waiting) => boolean; // e.g. only the open label's
   onOpen?: (threadId: string) => void; // open in place, instead of following a link
+  className?: string; // a host can drop the card surface when it has its own
 }) {
   const [items, setItems] = useState<Waiting[] | null>(null);
   const [error, setError] = useState("");
@@ -44,7 +46,7 @@ export function WaitingForReplies({
   const nudges = shown?.filter((w) => days(w.date) >= NUDGE_DAYS).length ?? 0;
 
   return (
-    <section className="paper animate-rise rounded-3xl border border-line p-4">
+    <section className={className}>
       <div className="mb-2 flex items-baseline gap-2">
         <h2 className="text-sm font-semibold text-terracotta">⏳ Waiting for a reply</h2>
         {shown && shown.length > 0 && (

@@ -56,7 +56,6 @@ import { useMail } from "./MailContext";
 import { ConfirmButton, InlineEdit } from "./ui";
 import { ResizeHandle, useStoredWidth, widthVar } from "./Resizable";
 import { ThemeIcon, useTheme } from "./ThemeContext";
-import { InSidebar } from "./SidebarSlot";
 import { CalendarBoard } from "./CalendarBoard";
 import { NewCardForm } from "./NewCard";
 import { ListView } from "./ListView";
@@ -1195,10 +1194,7 @@ export function LabelBoard({
         />
         {/* On phones this row scrolls sideways, one column per screen; on desktop it dissolves. */}
         <div className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] md:contents">
-        <InSidebar>
-        {(docked) => (
         <UnsortedColumn
-          docked={docked}
           picked={pickedShown}
           onPick={pick}
           bulk={bulk}
@@ -1247,8 +1243,6 @@ export function LabelBoard({
           onOpen={setSelected}
           look={look}
         />
-        )}
-        </InSidebar>
 
         {/* Desktop: a view switch above the board. On phones it sits in the column tabs. */}
         {/* The wrapper carries the board's background on desktop; on phones it dissolves and each section carries its own. */}
@@ -1267,6 +1261,7 @@ export function LabelBoard({
               labelName={title}
               emails={emails}
               inLens={inLens}
+              inLensIds={inLensIds}
               statusOf={statusOf}
               mergeEmails={mergeEmails}
               onNew={async (t) => {
@@ -1275,7 +1270,7 @@ export function LabelBoard({
                 setFileAsk([card.threadId]);
                 return card;
               }}
-              onOpen={setSelected}
+              onOpen={openAny}
               onUnfile={(id) => {
                 void file(id, false);
                 if (!containerOf(id, { lanes, unsorted })) setUnsorted((prev) => byDate([...prev, id]));
@@ -1520,7 +1515,6 @@ export function LabelBoard({
 // ---------- columns ----------
 
 function UnsortedColumn(p: {
-  docked: boolean; // shown at the bottom of the sidebar rather than as the board's first column
   picked: string[];
   onPick: (threadId: string, range: boolean) => void;
   bulk: {
@@ -1566,14 +1560,10 @@ function UnsortedColumn(p: {
   return (
     <aside
       id="col-unsorted"
-      className={
-        p.docked
-          ? "paper relative flex min-h-0 flex-1 flex-col"
-          : "paper relative flex shrink-0 snap-start flex-col border-r border-line max-md:w-screen md:w-[var(--w)]"
-      }
-      style={p.docked ? undefined : widthVar(w.width)}
+      className="paper relative flex shrink-0 snap-start flex-col border-r border-line max-md:w-screen md:w-[var(--w)]"
+      style={widthVar(w.width)}
     >
-      {!p.docked && <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} label="Resize email column" />}
+      <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} label="Resize email column" />
       <div className="space-y-2 border-b border-dashed border-line-strong p-3">
         <div className="flex items-center gap-2">
           <h1 className="min-w-0 flex-1 truncate text-xl font-semibold text-walnut" title={p.title}>
