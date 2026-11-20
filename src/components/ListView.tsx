@@ -107,6 +107,11 @@ export function ListView({
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
 
       <div className="paper min-h-0 flex-1 overflow-y-auto rounded-2xl border border-line">
+        {/* Sent mail nobody has answered yet, first in the List. */}
+        <div className="border-b border-dashed border-line-strong p-2">
+          <WaitingForReplies className="animate-rise" keep={(w) => inLensIds(w.labelIds)} onOpen={onOpen} />
+        </div>
+
         {/* What used to be the first column: the Inbox (or this label's mail) still to triage. */}
         <section id="col-inbox" className="border-b border-dashed border-line-strong p-2">
           <div className="mb-1.5 flex items-center gap-2 px-1">
@@ -154,11 +159,6 @@ export function ListView({
             </ul>
           )}
         </section>
-
-        {/* Sent mail nobody has answered yet, alongside the filed mail in this lens. */}
-        <div className="border-b border-dashed border-line-strong p-2">
-          <WaitingForReplies className="animate-rise" keep={(w) => inLensIds(w.labelIds)} onOpen={onOpen} />
-        </div>
         {done && filed && (
           <AllMail
             labelId={isInbox ? "ALL" : labelId}
