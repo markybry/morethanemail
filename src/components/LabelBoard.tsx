@@ -1,7 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -10,7 +9,6 @@ import {
   TouchSensor,
   closestCorners,
   pointerWithin,
-  useDraggable,
   useDroppable,
   useSensor,
   useSensors,
@@ -90,9 +88,6 @@ const fromId = (id: string) => id.slice(T.length);
 const GENERAL = "__general"; // the row for cards with no sub-label
 const STALE_DAYS = 7; // a card waiting this long is flagged
 const REFRESH_MS = 2 * 60_000; // how often cards in a status are checked for new replies
-// True while an email from the first column is dragged: a card in a status is
-// then a drop target ("add to this card") rather than a place in the list.
-const MergeDragContext = createContext(false);
 
 // A row of the board: one sub-label of the label being looked through.
 type Row = { key: string; labelId: string | null; name: string; path: string };
@@ -238,30 +233,17 @@ export function LabelBoard({
     const t = setTimeout(() => setJustDone(null), 1600);
     return () => clearTimeout(t);
   }, [justDone]);
-  // Done cards opened from File that have left the board: their finished status.
-  const [loadedQuery, setLoadedQuery] = useState("");
-  const [nextPage, setNextPage] = useState<string | undefined>();
-  const [listState, setListState] = useState<"loading" | "idle" | "error">("loading");
-  const [listError, setListError] = useState("");
-
   const load = useCallback(
-    async (q: string, pageToken?: string) => {
-      setListState("loading");
+    async () => {
       const res = await fetchLabelEmails(sourceLabelId, {
         primaryOnly,
-        query: q,
-        pageToken,
         includeOlder: showOlder,
       });
-      if (res.error) {
-        setListError(res.error);
-        setListState("error");
-        return;
-      }
+      if (res.error) return;
       mergeEmails(res.emails);
-      // The Inbox column lists cards: an email added to a card shows as that card.
+      // Emails added to a card show as that card.
       const cardIds = [...new Set(res.emails.map((e) => e.partOf ?? e.threadId))];
-      setRecentIds((prev) => (pageToken ? [...prev, ...cardIds.filter((id) => !prev.includes(id))] : cardIds));
+      setRecentIds(cardIds);
       const missing = cardIds.filter((id) => !emailsRef.current[id] && !res.emails.some((e) => e.threadId === id));
       if (missing.length) void refreshEmails(missing).then((r) => mergeEmails(r.emails));
       // Cards already in a status, Done cards, and emails added to a card, aren't unsorted.
@@ -282,17 +264,12 @@ export function LabelBoard({
         .filter((e) => !placedRef.current.has(e.threadId) && !(e.homeId && e.homeId !== workspace.id) && !e.partOf)
         .filter((e) => !e.done || reopenedDone.includes(e.threadId))
         .map((e) => e.threadId);
-      // Tickets with no email aren't in Gmail's list; keep the unsorted ones (matching a search).
-      const needle = q.toLowerCase();
+      // Tickets with no email aren't in Gmail's list; keep the unsorted ones.
       const tickets = Object.values(emailsRef.current)
         .filter((e) => e.local && !placedRef.current.has(e.threadId))
-        .filter((e) => !needle || `${e.subject} ${e.snippet}`.toLowerCase().includes(needle))
         .map((e) => e.threadId);
-      setUnsorted((prev) => (pageToken ? [...prev, ...ids.filter((id) => !prev.includes(id))] : [...tickets, ...ids]));
-      setNextPage(res.nextPageToken);
-      setLoadedQuery(q);
-      setListState("idle");
-      if (isInbox && !pageToken && !q) {
+      setUnsorted([...tickets, ...ids]);
+      if (isInbox) {
         const sent = await fetchSentStarted();
         if (!sent.error) {
           mergeEmails(sent.emails);
@@ -318,7 +295,7 @@ export function LabelBoard({
   }, []);
 
   useEffect(() => {
-    if (prefsReady) void load("");
+    if (prefsReady) void load();
   }, [prefsReady, load]);
 
   // Emails sorted into lanes may be far down the label; refresh them directly
@@ -441,22 +418,6 @@ export function LabelBoard({
     }
   };
 
-  // Several emails into one status (and row) at once, saved one after another.
-  const placeMany = async (ids: string[], target: string, row?: string) => {
-    const before = { lanes, unsorted };
-    let cur: Columns = before;
-    const steps = ids.map((id) => {
-      const from = containerOf(id, cur);
-      cur = moveInto(cur, id, target);
-      return { id, from, cols: cur };
-    });
-    apply(cur);
-    for (const s of steps) {
-      if (s.from !== target) await persist(s.id, s.from, target, s.cols, before);
-      if (row && row !== rowOf(emails[s.id])) await moveToRow(s.id, row);
-    }
-  };
-
   // From the email panel's lane picker.
   const place = async (threadId: string, target: string) => {
     const cols = { lanes, unsorted };
@@ -475,7 +436,6 @@ export function LabelBoard({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [dragFromFirst, setDragFromFirst] = useState(false);
   const [overLane, setOverLane] = useState<string | null>(null);
   const snapshot = useRef<(Columns & { from?: string }) | null>(null);
 
@@ -551,7 +511,6 @@ export function LabelBoard({
     return statusOf(threadId) ?? (e?.done ? "Done" : e?.hidden ? "Filed" : sentIds.includes(threadId) && !cardLabelIds(e).includes("INBOX") ? "Sent" : undefined);
   };
   const statusOf = (threadId: string) => lanes.find((l) => l.threadIds.includes(threadId))?.name;
-  const shownPlaced = shownLanes.reduce((n, l) => n + l.threadIds.length, 0);
   // Rows with the most cards first, so empty sub-labels sink to the bottom.
   const orderedRows = useMemo(() => {
     if (!rows) return null;
@@ -562,7 +521,6 @@ export function LabelBoard({
     }
     return [...rows].sort((a, b) => (count.get(b.key) ?? 0) - (count.get(a.key) ?? 0));
   }, [rows, shownLanes, rowOf, emails]);
-  const newReplyIds = shownLanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply);
   // New replies anywhere on the board show in the tab title, so they're seen from other tabs.
   const allNewReplies = lanes.flatMap((l) => l.threadIds).filter((t) => emails[t]?.newReply).length;
   useEffect(() => {
@@ -571,24 +529,8 @@ export function LabelBoard({
   }, [allNewReplies]);
 
 
-  // ----- picking several emails in the first column -----
-  // Tick emails (or shift-click a run of them), then file, archive, hide or
-  // combine them together, or drag one and the rest come along.
+  // The mail still to triage: shown in the List tab, and used by "open next".
   const firstList = isInbox ? shownInbox : shownUnsorted;
-  const [picked, setPicked] = useState<string[]>([]);
-  const lastPicked = useRef<string | null>(null);
-  const pickedShown = useMemo(() => firstList.filter((t) => picked.includes(t) && !placed.has(t)), [firstList, picked, placed]);
-  const pick = (threadId: string, range: boolean) => {
-    const anchor = lastPicked.current;
-    lastPicked.current = threadId;
-    setPicked((prev) => {
-      if (range && anchor && firstList.includes(anchor)) {
-        const [a, b] = [firstList.indexOf(anchor), firstList.indexOf(threadId)].sort((x, y) => x - y);
-        return [...new Set([...prev, ...firstList.slice(a, b + 1)])];
-      }
-      return prev.includes(threadId) ? prev.filter((x) => x !== threadId) : [...prev, threadId];
-    });
-  };
 
   const collision: CollisionDetection = (args) => {
     const hits = pointerWithin(args);
@@ -638,21 +580,16 @@ export function LabelBoard({
   function onDragStart({ active }: DragStartEvent) {
     const id = fromId(String(active.id));
     setActiveId(id);
-    const from = containerOf(id, { lanes, unsorted });
-    snapshot.current = { lanes, unsorted, from };
-    // From the first column there's no live preview in the statuses, so the
-    // cards stay still and can be dropped onto.
-    setDragFromFirst(!from || from === UNSORTED);
+    snapshot.current = { lanes, unsorted, from: containerOf(id, { lanes, unsorted }) };
   }
 
-  // Emails follow the pointer into lanes while dragging. The unsorted column
-  // keeps Gmail's date order, so it only takes an email back on drop.
+  // Cards follow the pointer into lanes while dragging; the drop saves the move.
   function onDragOver({ active, over }: DragOverEvent) {
     const id = fromId(String(active.id));
     const cols = { lanes, unsorted };
     const target = over ? targetOf(String(over.id), cols) : undefined;
     setOverLane(target && target !== UNSORTED ? target : null);
-    if (!over || dragFromFirst) return;
+    if (!over) return;
     if (!target || target === UNSORTED || target === containerOf(id, cols)) return;
     const before = String(over.id).startsWith(T) ? fromId(String(over.id)) : undefined;
     apply(moveInto(cols, id, target, before));
@@ -662,36 +599,12 @@ export function LabelBoard({
     const snap = snapshot.current;
     snapshot.current = null;
     setActiveId(null);
-    setDragFromFirst(false);
     setOverLane(null);
     const id = fromId(String(active.id));
     const cols = { lanes, unsorted };
     const target = over ? targetOf(String(over.id), cols) : undefined;
     if (!snap || !target) {
       if (snap) apply(snap);
-      return;
-    }
-    if (dragFromFirst && target !== UNSORTED) {
-      const overId = String(over!.id);
-      const onCard = overId.startsWith(T) ? fromId(overId) : undefined;
-      // Picked emails travel together, the dragged one first.
-      const group = pickedShown.includes(id) ? [id, ...pickedShown.filter((t) => t !== id)] : [id];
-      setPicked([]);
-      if (onCard && onCard !== id && !emails[id]?.local) {
-        // Dropped onto a card: the email(s) join it.
-        for (const t of group) {
-          const e = emails[t];
-          if (!e || e.local || t === onCard) continue;
-          const err = await addToCard(e, onCard);
-          if (err) {
-            setSaveError(err);
-            break;
-          }
-        }
-        return;
-      }
-      const row = rows ? (overId.startsWith(LANE) ? overId.split("#")[1] : rowOf(emails[fromId(overId)])) : undefined;
-      await placeMany(group, target, row);
       return;
     }
     let next = cols;
@@ -1029,104 +942,12 @@ export function LabelBoard({
     return undefined;
   };
 
-  const archiveMany = async (ids: string[]) => {
-    const own = ids.filter((id) => emails[id] && !emails[id].local);
-    const threads = own.flatMap((id) => emails[id].threads.map((t) => t.threadId)).filter((t) => !t.startsWith("local:"));
-    if (!threads.length) return;
-    if (selected && own.includes(selected)) setSelected(null);
-    const before = unsorted;
-    setUnsorted((prev) => prev.filter((x) => !own.includes(x)));
-    const res = await archiveThreads(threads);
-    if (res.error || !res.labelIds) {
-      setUnsorted(before);
-      setSaveError(res.error ?? "Couldn't archive those emails.");
-      return;
-    }
-    const labels = res.labelIds;
-    setEmails((prev) => {
-      const next = { ...prev };
-      for (const id of own) {
-        const cur = next[id];
-        if (cur)
-          next[id] = {
-            ...cur,
-            labelIds: labels[cur.threadId] ?? cur.labelIds,
-            threads: cur.threads.map((t) => ({ ...t, labelIds: labels[t.threadId] ?? t.labelIds })),
-          };
-      }
-      return next;
-    });
-  };
-
-  // Several emails become one card: the newest is the card, the others join it.
-  // It stays in the first column, ready to be filed.
-  const combine = async (ids: string[]) => {
-    const [base, ...rest] = ids;
-    const card = emails[base];
-    if (!card) return;
-    if (!card.local) {
-      let failed = false;
-      await save(() => arrangeEmails(workspace.id, { lanes: [], unsorted: [], snapshots: [snapshotOf(card)] }), () => (failed = true));
-      if (failed) return;
-    }
-    for (const id of rest) {
-      const e = emails[id];
-      if (!e || e.local) continue;
-      const err = await addToCard(e, base);
-      if (err) {
-        setSaveError(err);
-        break;
-      }
-    }
-    setSelected(base);
-  };
-
-  const bulk = {
-    statuses: lanes.map((l) => ({ id: l.id, name: l.name })),
-    onMove: (laneId: string) => {
-      const ids = pickedShown;
-      setPicked([]);
-      void placeMany(ids, laneId);
-    },
-    onArchive:
-      isInbox
-        ? () => {
-            const ids = pickedShown;
-            setPicked([]);
-            void archiveMany(ids);
-          }
-        : undefined,
-    onFile: () => {
-      const ids = pickedShown;
-      setPicked([]);
-      fileMany(ids);
-    },
-    onLabel: () => {
-      const ids = pickedShown.filter((id) => !emails[id]?.local);
-      setPicked([]);
-      if (ids.length) setLabelAsk(ids);
-    },
-    onCombine: () => {
-      const ids = pickedShown;
-      setPicked([]);
-      void combine(ids);
-    },
-    onClear: () => setPicked([]),
-  };
-
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape" && pickedShown.length && !selected) {
-        setPicked([]);
-        return;
-      }
       if (ev.metaKey || ev.ctrlKey || ev.altKey || !selected) return;
       if ((ev.target as HTMLElement | null)?.closest?.("input, textarea, select, [contenteditable='true']")) return;
       const fromFirst = !lanes.some((l) => l.threadIds.includes(selected));
-      if (ev.key === "x" && fromFirst) {
-        ev.preventDefault();
-        pick(selected, false);
-      } else if (ev.key === "e" && isInbox && fromFirst) {
+      if (ev.key === "e" && isInbox && fromFirst) {
         ev.preventDefault();
         void archive(selected, true);
       } else if (ev.key === "l" && !emails[selected]?.local && !labelAsk && !fileAsk) {
@@ -1165,7 +986,6 @@ export function LabelBoard({
 
   return (
     <CardBoardContext.Provider value={cardBoard}>
-    <MergeDragContext.Provider value={dragFromFirst && !!activeId && !emails[activeId]?.local}>
     <DndContext
       id="label-board" // stable id avoids an SSR/client hydration mismatch in dnd-kit's aria ids
       sensors={sensors}
@@ -1177,7 +997,6 @@ export function LabelBoard({
         if (snapshot.current) apply(snapshot.current);
         snapshot.current = null;
         setActiveId(null);
-        setDragFromFirst(false);
         setOverLane(null);
       }}
     >
@@ -1186,63 +1005,13 @@ export function LabelBoard({
           view={view}
           onView={changeView}
           columns={[
-            { id: "unsorted", name: isInbox ? "Inbox" : "To triage", count: shownUnsorted.length },
             ...(view !== "lanes"
               ? [{ id: view, name: view === "list" ? "List" : view === "today" ? "Summary" : view === "tasks" ? "Tasks" : "Calendar", count: null }]
               : [...shownLanes.map((l) => ({ id: l.id, name: l.name, count: l.threadIds.length })), { id: "add", name: "+ Status", count: null }]),
           ]}
         />
-        {/* On phones this row scrolls sideways, one column per screen; on desktop it dissolves. */}
+        {/* On phones this row scrolls sideways, one view per screen; on desktop it dissolves. */}
         <div className="flex min-h-0 flex-1 snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] md:contents">
-        <UnsortedColumn
-          picked={pickedShown}
-          onPick={pick}
-          bulk={bulk}
-          title={title}
-          labelId={sourceLabelId}
-          isLens={!!lens}
-          isInbox={isInbox}
-          statusOf={statusOf}
-          threadIds={firstList}
-          tagOf={tagOf}
-          emails={emails}
-          sortedCount={shownPlaced}
-          newReplyIds={newReplyIds}
-          searching={!!loadedQuery}
-          state={listState}
-          error={listError}
-          hasMore={!!nextPage}
-          laneCount={lanes.length}
-          draggingFromStatus={!!activeId && lanes.some((l) => l.threadIds.includes(activeId)) && snapshot.current?.from !== UNSORTED}
-          cutoff={{ from: triageFrom, applies: cutoffApplies }}
-          onShowOlder={setShowOlder}
-          onClearQueue={async () => {
-            const before = triageFrom;
-            const at = await setTriageFrom("now");
-            setTriageFromState(at);
-            setShowOlder(false);
-            setPicked([]);
-            setUndo({
-              text: "Queue cleared: only new mail shows",
-              run: async () => {
-                setUndo(null);
-                setTriageFromState(await setTriageFrom(before));
-              },
-            });
-          }}
-          onFile={(id) => void file(id, true)}
-          onLabel={(id) => setLabelAsk([id])}
-          onTrash={(id) => void trash(id)}
-          onArchive={isInbox ? (id) => void archive(id, selected === id) : undefined}
-          selected={selected}
-          onRefresh={() => {
-            void load("");
-            reloadLabels();
-          }}
-          onLoadMore={() => load(loadedQuery, nextPage)}
-          onOpen={setSelected}
-          look={look}
-        />
 
         {/* Desktop: a view switch above the board. On phones it sits in the column tabs. */}
         {/* The wrapper carries the board's background on desktop; on phones it dissolves and each section carries its own. */}
@@ -1262,6 +1031,23 @@ export function LabelBoard({
               emails={emails}
               inLens={inLens}
               inLensIds={inLensIds}
+              inboxIds={firstList}
+              tagOf={tagOf}
+              cutoff={{ from: triageFrom, applies: cutoffApplies }}
+              onShowOlder={setShowOlder}
+              onClearQueue={async () => {
+                const before = triageFrom;
+                const at = await setTriageFrom("now");
+                setTriageFromState(at);
+                setShowOlder(false);
+                setUndo({
+                  text: "Queue cleared: only new mail shows",
+                  run: async () => {
+                    setUndo(null);
+                    setTriageFromState(await setTriageFrom(before));
+                  },
+                });
+              }}
               statusOf={statusOf}
               mergeEmails={mergeEmails}
               onNew={async (t) => {
@@ -1441,14 +1227,7 @@ export function LabelBoard({
 
       <DragOverlay dropAnimation={null}>
         {activeEmail ? (
-          <div className="relative">
-            <CardFace email={activeEmail} hideLabelId={sourceLabelId} dragging />
-            {dragFromFirst && pickedShown.length > 1 && pickedShown.includes(activeEmail.threadId) && (
-              <span className="absolute -top-2 -right-2 rounded-full bg-terracotta px-2 py-0.5 text-xs font-bold text-cream shadow">
-                {pickedShown.length}
-              </span>
-            )}
-          </div>
+          <CardFace email={activeEmail} hideLabelId={sourceLabelId} dragging />
         ) : null}
       </DragOverlay>
 
@@ -1507,358 +1286,11 @@ export function LabelBoard({
         <FileUnder count={labelAsk.length} labelOnly onPick={(label) => fileUnder(labelAsk, label, false)} onClose={() => setLabelAsk(null)} />
       )}
     </DndContext>
-    </MergeDragContext.Provider>
     </CardBoardContext.Provider>
   );
 }
 
-// ---------- columns ----------
-
-function UnsortedColumn(p: {
-  picked: string[];
-  onPick: (threadId: string, range: boolean) => void;
-  bulk: {
-    statuses: { id: string; name: string }[];
-    onMove: (laneId: string) => void;
-    onArchive?: () => void;
-    onFile: () => void;
-    onLabel: () => void;
-    onCombine: () => void;
-    onClear: () => void;
-  };
-  laneCount: number;
-  draggingFromStatus: boolean;
-  cutoff: { from: string | null; applies: boolean }; // the queue was cleared up to this; older mail shows only on request
-  onShowOlder: (v: boolean) => void;
-  onClearQueue: () => Promise<void>;
-  onFile: (threadId: string) => void;
-  onLabel: (threadId: string) => void;
-  onTrash: (threadId: string) => void;
-  onArchive?: (threadId: string) => void;
-  title: string;
-  labelId: string;
-  isLens: boolean;
-  isInbox: boolean;
-  statusOf: (threadId: string) => string | undefined;
-  tagOf: (threadId: string) => string | undefined; // status, Done or Filed, for an Inbox email that isn't to triage
-  threadIds: string[];
-  emails: Record<string, BoardEmail>;
-  sortedCount: number;
-  newReplyIds: string[]; // cards in a status with a reply not yet opened
-  searching: boolean;
-  state: "loading" | "idle" | "error";
-  error: string;
-  hasMore: boolean;
-  selected: string | null;
-  onRefresh: () => void;
-  onLoadMore: () => void;
-  onOpen: (threadId: string) => void;
-  look: ReturnType<typeof useTheme>["theme"];
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${UNSORTED}` });
-  const w = useStoredWidth("mte.w.unsorted", 320, 220, 720);
-  return (
-    <aside
-      id="col-unsorted"
-      className="paper relative flex shrink-0 snap-start flex-col border-r border-line max-md:w-screen md:w-[var(--w)]"
-      style={widthVar(w.width)}
-    >
-      <ResizeHandle width={w.width} onResize={w.setWidth} onDone={w.save} onReset={w.reset} label="Resize email column" />
-      <div className="space-y-2 border-b border-dashed border-line-strong p-3">
-        <div className="flex items-center gap-2">
-          <h1 className="min-w-0 flex-1 truncate text-xl font-semibold text-walnut" title={p.title}>
-            {p.title.split("/").join(" › ")}
-          </h1>
-          {p.laneCount > 0 && (
-            <span
-              className="shrink-0 cursor-help text-sm text-muted"
-              title={`Keys, with an email open: 1–${Math.min(p.laneCount, 9)} files it into a status${p.onArchive ? ", e archives it" : ""}, f files it, l adds a label, # deletes it, x picks it. Shift-click picks a run of emails. Drop an email onto a card to add it to that card.`}
-            >
-              ⌨
-            </span>
-          )}
-          {p.threadIds.length > 0 && (
-            <button
-              onClick={() => void p.onClearQueue()}
-              className="btn-press shrink-0 rounded-lg bg-oat px-2 py-0.5 text-xs font-semibold text-bark hover:text-terracotta"
-              title="Nothing here needs you: clear it all. Only mail that arrives after now shows. Gmail is untouched; Show older brings it back."
-            >
-              Clear queue
-            </button>
-          )}
-          <button onClick={p.onRefresh} className="btn-press shrink-0 rounded-lg bg-oat px-2 py-0.5 text-sm text-bark" title="Refresh" aria-label="Refresh">
-            ↻
-          </button>
-        </div>
-        {p.isLens && (
-          <p className="text-xs text-muted">
-            Your workflow, showing only this label&apos;s cards.{" "}
-            <Link href="/l/INBOX" className="font-semibold text-terracotta hover:underline">
-              Back to All
-            </Link>
-          </p>
-        )}
-        <p className="text-xs font-semibold text-muted">
-          {p.searching ? "Search results" : p.isInbox ? "Gmail inbox, newest first" : "Not in a status yet"}
-          {` · ${p.threadIds.length}${p.hasMore ? "+" : ""}`}
-          {p.sortedCount > 0 && ` · ${p.sortedCount} in statuses`}
-          {p.newReplyIds.length > 0 && (
-            <>
-              {" · "}
-              <button
-                onClick={() => {
-                  // Open the next card with a new reply after the one open now.
-                  const ids = p.newReplyIds;
-                  const at = p.selected ? ids.indexOf(p.selected) : -1;
-                  p.onOpen(ids[(at + 1) % ids.length]);
-                }}
-                className="text-accent-ink underline decoration-dotted underline-offset-2 hover:decoration-solid"
-                title={p.newReplyIds.length > 1 ? "Open the next one" : "Open it"}
-              >
-                {p.newReplyIds.length} new {p.newReplyIds.length === 1 ? "reply" : "replies"} in statuses
-              </button>
-            </>
-          )}
-        </p>
-      </div>
-      <div ref={setNodeRef} className={`min-h-0 flex-1 space-y-2.5 overflow-y-auto p-2.5 transition-colors ${isOver ? "bg-oat/60" : ""}`}>
-        {p.draggingFromStatus && <DropBack />}
-        {p.picked.length > 0 && <BulkBar count={p.picked.length} {...p.bulk} />}
-        {p.state === "error" && <p className="p-2 text-sm text-red-600">{p.error}</p>}
-            {p.threadIds.map((id) =>
-              p.emails[id] ? (
-                p.statusOf(id) ? (
-                  // Already in a status: shown for the record, opened with a click.
-                  <div
-                    key={id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => p.onOpen(id)}
-                    onKeyDown={(e) => e.key === "Enter" && p.onOpen(id)}
-                    className={`block w-full cursor-pointer text-left ${p.selected === id ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper" : ""}`}
-                  >
-                    <span className="mb-1 block px-1 text-xs font-semibold text-muted">→ {p.statusOf(id)}</span>
-                    <CardFace email={p.emails[id]} hideLabelId={p.labelId} />
-                  </div>
-                ) : (
-                  <DraggableEmail
-                    key={id}
-                    tag={p.tagOf(id)}
-                    email={p.emails[id]}
-                    labelId={p.labelId}
-                    selected={p.selected === id}
-                    picked={p.picked.includes(id)}
-                    picking={p.picked.length > 0}
-                    onPick={(range) => p.onPick(id, range)}
-                    onOpen={() => p.onOpen(id)}
-                    onArchive={p.onArchive && !p.emails[id].local ? () => p.onArchive!(id) : undefined}
-                    onFile={() => p.onFile(id)}
-                    onLabel={!p.emails[id].local ? () => p.onLabel(id) : undefined}
-                    onTrash={!p.emails[id].local ? () => p.onTrash(id) : undefined}
-                  />
-                )
-              ) : null,
-            )}
-        {p.state === "loading" && (
-          <div className="space-y-2">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="h-20 animate-pulse rounded-2xl bg-oat" />
-            ))}
-            <p className="text-center text-xs text-muted">
-              <ThemeIcon icon={p.look.icons.loading} size={16} className="animate-bob inline-block" /> {p.look.text.loading}
-            </p>
-          </div>
-        )}
-        {p.state === "idle" && p.threadIds.length === 0 && (
-          <p className="animate-rise p-4 text-center text-sm text-bark">
-            <ThemeIcon
-              icon={p.sortedCount > 0 ? p.look.icons.sorted : p.look.icons.empty}
-              size={36}
-              className="animate-bob mx-auto mb-2 block text-3xl"
-            />
-            {p.sortedCount > 0 ? p.look.text.sorted : p.look.text.empty}
-          </p>
-        )}
-        {p.cutoff.from && p.state === "idle" && !p.searching && (
-          <div className="rounded-2xl border border-dashed border-line px-3 py-2 text-xs text-muted">
-            {p.cutoff.applies
-              ? `Queue cleared ${new Date(p.cutoff.from).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}: only newer mail shows. `
-              : "Showing mail from before the queue was cleared too. "}
-            <button onClick={() => p.onShowOlder(p.cutoff.applies)} className="font-semibold text-terracotta hover:underline">
-              {p.cutoff.applies ? "Show older" : "Only new mail"}
-            </button>
-          </div>
-        )}
-        {p.state === "idle" && p.hasMore && (
-          <button onClick={p.onLoadMore} className="btn-press w-full rounded-xl bg-oat p-2 text-sm font-semibold text-bark">
-            Load more
-          </button>
-        )}
-      </div>
-    </aside>
-  );
-}
-
-// Shown while emails are picked in the first column.
-function BulkBar(p: {
-  count: number;
-  statuses: { id: string; name: string }[];
-  onMove: (laneId: string) => void;
-  onArchive?: () => void;
-  onFile: () => void;
-  onLabel: () => void;
-  onCombine: () => void;
-  onClear: () => void;
-}) {
-  const btn = "btn-press rounded-lg bg-oat px-2 py-0.5 text-xs font-semibold text-bark hover:text-terracotta";
-  return (
-    <div className="sticky top-0 z-[3] flex flex-wrap items-center gap-1.5 rounded-2xl border border-moss/60 bg-cream p-2 shadow-md">
-      <span className="text-xs font-bold text-walnut">{p.count} picked</span>
-      <select
-        value=""
-        onChange={(e) => e.target.value && p.onMove(e.target.value)}
-        className="field rounded-lg px-1.5 py-0.5 text-xs text-bark"
-        aria-label="Move picked emails to a status"
-      >
-        <option value="">Move to…</option>
-        {p.statuses.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.name}
-          </option>
-        ))}
-      </select>
-      {p.count > 1 && (
-        <button onClick={p.onCombine} className={btn} title="Make one card from these emails (the newest is the card)">
-          Combine
-        </button>
-      )}
-      {p.onArchive && (
-        <button onClick={p.onArchive} className={btn} title="Archive in Gmail" aria-label="Archive">
-          🗄️
-        </button>
-      )}
-      <button onClick={p.onLabel} className={btn} title="Add a label" aria-label="Add a label">
-        🏷️
-      </button>
-      <button onClick={p.onFile} className={btn} title="File: just information, no tracking. Find it in the List." aria-label="File">
-        👍
-      </button>
-      <button onClick={p.onClear} className="ml-auto text-xs font-semibold text-muted hover:text-terracotta" title="Clear (Esc)">
-        ✕
-      </button>
-    </div>
-  );
-}
-
-// Shown while a card is dragged out of a status: drop it here to take it out
-// of the workflow and back into the first column.
-function DropBack() {
-  const { setNodeRef, isOver } = useDroppable({ id: `${LANE}${UNSORTED}#back` });
-  return (
-    <div
-      ref={setNodeRef}
-      className={`sticky top-0 z-[2] rounded-2xl border-2 border-dashed px-3 py-4 text-center text-sm font-semibold transition ${
-        isOver ? "border-terracotta bg-accent-soft text-accent-ink" : "border-faint bg-paper/95 text-bark"
-      }`}
-    >
-      ↩ Drop here to take it out of the workflow
-    </div>
-  );
-}
-
-function DraggableEmail({
-  tag,
-  email,
-  labelId,
-  selected,
-  picked,
-  picking,
-  onPick,
-  onOpen,
-  onArchive,
-  onFile,
-  onLabel,
-  onTrash,
-}: {
-  tag?: string;
-  email: BoardEmail;
-  labelId: string;
-  selected: boolean;
-  picked: boolean;
-  picking: boolean;
-  onPick: (range: boolean) => void;
-  onOpen: () => void;
-  onArchive?: () => void;
-  onFile?: () => void;
-  onLabel?: () => void;
-  onTrash?: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `${T}${email.threadId}` });
-  return (
-    <div
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      // Shift- or Ctrl-click picks instead of opening.
-      onClick={(e) => (e.shiftKey || e.ctrlKey || e.metaKey ? onPick(e.shiftKey) : onOpen())}
-      className={`group/drag relative touch-manipulation ${isDragging ? "opacity-30" : ""} ${
-        picked
-          ? "rounded-2xl ring-2 ring-moss ring-offset-2 ring-offset-paper"
-          : selected
-            ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper"
-            : ""
-      }`}
-    >
-      {tag && <span className="mb-1 block px-1 text-xs font-semibold text-muted">{tag === "Sent" ? "↗ You sent this" : `✓ ${tag}`}</span>}
-      <CardFace email={email} hideLabelId={labelId} tall />
-      <button
-        role="checkbox"
-        aria-checked={picked}
-        aria-label={picked ? "Unpick" : "Pick"}
-        title="Pick (x). Shift-click picks a run."
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          onPick(e.shiftKey);
-        }}
-        className={`absolute top-2 left-0.5 z-[1] flex h-4 w-4 items-center justify-center rounded border text-[10px] leading-none font-bold transition ${
-          picked
-            ? "border-moss bg-moss text-cream"
-            : `border-line-strong bg-cream text-transparent hover:border-moss ${picking ? "" : "opacity-0 group-hover/drag:opacity-100 max-md:opacity-100"}`
-        }`}
-      >
-        ✓
-      </button>
-      {(onArchive || onFile) && (
-        // Desktop: on hover. Phones use the buttons on the card itself.
-        <div className="absolute right-2 bottom-2 flex gap-1 opacity-0 transition group-hover/drag:opacity-100 max-md:hidden">
-          {[
-            { label: "Add a label", icon: "🏷️", title: "Add a label (l). It stays here until you file it.", run: onLabel },
-            { label: "File", icon: "👍", title: "File: just information, no tracking (f). Find it in the List; a new message brings it back.", run: onFile },
-            { label: "Archive", icon: "🗄️", title: "Archive in Gmail: needs nothing (e)", run: onArchive },
-            { label: "Delete", icon: "❌", title: "Delete: move to Gmail's Trash (#). Undo straight after, or restore from Trash for 30 days.", run: onTrash },
-          ]
-            .filter((b) => b.run)
-            .map((b) => (
-              <button
-                key={b.label}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  b.run!();
-                }}
-                className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none"
-                title={b.title}
-                aria-label={b.label}
-              >
-                {b.icon}
-              </button>
-            ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// ---------- lanes ----------
 
 function Lane({
   lane,
@@ -2039,8 +1471,7 @@ function RowGroup({
 }
 
 function SortableEmail({ email, labelId, onOpen }: { email: BoardEmail; labelId: string; onOpen: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: `${T}${email.threadId}` });
-  const merging = useContext(MergeDragContext) && isOver && !isDragging;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `${T}${email.threadId}` });
   return (
     <div
       ref={setNodeRef}
@@ -2048,14 +1479,9 @@ function SortableEmail({ email, labelId, onOpen }: { email: BoardEmail; labelId:
       {...attributes}
       {...listeners}
       onClick={onOpen}
-      className={`relative touch-manipulation ${isDragging ? "opacity-30" : ""} ${merging ? "rounded-2xl ring-2 ring-terracotta ring-offset-2 ring-offset-paper" : ""}`}
+      className={`relative touch-manipulation ${isDragging ? "opacity-30" : ""}`}
     >
       <CardFace email={email} hideLabelId={labelId} />
-      {merging && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-accent-soft/85 text-sm font-bold text-accent-ink">
-          ＋ Add to this card
-        </div>
-      )}
     </div>
   );
 }

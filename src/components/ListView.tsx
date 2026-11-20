@@ -21,6 +21,11 @@ export function ListView({
   emails,
   inLens,
   inLensIds,
+  inboxIds,
+  tagOf,
+  cutoff,
+  onClearQueue,
+  onShowOlder,
   statusOf,
   mergeEmails,
   onOpen,
@@ -33,6 +38,11 @@ export function ListView({
   emails: Record<string, BoardEmail>;
   inLens: (e: BoardEmail | undefined) => boolean;
   inLensIds: (labelIds: string[]) => boolean; // for the waiting section
+  inboxIds: string[]; // Gmail's inbox / this label's mail still to triage
+  tagOf: (threadId: string) => string | undefined;
+  cutoff: { from: string | null; applies: boolean };
+  onClearQueue: () => Promise<void>;
+  onShowOlder: (v: boolean) => void;
   statusOf: (threadId: string) => string | undefined;
   mergeEmails: (list: BoardEmail[]) => void;
   onOpen: (threadId: string) => void;
@@ -97,6 +107,54 @@ export function ListView({
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
 
       <div className="paper min-h-0 flex-1 overflow-y-auto rounded-2xl border border-line">
+        {/* What used to be the first column: the Inbox (or this label's mail) still to triage. */}
+        <section id="col-inbox" className="border-b border-dashed border-line-strong p-2">
+          <div className="mb-1.5 flex items-center gap-2 px-1">
+            <h2 className="text-sm font-semibold text-terracotta">{isInbox ? "Inbox" : "To triage"}</h2>
+            <span className="text-xs text-muted">{inboxIds.length}</span>
+            {inboxIds.length > 0 && (
+              <button
+                onClick={() => void onClearQueue()}
+                className="btn-press ml-auto rounded-lg bg-oat px-2 py-0.5 text-xs font-semibold text-bark hover:text-terracotta"
+                title="Nothing here needs you: clear it all. Only mail that arrives after now shows."
+              >
+                Clear queue
+              </button>
+            )}
+          </div>
+          {cutoff.from && (
+            <p className="mb-1.5 px-1 text-xs text-muted">
+              Queue cleared {new Date(cutoff.from).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}:{" "}
+              {cutoff.applies ? "only newer mail shows." : "showing older mail too."}{" "}
+              <button onClick={() => onShowOlder(cutoff.applies)} className="font-semibold text-terracotta hover:underline">
+                {cutoff.applies ? "Show older" : "Only new mail"}
+              </button>
+            </p>
+          )}
+          {inboxIds.length === 0 ? (
+            <p className="px-1 py-2 text-sm text-muted">Nothing to triage.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {inboxIds.map((id, i) => {
+                const e = emails[id];
+                if (!e) return null;
+                return (
+                  <Row
+                    key={id}
+                    i={i}
+                    card={e}
+                    hideLabelId={isInbox ? undefined : labelId}
+                    tag={tagOf(id)}
+                    plain={isPlainEmail(e)}
+                    when={e.date}
+                    onOpen={onOpen}
+                  />
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
         {/* Sent mail nobody has answered yet, alongside the filed mail in this lens. */}
         <div className="border-b border-dashed border-line-strong p-2">
           <WaitingForReplies className="animate-rise" keep={(w) => inLensIds(w.labelIds)} onOpen={onOpen} />
