@@ -17,12 +17,18 @@ export function TodayView({
   ageOf,
   toggleTask,
   onOpen,
+  onTriageWaiting,
+  onFileWaiting,
+  onTrashWaiting,
 }: {
   onBoard: OnBoard[]; // cards in a status, already filtered to the label
   inLensIds: (labelIds: string[]) => boolean; // under the open label (always true for All)
   ageOf: (threadId: string) => { text: string; stale: boolean } | null;
   toggleTask: (cardId: string, taskId: string, done: boolean) => void;
   onOpen: (threadId: string) => void;
+  onTriageWaiting: (threadId: string) => Promise<void>;
+  onFileWaiting: (threadId: string) => Promise<void>;
+  onTrashWaiting: (threadId: string) => Promise<void>;
 }) {
   // Cards not in a status (filed tickets from the Tasks tab, first-column
   // emails) count too, when they have something to do.
@@ -61,7 +67,14 @@ export function TodayView({
           <Stat i={2} label="New replies" value={replies.length} alert={replies.length > 0} />
         </div>
 
-        <WaitingForReplies keep={keepWaiting} onOpen={onOpen} />
+        <WaitingForReplies
+          keep={keepWaiting}
+          onOpen={onOpen}
+          onTriage={onTriageWaiting}
+          onFile={onFileWaiting}
+          onTrash={onTrashWaiting}
+          triageName="the first column"
+        />
 
         <div className="grid gap-5 md:grid-cols-2">
           <Panel title="Next actions" hint="One per card: the first open task. Add tasks in the Tasks tab.">

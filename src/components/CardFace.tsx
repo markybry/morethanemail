@@ -17,8 +17,6 @@ export const CardBoardContext = createContext<{
   statuses: { id: string; name: string }[];
   statusOf: (threadId: string) => string | null;
   moveTo: (threadId: string, statusId: string | null) => void;
-  canArchive: (threadId: string) => boolean;
-  archive: (threadId: string) => void;
   canFile: (threadId: string) => boolean;
   file: (threadId: string) => void; // filed in the List: just information
   label: (threadId: string) => void; // add a label, without filing
@@ -166,7 +164,7 @@ export function CardFace({
         </div>
       )}
       {board && !dragging && (
-        // Phone only: file or archive without press-and-drag.
+        // Phone only: file or label without press-and-drag.
         <div className="mt-2 flex gap-1.5 md:hidden" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
           <select
             value={board.statusOf(email.threadId) ?? ""}
@@ -181,11 +179,6 @@ export function CardFace({
               </option>
             ))}
           </select>
-          {board.canArchive(email.threadId) && (
-            <button onClick={() => board.archive(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-sm" title="Archive in Gmail" aria-label="Archive">
-              🗄️
-            </button>
-          )}
           {!email.local && (
             <button onClick={() => board.label(email.threadId)} className="btn-press rounded-lg bg-oat px-2.5 text-sm" title="Add a label" aria-label="Add a label">
               🏷️

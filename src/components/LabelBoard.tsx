@@ -21,7 +21,6 @@ import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from "@dnd-kit/utilities";
 import {
   addThreadToCard,
-  archiveThreads,
   applyLaneTemplate,
   arrangeEmails,
   createLane,
@@ -44,6 +43,7 @@ import {
   setEmailLabels,
   setLaneFinished,
   setLaneReopenOnReply,
+  triageWaiting,
   updateTask,
 } from "@/app/actions";
 import type { BoardEmail, LaneDTO, LaneTemplateDTO, ThreadSnapshot, WorkspaceDTO } from "@/lib/types";
@@ -261,7 +261,7 @@ export function LabelBoard({
         void save(() => arrangeEmails(workspace.id, { lanes: [], unsorted: reopenedDone, snapshots: [] }), () => {});
       }
       const ids = res.emails
-        .filter((e) => !placedRef.current.has(e.threadId) && !(e.homeId && e.homeId !== workspace.id) && !e.partOf)
+        .filter((e) => !e.hidden && !placedRef.current.has(e.threadId) && !(e.homeId && e.homeId !== workspace.id) && !e.partOf)
         .filter((e) => !e.done || reopenedDone.includes(e.threadId))
         .map((e) => e.threadId);
       // Tickets with no email aren't in Gmail's list; keep the unsorted ones.
@@ -274,7 +274,7 @@ export function LabelBoard({
         if (!sent.error) {
           mergeEmails(sent.emails);
           const fresh = sent.emails
-            .filter((e) => !placedRef.current.has(e.threadId) && !(e.homeId && e.homeId !== workspace.id) && !e.done)
+            .filter((e) => !e.hidden && !placedRef.current.has(e.threadId) && !(e.homeId && e.homeId !== workspace.id) && !e.done)
             .map((e) => e.threadId);
           setSentIds(sent.emails.map((e) => e.threadId));
           setUnsorted((prev) => [...prev, ...fresh.filter((id) => !prev.includes(id))]);
@@ -303,12 +303,8 @@ export function LabelBoard({
   const [refreshIds] = useState(() => [
     ...new Set([...workspace.lanes.flatMap((l) => l.threadIds), ...(initialThreadId ? [initialThreadId] : [])]),
   ]);
-  const [refreshed, setRefreshed] = useState(false);
   useEffect(() => {
-    void refreshEmails(refreshIds).then((r) => {
-      mergeEmails(r.emails);
-      if (!r.error) setRefreshed(true);
-    });
+    void refreshEmails(refreshIds).then((r) => mergeEmails(r.emails));
   }, [refreshIds, mergeEmails]);
   // Then keep checking while the board is open: when the tab comes back into
   // view, and every couple of minutes while it's visible.
@@ -394,9 +390,6 @@ export function LabelBoard({
     }
     // A finished status takes the card off the board (it's in the List).
     const finished = from !== to && !!lanes.find((l) => l.id === to)?.finished;
-    // Gmail's inbox holds what isn't dealt with yet: a card put in a status is
-    // archived there, and a reply brings it back until the card is opened here.
-    if (from !== to && to !== UNSORTED) void archiveInGmail(threadId);
     const affected = new Set([from, to].filter((x): x is string => !!x && x !== UNSORTED));
     const email = emails[threadId];
     await save(
@@ -499,7 +492,7 @@ export function LabelBoard({
     () => [
       ...inFirstColumn.filter((t) => emails[t]?.local && !emails[t].hidden),
       ...[
-        ...recentIds.filter((t) => emails[t] && !emails[t].local && cardLabelIds(emails[t]).includes("INBOX") && !isIgnored(emails[t])),
+        ...recentIds.filter((t) => emails[t] && !emails[t].local && !emails[t].hidden && cardLabelIds(emails[t]).includes("INBOX") && !isIgnored(emails[t])),
         ...sentIds.filter((t) => isSentOnly(t) && !recentIds.includes(t)),
       ].sort((a, b) => byCardDate(emails[a], emails[b])),
     ],
@@ -762,92 +755,20 @@ export function LabelBoard({
     statuses: lanes.map((l) => ({ id: l.id, name: l.name })),
     statusOf: (threadId: string) => lanes.find((l) => l.threadIds.includes(threadId))?.id ?? null,
     moveTo: (threadId: string, statusId: string | null) => void place(threadId, statusId ?? UNSORTED),
-    canArchive: (threadId: string) =>
-      isInbox && !emails[threadId]?.local && !lanes.some((l) => l.threadIds.includes(threadId)),
-    archive: (threadId: string) => void archive(threadId, selected === threadId),
     canFile: (threadId: string) => !lanes.some((l) => l.threadIds.includes(threadId)) && !emails[threadId]?.hidden,
     file: (threadId: string) => void file(threadId, true),
     label: (threadId: string) => setLabelAsk([threadId]),
     remove: (threadId: string) => void trash(threadId),
   };
 
-  // ----- triage: archive, and keys to file the open email -----
-  // After filing or archiving the open email, open the next one in the first column.
+  // ----- triage: keys to file the open email -----
+  // After filing the open email, open the next one in the first column.
   const openNext = (threadId: string) => {
     const list = firstList;
     const i = list.indexOf(threadId);
     if (i < 0) return;
     setSelected(list[i + 1] ?? list[i - 1] ?? null);
   };
-
-  const archive = async (threadId: string, advance: boolean) => {
-    const e = emails[threadId];
-    if (e && !cardLabelIds(e).includes("INBOX")) return void fileNow(threadId, true);
-    const ids = (e?.threads ?? []).map((t) => t.threadId).filter((t) => !t.startsWith("local:"));
-    if (!e || ids.length === 0) return;
-    if (advance) openNext(threadId);
-    const before = unsorted;
-    if (isInbox) setUnsorted((prev) => prev.filter((x) => x !== threadId));
-    const res = await archiveThreads(ids);
-    if (res.error || !res.labelIds) {
-      setUnsorted(before);
-      setSaveError(res.error ?? "Couldn't archive that email.");
-      return;
-    }
-    const labels = res.labelIds;
-    setEmails((prev) => {
-      const cur = prev[threadId];
-      if (!cur) return prev;
-      return {
-        ...prev,
-        [threadId]: {
-          ...cur,
-          labelIds: labels[cur.threadId] ?? cur.labelIds,
-          threads: cur.threads.map((t) => ({ ...t, labelIds: labels[t.threadId] ?? t.labelIds })),
-        },
-      };
-    });
-  };
-
-  // Take a card's threads (or just `only`) out of Gmail's inbox, quietly: the
-  // card stays where it is, and only threads in the inbox are touched.
-  const archiveInGmail = async (cardId: string, only?: string[]) => {
-    const e = emailsRef.current[cardId];
-    if (!e) return;
-    const ids = e.threads
-      .filter((t) => !t.threadId.startsWith("local:") && t.labelIds.includes("INBOX") && (!only || only.includes(t.threadId)))
-      .map((t) => t.threadId);
-    if (!ids.length) return;
-    const res = await archiveThreads(ids);
-    if (res.error || !res.labelIds) return setSaveError(res.error ?? "Couldn't archive that card in Gmail.");
-    const labels = res.labelIds;
-    setEmails((prev) => {
-      const cur = prev[cardId];
-      if (!cur) return prev;
-      return {
-        ...prev,
-        [cardId]: {
-          ...cur,
-          labelIds: labels[cur.threadId] ?? cur.labelIds,
-          threads: cur.threads.map((t) => ({ ...t, labelIds: labels[t.threadId] ?? t.labelIds })),
-        },
-      };
-    });
-  };
-
-  // Keep Gmail in step: a card in a status with nothing new shouldn't sit in
-  // Gmail's inbox. Waits for fresh Gmail state so a just-arrived reply isn't
-  // archived unseen; each card is tried once per visit.
-  const swept = useRef(new Set<string>());
-  useEffect(() => {
-    if (!refreshed) return;
-    for (const id of placed) {
-      const e = emails[id];
-      if (!e || e.newReply || swept.current.has(id) || !cardLabelIds(e).includes("INBOX")) continue;
-      swept.current.add(id);
-      void archiveInGmail(id);
-    }
-  }, [refreshed, placed, emails]);
 
   // Delete: the card's emails go to Gmail's Trash and the card leaves the board.
   // Undo (for a few seconds) brings them back to the first column.
@@ -859,7 +780,7 @@ export function LabelBoard({
   }, [undo]);
 
   const trash = async (threadId: string) => {
-    const e = emails[threadId];
+    const e = emailsRef.current[threadId] ?? emails[threadId];
     const ids = (e?.threads ?? []).map((t) => t.threadId).filter((t) => !t.startsWith("local:"));
     if (!e || ids.length === 0) return;
     if (selected === threadId) {
@@ -892,13 +813,12 @@ export function LabelBoard({
   };
 
   const fileNow = async (threadId: string, filed: boolean) => {
-    const e = emails[threadId];
+    const e = emailsRef.current[threadId] ?? emails[threadId];
     if (!e) return;
     if (filed && selected === threadId) openNext(threadId);
     const set = (v: boolean) => setEmails((prev) => (prev[threadId] ? { ...prev, [threadId]: { ...prev[threadId], hidden: v } } : prev));
     set(filed);
-    // Filed is dealt with, so it leaves Gmail's inbox too (a new message brings it back).
-    if (filed) void archiveInGmail(threadId);
+    // Filing only hides it here: the email stays exactly where it is in Gmail.
     await save(() => setHidden(snapshotOf(e), filed), () => set(!filed));
   };
 
@@ -942,15 +862,39 @@ export function LabelBoard({
     return undefined;
   };
 
+  // The waiting list can show sent mail the app has never stored. Bring it in
+  // first, then use the same file/trash paths as a card. Gmail labels don't change.
+  const ensureWaitingCard = async (threadId: string) => {
+    if (emailsRef.current[threadId]) return emailsRef.current[threadId];
+    const res = await triageWaiting([threadId]);
+    if (res.error || !res.emails.length) {
+      setSaveError(res.error ?? "Couldn't find that email.");
+      return null;
+    }
+    mergeEmails(res.emails);
+    for (const e of res.emails) emailsRef.current[e.threadId] = e;
+    return res.emails[0];
+  };
+  const triageFromWaiting = async (threadId: string) => {
+    if (!(await ensureWaitingCard(threadId))) return;
+    setUnsorted((prev) => (prev.includes(threadId) ? prev : byDate([...prev, threadId])));
+  };
+  const fileFromWaiting = async (threadId: string) => {
+    const card = await ensureWaitingCard(threadId);
+    if (!card) return;
+    if (!hasOwnLabel(card)) setFileAsk([threadId]);
+    else await fileNow(threadId, true);
+  };
+  const trashFromWaiting = async (threadId: string) => {
+    if (await ensureWaitingCard(threadId)) await trash(threadId);
+  };
+
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.metaKey || ev.ctrlKey || ev.altKey || !selected) return;
       if ((ev.target as HTMLElement | null)?.closest?.("input, textarea, select, [contenteditable='true']")) return;
       const fromFirst = !lanes.some((l) => l.threadIds.includes(selected));
-      if (ev.key === "e" && isInbox && fromFirst) {
-        ev.preventDefault();
-        void archive(selected, true);
-      } else if (ev.key === "l" && !emails[selected]?.local && !labelAsk && !fileAsk) {
+      if (ev.key === "l" && !emails[selected]?.local && !labelAsk && !fileAsk) {
         ev.preventDefault();
         setLabelAsk([selected]);
       } else if (ev.key === "#" && !emails[selected]?.local) {
@@ -969,10 +913,8 @@ export function LabelBoard({
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  // Opening a thread on a card marks that thread seen. On a card in a status,
-  // it also goes back out of Gmail's inbox (where a reply had put it).
+  // Opening a thread on a card marks that thread seen (Gmail itself is untouched).
   const seenThread = (cardId: string, threadId: string) => {
-    if (placed.has(cardId)) void archiveInGmail(cardId, [threadId]);
     setEmails((prev) => {
       const e = prev[cardId];
       if (!e) return prev;
@@ -1061,6 +1003,9 @@ export function LabelBoard({
                 void file(id, false);
                 if (!containerOf(id, { lanes, unsorted })) setUnsorted((prev) => byDate([...prev, id]));
               }}
+              onTriageWaiting={triageFromWaiting}
+              onFileWaiting={fileFromWaiting}
+              onTrashWaiting={trashFromWaiting}
             />
           </section>
         ) : view === "today" ? (
@@ -1074,6 +1019,9 @@ export function LabelBoard({
               ageOf={ageOf}
               toggleTask={toggleTask}
               onOpen={openAny}
+              onTriageWaiting={triageFromWaiting}
+              onFileWaiting={fileFromWaiting}
+              onTrashWaiting={trashFromWaiting}
             />
           </section>
         ) : view === "tasks" ? (

@@ -1131,6 +1131,25 @@ export async function notWaiting(messageId: string): Promise<{ error?: string }>
   return {};
 }
 
+// Bring sent mail that isn't on the board into the first column, so it can be
+// answered there. This only creates the app's own record: Gmail is left alone.
+export async function triageWaiting(threadIds: string[]): Promise<{ emails: BoardEmail[]; error?: string }> {
+  const user = await requireUser();
+  const ids = [...new Set(threadIds)].filter((id) => !isLocalThread(id) && /^[A-Za-z0-9_-]{1,128}$/.test(id));
+  if (!ids.length) return { emails: [], error: "That email can't be found." };
+  try {
+    const live = await summarizeThreads(user, ids);
+    if (!live.length) return { emails: [], error: "That email is no longer in Gmail." };
+    await Promise.all(live.map((t) => upsertEmail(user.id, t)));
+    const emails = await boardEmailsFor(user.id, live);
+    revalidateBoards();
+    return { emails };
+  } catch (e) {
+    console.error("triageWaiting failed", e);
+    return { emails: [], error: mailErrorMessage(e) };
+  }
+}
+
 // Opened lately, wherever they are (a thread added to a card shows as the card),
 // with labels so Today can show just the open label's.
 export type RecentOpen = { threadId: string; title: string; from: string; at: string; labelIds: string[] };

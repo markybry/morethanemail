@@ -31,6 +31,9 @@ export function ListView({
   onOpen,
   onUnfile,
   onNew,
+  onTriageWaiting,
+  onFileWaiting,
+  onTrashWaiting,
 }: {
   labelId: string;
   isInbox: boolean;
@@ -48,6 +51,9 @@ export function ListView({
   onOpen: (threadId: string) => void;
   onUnfile: (threadId: string) => void;
   onNew: (title: string) => Promise<BoardEmail>; // a new card kept as information, filed in the List
+  onTriageWaiting: (threadId: string) => Promise<void>; // into this view's first column
+  onFileWaiting: (threadId: string) => Promise<void>;
+  onTrashWaiting: (threadId: string) => Promise<void>;
 }) {
   const [done, setDone] = useState<FiledCard[] | null>(null);
   const [filed, setFiled] = useState<FiledCard[] | null>(null);
@@ -109,7 +115,15 @@ export function ListView({
       <div className="paper min-h-0 flex-1 overflow-y-auto rounded-2xl border border-line">
         {/* Sent mail nobody has answered yet, first in the List. */}
         <div className="border-b border-dashed border-line-strong p-2">
-          <WaitingForReplies className="animate-rise" keep={(w) => inLensIds(w.labelIds)} onOpen={onOpen} />
+          <WaitingForReplies
+            className="animate-rise"
+            keep={(w) => inLensIds(w.labelIds)}
+            onOpen={onOpen}
+            onTriage={onTriageWaiting}
+            onFile={onFileWaiting}
+            onTrash={onTrashWaiting}
+            triageName={isInbox ? "the Inbox" : "To triage"}
+          />
         </div>
 
         {/* What used to be the first column: the Inbox (or this label's mail) still to triage. */}

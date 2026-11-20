@@ -15,14 +15,24 @@ const cardLink = (threadId: string) => `/l/INBOX?thread=${encodeURIComponent(thr
 export function WaitingForReplies({
   keep = () => true,
   onOpen,
+  onTriage,
+  onFile,
+  onTrash,
+  triageName = "the first column",
   className = "paper animate-rise rounded-3xl border border-line p-4",
 }: {
   keep?: (w: Waiting) => boolean; // e.g. only the open label's
   onOpen?: (threadId: string) => void; // open in place, instead of following a link
+  onTriage?: (threadId: string) => void | Promise<void>; // put it in the first column to answer
+  onFile?: (threadId: string) => void | Promise<void>; // file it (asks for a label first when needed)
+  onTrash?: (threadId: string) => void | Promise<void>; // to Gmail's Trash
+  triageName?: string; // what the first column is called in this view
   className?: string; // a host can drop the card surface when it has its own
 }) {
   const [items, setItems] = useState<Waiting[] | null>(null);
   const [error, setError] = useState("");
+  const [triaged, setTriaged] = useState<string[]>([]);
+  const [busy, setBusy] = useState("");
 
   useEffect(() => {
     void fetchWaiting().then((res) => {
@@ -38,6 +48,18 @@ export function WaitingForReplies({
     if (res.error) {
       setItems(before);
       setError(res.error);
+    }
+  };
+
+  const run = async (key: string, threadId: string, fn: (id: string) => void | Promise<void>) => {
+    setBusy(key);
+    try {
+      await fn(threadId);
+      if (key.startsWith("triage:")) setTriaged((prev) => (prev.includes(threadId) ? prev : [...prev, threadId]));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That didn't work.");
+    } finally {
+      setBusy("");
     }
   };
 
@@ -100,13 +122,48 @@ export function WaitingForReplies({
               >
                 {nudge ? `${d} days · nudge?` : timeAgo(w.date)}
               </span>
-              <button
-                onClick={() => void dismiss(w)}
-                className="shrink-0 text-xs font-semibold text-muted opacity-0 group-hover:opacity-100 hover:text-terracotta focus:opacity-100 max-md:opacity-100"
-                title="This one doesn't need an answer: stop tracking it"
-              >
-                No reply needed
-              </button>
+              <div className="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100 max-md:opacity-100">
+                {onFile && (
+                  <button
+                    onClick={() => void run(`file:${w.messageId}`, w.threadId, onFile)}
+                    disabled={!!busy}
+                    className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none disabled:opacity-50"
+                    title="OK: file it under a label (asks first if it has none). Gmail is left alone."
+                    aria-label="File"
+                  >
+                    👍
+                  </button>
+                )}
+                {onTriage && !w.status && !w.done && !triaged.includes(w.threadId) && (
+                  <button
+                    onClick={() => void run(`triage:${w.messageId}`, w.threadId, onTriage)}
+                    disabled={!!busy}
+                    className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none disabled:opacity-50"
+                    title={`Bring this into ${triageName} so you can answer it (it isn't on a board).`}
+                    aria-label="To triage"
+                  >
+                    📥
+                  </button>
+                )}
+                {onTrash && (
+                  <button
+                    onClick={() => void run(`trash:${w.messageId}`, w.threadId, onTrash)}
+                    disabled={!!busy}
+                    className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none disabled:opacity-50"
+                    title="Move to Gmail's Trash"
+                    aria-label="Delete"
+                  >
+                    ❌
+                  </button>
+                )}
+                <button
+                  onClick={() => void dismiss(w)}
+                  className="text-xs font-semibold text-muted hover:text-terracotta"
+                  title="This one doesn't need an answer: stop tracking it"
+                >
+                  No reply needed
+                </button>
+              </div>
             </li>
           );
         })}
