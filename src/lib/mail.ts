@@ -229,13 +229,14 @@ export function mailErrorMessage(e: unknown): string {
   const err = e as { code?: unknown; status?: number; message?: string };
   const msg = err.message ?? "";
   if (/insufficient authentication scopes/i.test(msg))
-    return "This needs Gmail access the app doesn't have yet. Sign out, sign in again and tick the Gmail permission (“Read, compose and send emails”, or “View and modify”).";
-  if (/invalid_grant/i.test(msg)) return "Your Google sign-in has expired. Sign out and sign in again.";
+    return "This needs Gmail access the app doesn't have yet. Sign out, then use “Reconnect it” on the sign-in page and tick the Gmail permission (“Read, compose and send emails”, or “View and modify”).";
+  if (/invalid_grant/i.test(msg))
+    return "Your Google sign-in has expired. Sign out, then use “Reconnect it” on the sign-in page.";
   if (/exists or conflicts/i.test(msg)) return "A Gmail label with that name already exists.";
   if (/has not been used|is disabled/i.test(msg))
     return "The Gmail API isn't enabled for this Google Cloud project. Enable it in the Google Cloud Console.";
   if (err.status === 429 || err.code === 429) return "Gmail is rate-limiting requests. Try again in a minute.";
-  return "Couldn't load email from Gmail. Try again, or sign out and back in.";
+  return "Couldn't load email from Gmail. Try again, or sign out and use “Reconnect it”.";
 }
 
 function summarize(thread: gmail_v1.Schema$Thread): ThreadSummary {

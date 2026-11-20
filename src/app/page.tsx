@@ -41,6 +41,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
               Sign in with Google
             </a>
           )}
+          {googleEnabled && (
+            <a href="/api/auth/google?reconnect=1" className="block text-center text-xs text-muted hover:text-terracotta hover:underline">
+              Google access stopped working? Reconnect it
+            </a>
+          )}
           {isDemoAvailable() && (
             <form action="/api/auth/demo" method="post">
               <button className="btn-press w-full rounded-2xl bg-oat px-4 py-2.5 font-bold text-bark">

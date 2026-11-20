@@ -80,7 +80,8 @@ export function calendarErrorMessage(e: unknown): string {
   const msg = err.message ?? "";
   if (/insufficient authentication scopes|insufficientPermissions/i.test(msg) || err.code === 403 && /scope/i.test(msg))
     return "NOT_CONNECTED";
-  if (/invalid_grant/i.test(msg)) return "Your Google sign-in has expired. Sign out and sign in again.";
+  if (/invalid_grant/i.test(msg))
+    return "Your Google sign-in has expired. Sign out, then use “Reconnect it” on the sign-in page.";
   if (/has not been used|is disabled/i.test(msg))
     return "The Google Calendar API isn't enabled for this Google Cloud project. Enable it in the Google Cloud Console.";
   if (/demo/i.test(msg)) return msg;

@@ -24,10 +24,10 @@ function NotConnected() {
   return (
     <p className="mt-1 text-sm text-muted">
       Google Calendar isn&apos;t connected yet.{" "}
-      <a href="/api/auth/google" className="font-semibold text-terracotta hover:underline">
+      <a href="/api/auth/google?connect=calendar" className="font-semibold text-terracotta hover:underline">
         Connect it
       </a>{" "}
-      (you sign in again and tick the Calendar permission).
+      (one-off permission check — your Gmail sign-in is reused).
     </p>
   );
 }

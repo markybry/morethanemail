@@ -27,6 +27,36 @@ export function oauthClient() {
   );
 }
 
+// A Gmail call and a Calendar call can refresh the same stale token at the same
+// time. Queue the writes per user, and skip a save whose starting access token
+// is no longer in the DB: the slower call must not replace a newer token (or a
+// refresh token that a re-consent just rotated). The DB check also covers
+// separate server instances, which don't share this queue.
+type Refreshed = { access_token?: string | null; refresh_token?: string | null; expiry_date?: number | null };
+const pendingWrites = new Map<string, Promise<void>>();
+
+function saveTokens(userId: string, tokens: Refreshed, startedWith: string | null) {
+  if (!tokens.access_token) return;
+  const write = (pendingWrites.get(userId) ?? Promise.resolve())
+    .then(async () => {
+      const current = await db.user.findUnique({ where: { id: userId }, select: { accessToken: true } });
+      if (!current || current.accessToken !== startedWith) return; // already saved by a newer call
+      await db.user.update({
+        where: { id: userId },
+        data: {
+          accessToken: tokens.access_token ?? undefined,
+          refreshToken: tokens.refresh_token ?? undefined,
+          tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
+        },
+      });
+    })
+    .catch((e) => console.error("Couldn't save refreshed Google token", e));
+  pendingWrites.set(userId, write);
+  void write.then(() => {
+    if (pendingWrites.get(userId) === write) pendingWrites.delete(userId);
+  });
+}
+
 // An authorized Google client for a user. Refreshed tokens are written back to the DB.
 function authFor(user: User) {
   const auth = oauthClient();
@@ -35,16 +65,8 @@ function authFor(user: User) {
     refresh_token: user.refreshToken ?? undefined,
     expiry_date: user.tokenExpiry?.getTime(),
   });
-  auth.on("tokens", (tokens) => {
-    void db.user.update({
-      where: { id: user.id },
-      data: {
-        accessToken: tokens.access_token ?? undefined,
-        refreshToken: tokens.refresh_token ?? undefined,
-        tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
-      },
-    });
-  });
+  const startedWith = user.accessToken;
+  auth.on("tokens", (tokens) => saveTokens(user.id, tokens, startedWith));
   return auth;
 }
 
