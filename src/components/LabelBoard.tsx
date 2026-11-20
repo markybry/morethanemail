@@ -391,7 +391,7 @@ export function LabelBoard({
     // A finished status takes the card off the board (it's in the List).
     const finished = from !== to && !!lanes.find((l) => l.id === to)?.finished;
     const affected = new Set([from, to].filter((x): x is string => !!x && x !== UNSORTED));
-    const email = emails[threadId];
+    const email = emailsRef.current[threadId] ?? emails[threadId];
     await save(
       () =>
         arrangeEmails(workspace.id, {
@@ -875,9 +875,11 @@ export function LabelBoard({
     for (const e of res.emails) emailsRef.current[e.threadId] = e;
     return res.emails[0];
   };
-  const triageFromWaiting = async (threadId: string) => {
+  const addToBoardFromWaiting = async (threadId: string) => {
     if (!(await ensureWaitingCard(threadId))) return;
-    setUnsorted((prev) => (prev.includes(threadId) ? prev : byDate([...prev, threadId])));
+    const first = lanes[0];
+    if (!first) return setSaveError("Add a status to the board first.");
+    await place(threadId, first.id);
   };
   const fileFromWaiting = async (threadId: string) => {
     const card = await ensureWaitingCard(threadId);
@@ -1003,7 +1005,8 @@ export function LabelBoard({
                 void file(id, false);
                 if (!containerOf(id, { lanes, unsorted })) setUnsorted((prev) => byDate([...prev, id]));
               }}
-              onTriageWaiting={triageFromWaiting}
+              onAddToBoard={addToBoardFromWaiting}
+              firstLaneName={lanes[0]?.name ?? "the board"}
               onFileWaiting={fileFromWaiting}
               onTrashWaiting={trashFromWaiting}
             />
@@ -1019,7 +1022,8 @@ export function LabelBoard({
               ageOf={ageOf}
               toggleTask={toggleTask}
               onOpen={openAny}
-              onTriageWaiting={triageFromWaiting}
+              onAddToBoard={addToBoardFromWaiting}
+              firstLaneName={lanes[0]?.name ?? "the board"}
               onFileWaiting={fileFromWaiting}
               onTrashWaiting={trashFromWaiting}
             />

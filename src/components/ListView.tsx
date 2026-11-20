@@ -31,9 +31,10 @@ export function ListView({
   onOpen,
   onUnfile,
   onNew,
-  onTriageWaiting,
+  onAddToBoard,
   onFileWaiting,
   onTrashWaiting,
+  firstLaneName,
 }: {
   labelId: string;
   isInbox: boolean;
@@ -51,9 +52,10 @@ export function ListView({
   onOpen: (threadId: string) => void;
   onUnfile: (threadId: string) => void;
   onNew: (title: string) => Promise<BoardEmail>; // a new card kept as information, filed in the List
-  onTriageWaiting: (threadId: string) => Promise<void>; // into this view's first column
+  onAddToBoard: (threadId: string) => Promise<void>; // into the board's first status
   onFileWaiting: (threadId: string) => Promise<void>;
   onTrashWaiting: (threadId: string) => Promise<void>;
+  firstLaneName: string; // name of the first status on the board
 }) {
   const [done, setDone] = useState<FiledCard[] | null>(null);
   const [filed, setFiled] = useState<FiledCard[] | null>(null);
@@ -119,10 +121,10 @@ export function ListView({
             className="animate-rise"
             keep={(w) => inLensIds(w.labelIds)}
             onOpen={onOpen}
-            onTriage={onTriageWaiting}
+            onAddToBoard={onAddToBoard}
             onFile={onFileWaiting}
             onTrash={onTrashWaiting}
-            triageName={isInbox ? "the Inbox" : "To triage"}
+            firstLaneName={firstLaneName}
           />
         </div>
 

@@ -15,23 +15,23 @@ const cardLink = (threadId: string) => `/l/INBOX?thread=${encodeURIComponent(thr
 export function WaitingForReplies({
   keep = () => true,
   onOpen,
-  onTriage,
+  onAddToBoard,
   onFile,
   onTrash,
-  triageName = "the first column",
+  firstLaneName = "the board",
   className = "paper animate-rise rounded-3xl border border-line p-4",
 }: {
   keep?: (w: Waiting) => boolean; // e.g. only the open label's
   onOpen?: (threadId: string) => void; // open in place, instead of following a link
-  onTriage?: (threadId: string) => void | Promise<void>; // put it in the first column to answer
+  onAddToBoard?: (threadId: string) => void | Promise<void>; // place it in the board's first status
   onFile?: (threadId: string) => void | Promise<void>; // file it (asks for a label first when needed)
   onTrash?: (threadId: string) => void | Promise<void>; // to Gmail's Trash
-  triageName?: string; // what the first column is called in this view
+  firstLaneName?: string; // name of the first status on the board
   className?: string; // a host can drop the card surface when it has its own
 }) {
   const [items, setItems] = useState<Waiting[] | null>(null);
   const [error, setError] = useState("");
-  const [triaged, setTriaged] = useState<string[]>([]);
+  const [added, setAdded] = useState<string[]>([]);
   const [busy, setBusy] = useState("");
 
   useEffect(() => {
@@ -55,7 +55,7 @@ export function WaitingForReplies({
     setBusy(key);
     try {
       await fn(threadId);
-      if (key.startsWith("triage:")) setTriaged((prev) => (prev.includes(threadId) ? prev : [...prev, threadId]));
+      if (key.startsWith("board:")) setAdded((prev) => (prev.includes(threadId) ? prev : [...prev, threadId]));
     } catch (e) {
       setError(e instanceof Error ? e.message : "That didn't work.");
     } finally {
@@ -116,53 +116,55 @@ export function WaitingForReplies({
                   <span className="truncate">To {w.to.map(senderName).join(", ") || "(no one)"}</span>
                 </div>
               </div>
-              <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${nudge ? "bg-warn-bg text-warn-ink" : "text-muted"}`}
-                title={`Sent ${new Date(w.date).toLocaleString()}`}
-              >
-                {nudge ? `${d} days · nudge?` : timeAgo(w.date)}
-              </span>
-              <div className="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100 max-md:opacity-100">
-                {onFile && (
-                  <button
-                    onClick={() => void run(`file:${w.messageId}`, w.threadId, onFile)}
-                    disabled={!!busy}
-                    className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none disabled:opacity-50"
-                    title="OK: file it under a label (asks first if it has none). Gmail is left alone."
-                    aria-label="File"
-                  >
-                    👍
-                  </button>
-                )}
-                {onTriage && !w.status && !w.done && !triaged.includes(w.threadId) && (
-                  <button
-                    onClick={() => void run(`triage:${w.messageId}`, w.threadId, onTriage)}
-                    disabled={!!busy}
-                    className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none disabled:opacity-50"
-                    title={`Bring this into ${triageName} so you can answer it (it isn't on a board).`}
-                    aria-label="To triage"
-                  >
-                    📥
-                  </button>
-                )}
-                {onTrash && (
-                  <button
-                    onClick={() => void run(`trash:${w.messageId}`, w.threadId, onTrash)}
-                    disabled={!!busy}
-                    className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none disabled:opacity-50"
-                    title="Move to Gmail's Trash"
-                    aria-label="Delete"
-                  >
-                    ❌
-                  </button>
-                )}
-                <button
-                  onClick={() => void dismiss(w)}
-                  className="text-xs font-semibold text-muted hover:text-terracotta"
-                  title="This one doesn't need an answer: stop tracking it"
+              <div className="flex shrink-0 flex-col items-end gap-1.5">
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${nudge ? "bg-warn-bg text-warn-ink" : "text-muted"}`}
+                  title={`Sent ${new Date(w.date).toLocaleString()}`}
                 >
-                  No reply needed
-                </button>
+                  {nudge ? `${d} days · nudge?` : timeAgo(w.date)}
+                </span>
+                <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100 max-md:opacity-100">
+                  {onFile && (
+                    <button
+                      onClick={() => void run(`file:${w.messageId}`, w.threadId, onFile)}
+                      disabled={!!busy}
+                      className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none disabled:opacity-50"
+                      title="OK: file it under a label (asks first if it has none). Gmail is left alone."
+                      aria-label="File"
+                    >
+                      👍
+                    </button>
+                  )}
+                  {onAddToBoard && !w.status && !w.done && !added.includes(w.threadId) && (
+                    <button
+                      onClick={() => void run(`board:${w.messageId}`, w.threadId, onAddToBoard)}
+                      disabled={!!busy}
+                      className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none disabled:opacity-50"
+                      title={`Add this to ${firstLaneName} on the board (it isn't on one yet).`}
+                      aria-label="Add to board"
+                    >
+                      📋
+                    </button>
+                  )}
+                  {onTrash && (
+                    <button
+                      onClick={() => void run(`trash:${w.messageId}`, w.threadId, onTrash)}
+                      disabled={!!busy}
+                      className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none disabled:opacity-50"
+                      title="Move to Gmail's Trash"
+                      aria-label="Delete"
+                    >
+                      ❌
+                    </button>
+                  )}
+                  <button
+                    onClick={() => void dismiss(w)}
+                    className="text-xs font-semibold text-muted hover:text-terracotta"
+                    title="This one doesn't need an answer: stop tracking it"
+                  >
+                    No reply needed
+                  </button>
+                </div>
               </div>
             </li>
           );
