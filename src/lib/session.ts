@@ -37,18 +37,30 @@ export async function getSessionUserId(): Promise<string | null> {
   const raw = (await cookies()).get(COOKIE)?.value;
   if (!raw) return null;
   const [userId, expires, sig] = raw.split(".");
-  if (!userId || !expires || !sig) return null;
+  // Each rejection is logged with its reason, to explain unexpected sign-outs.
+  if (!userId || !expires || !sig) {
+    console.warn("Session rejected: malformed cookie");
+    return null;
+  }
   const expected = Buffer.from(sign(`${userId}.${expires}`));
   const given = Buffer.from(sig);
-  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
-  if (Number(expires) < Date.now() / 1000) return null;
+  if (expected.length !== given.length || !timingSafeEqual(expected, given)) {
+    console.warn("Session rejected: bad signature (SESSION_SECRET changed?)", { userId });
+    return null;
+  }
+  if (Number(expires) < Date.now() / 1000) {
+    console.warn("Session rejected: expired", { userId, expired: new Date(Number(expires) * 1000).toISOString() });
+    return null;
+  }
   return userId;
 }
 
 export async function getCurrentUser() {
   const id = await getSessionUserId();
   if (!id) return null;
-  return db.user.findUnique({ where: { id } });
+  const user = await db.user.findUnique({ where: { id } });
+  if (!user) console.warn("Session rejected: user no longer in database", { userId: id });
+  return user;
 }
 
 export async function requireUser() {

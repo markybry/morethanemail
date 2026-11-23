@@ -239,8 +239,29 @@ export function mailErrorMessage(e: unknown): string {
   // Anything else (a Gmail hiccup, a timeout, a dropped database connection) is
   // passing: retrying fixes it, and reconnecting Google wouldn't. Only
   // invalid_grant above means the stored Google access has actually gone.
-  if (/database|prisma|P10\d\d/i.test(msg)) return "Couldn't reach the app's database. Try again in a moment.";
-  return "Couldn't load email from Gmail just now. Try again in a moment.";
+  if (/database|prisma|P10\d\d/i.test(msg)) return `Couldn't reach the app's database. Try again in a moment. (${errorDetail(e)})`;
+  return `Couldn't load email from Gmail just now. Try again in a moment. (${errorDetail(e)})`;
+}
+
+// A short "why" from Google's response, so the message says what actually went
+// wrong (the app is private to its owner, so this is safe to show).
+function errorDetail(e: unknown): string {
+  const err = e as {
+    code?: unknown;
+    status?: number;
+    message?: string;
+    response?: { status?: number; data?: { error?: string | { message?: string; status?: string }; error_description?: string } };
+  };
+  const status = err.response?.status ?? err.status ?? (typeof err.code === "number" ? err.code : undefined);
+  const data = err.response?.data;
+  const reason =
+    (typeof data?.error === "object" ? data.error.message ?? data.error.status : data?.error) ??
+    data?.error_description ??
+    (typeof err.code === "string" ? err.code : undefined) ??
+    err.message ??
+    "unknown error";
+  const short = String(reason).replace(/\s+/g, " ").slice(0, 140);
+  return status ? `Google said ${status}: ${short}` : short;
 }
 
 function summarize(thread: gmail_v1.Schema$Thread): ThreadSummary {
