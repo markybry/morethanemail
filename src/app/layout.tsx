@@ -18,6 +18,8 @@ const jetbrains = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["lati
 export const metadata: Metadata = {
   title: "More Than Email",
   description: "One workflow for your Gmail: cards hold the emails, notes and next actions for each piece of work.",
+  // Google Search Console ownership of morethanemail.vercel.app (for OAuth brand verification).
+  verification: { google: "ivqpAhjS2Sg1EBs_XvqX5hZ2bQiBjEq4--5x0lNikUE" },
 };
 
 export const viewport: Viewport = {
