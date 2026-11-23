@@ -16,6 +16,43 @@ export type ThreadSummary = {
   labelIds: string[];
 };
 
+// Gmail limits quota units per user per minute (a thread lookup costs 10), and
+// enforces it over short windows, so firing dozens of lookups at once trips it.
+// Lookups run a few at a time, and a rate-limited one waits and tries again.
+const GMAIL_PARALLEL = 8;
+
+export function isRateLimited(e: unknown): boolean {
+  const err = e as { code?: unknown; status?: number; message?: string };
+  const status = err.status ?? err.code;
+  if (status === 429) return true;
+  return status === 403 && /rate ?limit|quota exceeded|too many concurrent/i.test(err.message ?? "");
+}
+
+async function withBackoff<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (attempt >= 3 || !isRateLimited(e)) throw e;
+      await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt + Math.random() * 500));
+    }
+  }
+}
+
+// Like Promise.all over items, with at most `limit` running at once.
+async function mapLimited<T, R>(items: T[], fn: (item: T) => Promise<R>, limit = GMAIL_PARALLEL): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await withBackoff(() => fn(items[i]));
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 // Gmail nests labels by name: "Clients/Acme" sits under "Clients".
 export type MailLabel = { id: string; name: string; unread: number; color?: string };
 
@@ -105,8 +142,9 @@ export async function listThreads(
 export async function summarizeThreads(user: User, threadIds: string[]): Promise<ThreadSummary[]> {
   if (user.isDemo) return demoThreads().filter((t) => threadIds.includes(t.threadId));
   const gmail = gmailFor(user);
-  const results = await Promise.all(
-    threadIds.map(async (id) => {
+  const results = await mapLimited(
+    threadIds,
+    async (id) => {
       try {
         const t = await gmail.users.threads.get({
           userId: "me",
@@ -119,7 +157,7 @@ export async function summarizeThreads(user: User, threadIds: string[]): Promise
         if ((e as { code?: number }).code === 404) return null;
         throw e;
       }
-    }),
+    },
   );
   return results.filter((t): t is ThreadSummary => t !== null);
 }
@@ -144,11 +182,12 @@ export async function listLabels(user: User): Promise<MailLabel[]> {
   const gmail = gmailFor(user);
   const res = await gmail.users.labels.list({ userId: "me" });
   const own = (res.data.labels ?? []).filter((l) => l.type === "user" && l.id && l.name);
-  const labels = await Promise.all(
-    own.map(async (l) => {
+  const labels = await mapLimited(
+    own,
+    async (l) => {
       const full = await gmail.users.labels.get({ userId: "me", id: l.id!, fields: "threadsUnread" });
       return { id: l.id!, name: l.name!, unread: full.data.threadsUnread ?? 0, color: l.color?.backgroundColor ?? undefined };
-    }),
+    },
   );
   return labels.sort((x, y) => x.name.localeCompare(y.name));
 }
@@ -235,7 +274,7 @@ export function mailErrorMessage(e: unknown): string {
   if (/exists or conflicts/i.test(msg)) return "A Gmail label with that name already exists.";
   if (/has not been used|is disabled/i.test(msg))
     return "The Gmail API isn't enabled for this Google Cloud project. Enable it in the Google Cloud Console.";
-  if (err.status === 429 || err.code === 429) return "Gmail is rate-limiting requests. Try again in a minute.";
+  if (isRateLimited(e)) return "Gmail asked the app to slow down (too many requests this minute). Try again in a minute.";
   // Anything else (a Gmail hiccup, a timeout, a dropped database connection) is
   // passing: retrying fixes it, and reconnecting Google wouldn't. Only
   // invalid_grant above means the stored Google access has actually gone.
@@ -307,8 +346,9 @@ export async function listStartedByMe(user: User, days = 14): Promise<ThreadSumm
   const gmail = gmailFor(user);
   const res = await gmail.users.threads.list({ userId: "me", q: `in:sent -in:inbox -in:chats -in:trash newer_than:${days}d`, maxResults: 25 });
   const ids = (res.data.threads ?? []).map((t) => t.id!).filter(Boolean);
-  const found = await Promise.all(
-    ids.map(async (id) => {
+  const found = await mapLimited(
+    ids,
+    async (id) => {
       try {
         const t = await gmail.users.threads.get({ userId: "me", id, format: "metadata", metadataHeaders: ["Subject", "From", "Date"] });
         const first = (t.data.messages ?? []).find((m) => !m.labelIds?.includes("DRAFT"));
@@ -317,7 +357,7 @@ export async function listStartedByMe(user: User, days = 14): Promise<ThreadSumm
         if ((e as { code?: number }).code === 404) return null;
         throw e;
       }
-    }),
+    },
   );
   return found.filter((t): t is ThreadSummary => t !== null);
 }
@@ -332,8 +372,9 @@ export async function listAwaitingReply(user: User, days = 30): Promise<Awaiting
   const gmail = gmailFor(user);
   const res = await gmail.users.threads.list({ userId: "me", q: `in:sent newer_than:${days}d -in:chats`, maxResults: 50 });
   const ids = (res.data.threads ?? []).map((t) => t.id!).filter(Boolean);
-  const found = await Promise.all(
-    ids.map(async (id): Promise<AwaitingReply | null> => {
+  const found = await mapLimited(
+    ids,
+    async (id): Promise<AwaitingReply | null> => {
       try {
         const t = await gmail.users.threads.get({ userId: "me", id, format: "metadata", metadataHeaders: ["From", "To", "Cc", "Subject"] });
         // Drafts and trashed messages don't count as the last word.
@@ -352,7 +393,7 @@ export async function listAwaitingReply(user: User, days = 30): Promise<Awaiting
         if ((e as { code?: number }).code === 404) return null;
         throw e;
       }
-    }),
+    },
   );
   return found.filter((x): x is AwaitingReply => x !== null).sort((a, b) => a.date.localeCompare(b.date));
 }
