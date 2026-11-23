@@ -81,6 +81,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
           <Link href="/privacy" className="font-semibold text-terracotta hover:underline">
             Privacy policy
           </Link>
+          {" · "}
+          <Link href="/terms" className="font-semibold text-terracotta hover:underline">
+            Terms of service
+          </Link>
         </p>
       </section>
     </main>
