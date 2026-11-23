@@ -71,12 +71,35 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
           <li>See what&rsquo;s waiting for a reply, what&rsquo;s due today and what&rsquo;s gone quiet.</li>
           <li>Optionally link Google Calendar meetings to a card.</li>
         </ul>
-        <h2 className="mt-5 text-lg font-semibold text-walnut">Your Google data</h2>
+        <h2 className="mt-5 text-lg font-semibold text-walnut">Why it uses Google APIs</h2>
         <p className="mt-2">
-          You sign in with Google. The app reads your Gmail and changes labels only to run your board, for you. It
-          doesn&rsquo;t send email, doesn&rsquo;t delete mail permanently, and never sells or shares your data or uses
-          it for advertising or AI training.
+          The app&rsquo;s only purpose is to organise your own email and meetings for you. You sign in with Google, and
+          it uses:
         </p>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li>
+            <strong>Gmail</strong>, to show your threads and labels on the board, and, when you ask, to add or remove a
+            label, archive a thread or move it to Trash.
+          </li>
+          <li>
+            <strong>Google Calendar</strong> (optional), to link a meeting to a card or create one from a card.
+          </li>
+          <li>
+            <strong>Your name, email address and profile picture</strong>, to sign you in.
+          </li>
+        </ul>
+        <h2 className="mt-5 text-lg font-semibold text-walnut">What it never does</h2>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li>It doesn&rsquo;t send email or permanently delete mail.</li>
+          <li>It never sells or shares your data, or uses it for advertising.</li>
+          <li>
+            It uses no AI. Your Google data is never sent to AI services or used to train AI models.
+          </li>
+          <li>
+            It doesn&rsquo;t create, edit or generate images, and never uses Google APIs or Google data to make
+            AI-generated non-consensual intimate imagery (NCII) or any other sexual or intimate imagery.
+          </li>
+        </ul>
         <p className="mt-3">
           <Link href="/privacy" className="font-semibold text-terracotta hover:underline">
             Privacy policy
