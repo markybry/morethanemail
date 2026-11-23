@@ -236,7 +236,11 @@ export function mailErrorMessage(e: unknown): string {
   if (/has not been used|is disabled/i.test(msg))
     return "The Gmail API isn't enabled for this Google Cloud project. Enable it in the Google Cloud Console.";
   if (err.status === 429 || err.code === 429) return "Gmail is rate-limiting requests. Try again in a minute.";
-  return "Couldn't load email from Gmail. Try again, or sign out and use “Reconnect it”.";
+  // Anything else (a Gmail hiccup, a timeout, a dropped database connection) is
+  // passing: retrying fixes it, and reconnecting Google wouldn't. Only
+  // invalid_grant above means the stored Google access has actually gone.
+  if (/database|prisma|P10\d\d/i.test(msg)) return "Couldn't reach the app's database. Try again in a moment.";
+  return "Couldn't load email from Gmail just now. Try again in a moment.";
 }
 
 function summarize(thread: gmail_v1.Schema$Thread): ThreadSummary {
