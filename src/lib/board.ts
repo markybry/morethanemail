@@ -76,7 +76,7 @@ export function toBoardEmail(stored: EmailWithMeta | undefined, live?: ThreadSum
     from: first.from,
     snippet: first.snippet,
     date,
-    unread: live?.unread ?? false,
+    unread: live?.unread ?? stored?.unread ?? false,
     labelIds: first.labelIds,
     notes: stored?.notes.map((n) => ({ id: n.id, body: n.body, createdAt: n.createdAt.toISOString() })) ?? [],
     tasks:

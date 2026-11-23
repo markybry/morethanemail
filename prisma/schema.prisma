@@ -87,6 +87,8 @@ model Email {
   from        String
   snippet     String
   date        DateTime // latest message when last refreshed
+  historyId   String? // Gmail historyId of the thread when last fetched (or confirmed unchanged)
+  unread      Boolean      @default(false) // when last fetched
   labelIds    String[]     @default([]) // Gmail labels when last seen (or chosen, for a ticket with no email)
   parentId    String? // the card this thread belongs to, if it was added to one
   parent      Email?       @relation("CardThreads", fields: [parentId], references: [id], onDelete: SetNull)

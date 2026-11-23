@@ -13,6 +13,7 @@ import {
   listThreads,
   mailErrorMessage,
   summarizeThreads,
+  changedThreadsSince,
   listAwaitingReply,
   listStartedByMe,
   type MailLabel,
@@ -116,17 +117,45 @@ export async function refreshEmails(threadIds: string[]): Promise<{ emails: Boar
       select: { threadId: true, threads: { select: { threadId: true } } },
     });
     const all = [...new Set([...cardIds, ...cards.flatMap((c) => c.threads.map((t) => t.threadId))])].filter((t) => !isLocalThread(t));
-    const live = all.length ? await summarizeThreads(user, all) : [];
+    // Ask Gmail once what changed since the oldest stored version, then fetch
+    // only those threads (and any never fetched). The rest come from the
+    // database. If Gmail can't say (history too old), check them all.
+    const versions = await db.email.findMany({
+      where: { userId: user.id, threadId: { in: all }, historyId: { not: null } },
+      select: { threadId: true, historyId: true },
+    });
+    const version = new Map(versions.map((r) => [r.threadId, r.historyId!]));
+    let toFetch = all;
+    let unchanged: string[] = [];
+    let current: string | null = null;
+    if (version.size) {
+      const oldest = [...version.values()].reduce((a, b) => (BigInt(a) < BigInt(b) ? a : b));
+      const delta = await changedThreadsSince(user, oldest);
+      if (delta) {
+        toFetch = all.filter((t) => !version.has(t) || delta.changed.has(t));
+        const fetching = new Set(toFetch);
+        unchanged = all.filter((t) => !fetching.has(t));
+        current = delta.historyId;
+      }
+    }
+    const live = toFetch.length ? await summarizeThreads(user, toFetch) : [];
     await Promise.all(
       live.map((t) =>
-        db.email.updateMany({ where: { userId: user.id, threadId: t.threadId }, data: { ...snapshotData(t), labelIds: t.labelIds } }),
+        db.email.updateMany({
+          where: { userId: user.id, threadId: t.threadId },
+          data: { ...snapshotData(t), labelIds: t.labelIds, unread: t.unread, historyId: t.historyId ?? null },
+        }),
       ),
     );
+    // Confirmed unchanged up to now: move their version on, so the next check starts from here.
+    if (current && unchanged.length)
+      await db.email.updateMany({ where: { userId: user.id, threadId: { in: unchanged } }, data: { historyId: current } });
+    const same = new Set(unchanged);
     return {
       emails: await boardEmailsFor(
         user.id,
         live.filter((t) => cardIds.includes(t.threadId)),
-        cardIds.filter((t) => isLocalThread(t)),
+        cardIds.filter((t) => isLocalThread(t) || same.has(t)),
       ),
     };
   } catch (e) {

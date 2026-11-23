@@ -14,6 +14,7 @@ export type ThreadSummary = {
   unread: boolean;
   messageCount: number;
   labelIds: string[];
+  historyId?: string; // Gmail's version of the thread when fetched
 };
 
 // Gmail limits quota units per user per minute (a thread lookup costs 10), and
@@ -46,7 +47,7 @@ async function mapLimited<T, R>(items: T[], fn: (item: T) => Promise<R>, limit =
   const worker = async () => {
     while (next < items.length) {
       const i = next++;
-      out[i] = await withBackoff(() => fn(items[i]));
+      out[i] = await fn(items[i]);
     }
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
@@ -134,32 +135,75 @@ export async function listThreads(
     maxResults: 30,
     pageToken: opts.pageToken,
   });
-  const ids = (res.data.threads ?? []).map((t) => t.id!).filter(Boolean);
-  return { threads: await summarizeThreads(user, ids), nextPageToken: res.data.nextPageToken ?? undefined };
+  const listed = res.data.threads ?? [];
+  return { threads: await summarizeThreads(user, listed), nextPageToken: res.data.nextPageToken ?? undefined };
+}
+
+// Thread metadata by thread, kept in server memory. Gmail's list calls give each
+// thread's historyId (a version that changes with any new message or label), so
+// a thread whose historyId hasn't moved is served from here instead of costing
+// another 10-unit lookup. Survives between requests while the server instance lives.
+const META_HEADERS = ["Subject", "From", "Date", "To", "Cc"];
+const threadCache = new Map<string, gmail_v1.Schema$Thread>();
+const CACHE_MAX = 5000;
+
+type ThreadRef = string | { id?: string | null; historyId?: string | null };
+
+async function getThreadMeta(user: User, gmail: gmail_v1.Gmail, ref: ThreadRef): Promise<gmail_v1.Schema$Thread | null> {
+  const id = typeof ref === "string" ? ref : ref.id;
+  if (!id) return null;
+  const known = typeof ref === "string" ? undefined : ref.historyId;
+  const key = `${user.id}:${id}`;
+  const cached = threadCache.get(key);
+  if (known && cached?.historyId === known) return cached;
+  try {
+    const t = await withBackoff(() => gmail.users.threads.get({ userId: "me", id, format: "metadata", metadataHeaders: META_HEADERS }));
+    threadCache.delete(key);
+    threadCache.set(key, t.data);
+    if (threadCache.size > CACHE_MAX) threadCache.delete(threadCache.keys().next().value!);
+    return t.data;
+  } catch (e) {
+    if ((e as { code?: number }).code === 404) return null;
+    throw e;
+  }
 }
 
 // Current metadata for specific threads. Threads that no longer exist are left out.
-export async function summarizeThreads(user: User, threadIds: string[]): Promise<ThreadSummary[]> {
-  if (user.isDemo) return demoThreads().filter((t) => threadIds.includes(t.threadId));
+// Pass list results (with historyId) rather than bare ids where possible, so unchanged threads come from memory.
+export async function summarizeThreads(user: User, threads: ThreadRef[]): Promise<ThreadSummary[]> {
+  if (user.isDemo) {
+    const ids = threads.map((t) => (typeof t === "string" ? t : t.id));
+    return demoThreads().filter((t) => ids.includes(t.threadId));
+  }
   const gmail = gmailFor(user);
-  const results = await mapLimited(
-    threadIds,
-    async (id) => {
-      try {
-        const t = await gmail.users.threads.get({
-          userId: "me",
-          id,
-          format: "metadata",
-          metadataHeaders: ["Subject", "From", "Date"],
-        });
-        return summarize(t.data);
-      } catch (e) {
-        if ((e as { code?: number }).code === 404) return null;
-        throw e;
-      }
-    },
-  );
+  const results = await mapLimited(threads, async (ref) => {
+    const t = await getThreadMeta(user, gmail, ref);
+    return t ? summarize(t) : null;
+  });
   return results.filter((t): t is ThreadSummary => t !== null);
+}
+
+// Which threads changed in Gmail since a historyId (one cheap call per 500
+// changes), and Gmail's current historyId. Null when Gmail no longer has
+// history that far back (about a week), and everything must be re-checked.
+export async function changedThreadsSince(user: User, startHistoryId: string): Promise<{ changed: Set<string>; historyId: string } | null> {
+  const gmail = gmailFor(user);
+  const changed = new Set<string>();
+  let pageToken: string | undefined;
+  let historyId = startHistoryId;
+  try {
+    for (let page = 0; page < 20; page++) {
+      const res = await withBackoff(() => gmail.users.history.list({ userId: "me", startHistoryId, pageToken, maxResults: 500 }));
+      for (const h of res.data.history ?? []) for (const m of h.messages ?? []) if (m.threadId) changed.add(m.threadId);
+      if (res.data.historyId) historyId = res.data.historyId;
+      pageToken = res.data.nextPageToken ?? undefined;
+      if (!pageToken) return { changed, historyId };
+    }
+    return null; // a huge amount changed: just re-check everything
+  } catch (e) {
+    if ((e as { code?: number }).code === 404) return null;
+    throw e;
+  }
 }
 
 // The label's display name, or null if the user has no such label.
@@ -185,7 +229,7 @@ export async function listLabels(user: User): Promise<MailLabel[]> {
   const labels = await mapLimited(
     own,
     async (l) => {
-      const full = await gmail.users.labels.get({ userId: "me", id: l.id!, fields: "threadsUnread" });
+      const full = await withBackoff(() => gmail.users.labels.get({ userId: "me", id: l.id!, fields: "threadsUnread" }));
       return { id: l.id!, name: l.name!, unread: full.data.threadsUnread ?? 0, color: l.color?.backgroundColor ?? undefined };
     },
   );
@@ -316,6 +360,7 @@ function summarize(thread: gmail_v1.Schema$Thread): ThreadSummary {
     unread: messages.some((m) => m.labelIds?.includes("UNREAD")),
     messageCount: messages.length,
     labelIds: [...new Set(messages.flatMap((m) => m.labelIds ?? []))],
+    historyId: thread.historyId ?? undefined,
   };
 }
 
@@ -345,20 +390,11 @@ export async function listStartedByMe(user: User, days = 14): Promise<ThreadSumm
   const addressOf = (v: string) => (v.match(/<([^>]+)>/)?.[1] ?? v).trim().toLowerCase();
   const gmail = gmailFor(user);
   const res = await gmail.users.threads.list({ userId: "me", q: `in:sent -in:inbox -in:chats -in:trash newer_than:${days}d`, maxResults: 25 });
-  const ids = (res.data.threads ?? []).map((t) => t.id!).filter(Boolean);
-  const found = await mapLimited(
-    ids,
-    async (id) => {
-      try {
-        const t = await gmail.users.threads.get({ userId: "me", id, format: "metadata", metadataHeaders: ["Subject", "From", "Date"] });
-        const first = (t.data.messages ?? []).find((m) => !m.labelIds?.includes("DRAFT"));
-        return first && addressOf(header(first, "From")) === me ? summarize(t.data) : null;
-      } catch (e) {
-        if ((e as { code?: number }).code === 404) return null;
-        throw e;
-      }
-    },
-  );
+  const found = await mapLimited(res.data.threads ?? [], async (ref) => {
+    const t = await getThreadMeta(user, gmail, ref);
+    const first = (t?.messages ?? []).find((m) => !m.labelIds?.includes("DRAFT"));
+    return t && first && addressOf(header(first, "From")) === me ? summarize(t) : null;
+  });
   return found.filter((t): t is ThreadSummary => t !== null);
 }
 
@@ -371,29 +407,22 @@ export async function listAwaitingReply(user: User, days = 30): Promise<Awaiting
   const addressOf = (v: string) => (v.match(/<([^>]+)>/)?.[1] ?? v).trim().toLowerCase();
   const gmail = gmailFor(user);
   const res = await gmail.users.threads.list({ userId: "me", q: `in:sent newer_than:${days}d -in:chats`, maxResults: 50 });
-  const ids = (res.data.threads ?? []).map((t) => t.id!).filter(Boolean);
-  const found = await mapLimited(
-    ids,
-    async (id): Promise<AwaitingReply | null> => {
-      try {
-        const t = await gmail.users.threads.get({ userId: "me", id, format: "metadata", metadataHeaders: ["From", "To", "Cc", "Subject"] });
-        // Drafts and trashed messages don't count as the last word.
-        const msgs = (t.data.messages ?? []).filter((m) => !m.labelIds?.includes("DRAFT") && !m.labelIds?.includes("TRASH"));
-        const last = msgs[msgs.length - 1];
-        if (!last || addressOf(header(last, "From")) !== me) return null;
-        const to = [header(last, "To"), header(last, "Cc")]
-          .join(",")
-          .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
-          .map((x) => x.trim())
-          .filter((x) => x && addressOf(x) !== me);
-        if (to.length === 0) return null; // a note to self
-        const labelIds = [...new Set(msgs.flatMap((m) => m.labelIds ?? []))];
-        return { threadId: id, messageId: last.id!, subject: header(last, "Subject"), to, date: messageDate(last), labelIds };
-      } catch (e) {
-        if ((e as { code?: number }).code === 404) return null;
-        throw e;
-      }
-    },
-  );
+  const found = await mapLimited(res.data.threads ?? [], async (ref): Promise<AwaitingReply | null> => {
+      const id = ref.id!;
+      const t = await getThreadMeta(user, gmail, ref);
+      if (!t) return null;
+      // Drafts and trashed messages don't count as the last word.
+      const msgs = (t.messages ?? []).filter((m) => !m.labelIds?.includes("DRAFT") && !m.labelIds?.includes("TRASH"));
+      const last = msgs[msgs.length - 1];
+      if (!last || addressOf(header(last, "From")) !== me) return null;
+      const to = [header(last, "To"), header(last, "Cc")]
+        .join(",")
+        .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+        .map((x) => x.trim())
+        .filter((x) => x && addressOf(x) !== me);
+      if (to.length === 0) return null; // a note to self
+      const labelIds = [...new Set(msgs.flatMap((m) => m.labelIds ?? []))];
+      return { threadId: id, messageId: last.id!, subject: header(last, "Subject"), to, date: messageDate(last), labelIds };
+  });
   return found.filter((x): x is AwaitingReply => x !== null).sort((a, b) => a.date.localeCompare(b.date));
 }
