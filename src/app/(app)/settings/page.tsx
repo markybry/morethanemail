@@ -14,6 +14,7 @@ export default async function SettingsPage() {
         <SettingsForm
           user={{ name: user.name ?? user.email, email: user.email, isDemo: user.isDemo }}
           ignoredSenders={user.ignoredSenders}
+          allowedSenders={user.allowedSenders}
         />
       </div>
     </div>

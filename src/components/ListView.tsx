@@ -22,6 +22,10 @@ export function ListView({
   inLens,
   inLensIds,
   inboxIds,
+  trayIds,
+  triage,
+  onAllowSender,
+  onIgnoreSender,
   tagOf,
   cutoff,
   onClearQueue,
@@ -43,6 +47,10 @@ export function ListView({
   inLens: (e: BoardEmail | undefined) => boolean;
   inLensIds: (labelIds: string[]) => boolean; // for the waiting section
   inboxIds: string[]; // Gmail's inbox / this label's mail still to triage
+  trayIds: string[]; // the Inbox's Updates/Promotions/Social/Forums mail, folded away
+  triage: Triage; // what each row still to triage can do
+  onAllowSender: (threadId: string) => Promise<void>; // that sender skips the tray from now on
+  onIgnoreSender: (threadId: string) => Promise<void>; // that sender leaves the Inbox column
   tagOf: (threadId: string) => string | undefined;
   cutoff: { from: string | null; applies: boolean };
   onClearQueue: () => Promise<void>;
@@ -53,8 +61,8 @@ export function ListView({
   onUnfile: (threadId: string) => void;
   onNew: (title: string) => Promise<BoardEmail>; // a new card kept as information, filed in the List
   onAddToBoard: (threadId: string) => Promise<void>; // into the board's first status
-  onFileWaiting: (threadId: string) => Promise<void>;
-  onTrashWaiting: (threadId: string) => Promise<void>;
+  onFileWaiting: (threadId: string) => Promise<boolean>; // true once filed
+  onTrashWaiting: (threadId: string) => Promise<boolean>; // true once trashed
   firstLaneName: string; // name of the first status on the board
 }) {
   const [done, setDone] = useState<FiledCard[] | null>(null);
@@ -169,10 +177,14 @@ export function ListView({
                     plain={isPlainEmail(e)}
                     when={e.date}
                     onOpen={onOpen}
+                    actions={triageActions(triage, e, tagOf(id))}
                   />
                 );
               })}
             </ul>
+          )}
+          {trayIds.length > 0 && (
+            <Tray ids={trayIds} emails={emails} onOpen={onOpen} triage={triage} onAllowSender={onAllowSender} onIgnoreSender={onIgnoreSender} />
           )}
         </section>
         {done && filed && (
@@ -190,6 +202,102 @@ export function ListView({
         )}
         {(!done || !filed) && <Loading />}
       </div>
+    </div>
+  );
+}
+
+// What a row still to triage can do, without opening it first.
+export type Triage = {
+  firstLaneName: string | null; // the board's first status, if it has one
+  addToBoard: (threadId: string) => void;
+  file: (threadId: string) => void; // asks for a label first when it has none
+  trash: (threadId: string) => void; // to Gmail's Trash, with undo
+};
+// Rows already in a status, Done or filed (tagged) only get Delete.
+function triageActions(t: Triage, e: BoardEmail, tag: string | undefined) {
+  const out: { label: string; run: () => void }[] = [];
+  if (!tag && t.firstLaneName) out.push({ label: `+ ${t.firstLaneName}`, run: () => t.addToBoard(e.threadId) });
+  if (!tag && !e.hidden) out.push({ label: "File", run: () => t.file(e.threadId) });
+  if (!e.local) out.push({ label: "Delete", run: () => t.trash(e.threadId) });
+  return out;
+}
+
+// Gmail's Updates, Promotions, Social and Forums mail, folded under the Inbox so
+// it doesn't bury real mail but can still be skimmed. Open state is remembered.
+const TRAY_KEY = "mte.trayOpen";
+function Tray({
+  ids,
+  emails,
+  onOpen,
+  triage,
+  onAllowSender,
+  onIgnoreSender,
+}: {
+  ids: string[];
+  emails: Record<string, BoardEmail>;
+  onOpen: (threadId: string) => void;
+  triage: Triage;
+  onAllowSender: (threadId: string) => Promise<void>;
+  onIgnoreSender: (threadId: string) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    try {
+      setOpen(localStorage.getItem(TRAY_KEY) === "1");
+    } catch {}
+  }, []);
+  const toggle = () => {
+    setOpen((v) => {
+      try {
+        localStorage.setItem(TRAY_KEY, v ? "0" : "1");
+      } catch {}
+      return !v;
+    });
+  };
+  const unread = ids.filter((id) => emails[id]?.unread).length;
+  return (
+    <div className="mt-2 rounded-xl border border-dashed border-line-strong bg-oat/40">
+      <button
+        onClick={toggle}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
+        title="Mail Gmail sorted into Updates, Promotions, Social or Forums"
+      >
+        <span className="text-xs text-muted">{open ? "▾" : "▸"}</span>
+        <span className="font-semibold text-bark">Updates &amp; promotions</span>
+        <span className="text-xs text-muted">
+          {ids.length}
+          {unread > 0 && ` · ${unread} unread`}
+        </span>
+      </button>
+      {open && (
+        <>
+          <p className="px-3 pb-1 text-xs text-muted">
+            &ldquo;Always show&rdquo; moves a sender up with your main mail; &ldquo;Ignore&rdquo; drops them from the Inbox. Both are undone in Settings.
+          </p>
+          <ul className="space-y-1.5 p-2 pt-1">
+            {ids.map((id, i) => {
+              const e = emails[id];
+              if (!e) return null;
+              return (
+                <Row
+                  key={id}
+                  i={i}
+                  card={e}
+                  plain={isPlainEmail(e)}
+                  when={e.date}
+                  onOpen={onOpen}
+                  actions={[
+                    ...triageActions(triage, e, undefined),
+                    { label: "Always show sender", run: () => void onAllowSender(id) },
+                    { label: "Ignore sender", run: () => void onIgnoreSender(id) },
+                  ]}
+                />
+              );
+            })}
+          </ul>
+        </>
+      )}
     </div>
   );
 }
@@ -340,6 +448,7 @@ function Row({
   when,
   onOpen,
   action,
+  actions = action ? [action] : [],
 }: {
   i: number; // position, for a short stagger as the list comes in
   card: BoardEmail;
@@ -349,6 +458,7 @@ function Row({
   when: string;
   onOpen: (threadId: string) => void;
   action?: { label: string; run: () => void };
+  actions?: { label: string; run: () => void }[];
 }) {
   const { labelNames, colorOf } = useMail();
   const here = hideLabelId ? labelNames.get(hideLabelId) : undefined;
@@ -384,7 +494,7 @@ function Row({
           </span>
           <span className="ml-auto shrink-0">{shortDate(when)}</span>
         </div>
-        {(tag || labels.length > 0 || action) && (
+        {(tag || labels.length > 0 || actions.length > 0) && (
           <div className="mt-1 flex flex-wrap items-center gap-1">
             {tag && <span className="rounded-full bg-info-bg px-2 py-0.5 text-[11px] font-semibold text-info-ink">{tag}</span>}
             {labels.map((l) => (
@@ -393,17 +503,18 @@ function Row({
                 {l.name.split("/").join(" › ")}
               </span>
             ))}
-            {action && (
+            {actions.map((a, k) => (
               <button
+                key={a.label}
                 onClick={(e) => {
                   e.stopPropagation();
-                  action.run();
+                  a.run();
                 }}
-                className="ml-auto text-xs font-semibold text-muted opacity-0 group-hover:opacity-100 hover:text-terracotta focus:opacity-100 max-md:opacity-100"
+                className={`${k === 0 ? "ml-auto" : "ml-2"} text-xs font-semibold text-muted opacity-0 group-hover:opacity-100 hover:text-terracotta focus:opacity-100 max-md:opacity-100`}
               >
-                {action.label}
+                {a.label}
               </button>
-            )}
+            ))}
           </div>
         )}
       </div>

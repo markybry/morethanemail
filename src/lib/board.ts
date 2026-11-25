@@ -199,8 +199,8 @@ export async function loadWorkspace(
       },
     },
   });
-  // Finished cards leave the board straight away; they're in the List.
-  const lanes = ws.lanes.map((l) => ({ ...l, shown: l.finished ? [] : l.placements }));
+  // Finished cards stay on show until archived; then they're only in the List.
+  const lanes = ws.lanes.map((l) => ({ ...l, shown: l.finished ? l.placements.filter((p) => !p.archivedAt) : l.placements }));
   const placedIds = new Set(ws.lanes.flatMap((l) => l.placements.map((p) => p.email.threadId)));
   const emails: Record<string, BoardEmail> = {};
   for (const l of lanes) for (const p of l.shown) emails[p.email.threadId] = toBoardEmail(p.email);

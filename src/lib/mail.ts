@@ -75,14 +75,40 @@ export const INBOX = "INBOX";
 // Gmail's search name for a label: "Clients/JR Lease" is label:clients-jr-lease.
 const searchName = (name: string) => name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "");
 
+// ---------- labels, kept in server memory ----------
+// Labels rarely change, and asking Gmail for them on every page and list was a
+// big share of the calls that got the app throttled. The list of labels is kept
+// for an hour, unread counts for a couple of minutes. Labels made through the
+// app clear it straight away; one renamed or deleted in Gmail shows within the
+// hour, and one made in Gmail as soon as it's opened.
+type GmailLabel = { id: string; name: string; type: string; color?: string };
+const LABELS_TTL = 60 * 60_000;
+const UNREAD_TTL = 2 * 60_000;
+const labelCache = new Map<string, { labels: GmailLabel[]; at: number }>();
+const unreadCache = new Map<string, { counts: Map<string, number>; at: number }>();
+
+async function gmailLabels(user: User): Promise<GmailLabel[]> {
+  const hit = labelCache.get(user.id);
+  if (hit && Date.now() - hit.at < LABELS_TTL) return hit.labels;
+  const res = await withBackoff(() => gmailFor(user).users.labels.list({ userId: "me" }));
+  const labels = (res.data.labels ?? [])
+    .filter((l) => l.id && l.name)
+    .map((l) => ({ id: l.id!, name: l.name!, type: l.type ?? "user", color: l.color?.backgroundColor ?? undefined }));
+  if (labelCache.size > 500) labelCache.clear();
+  labelCache.set(user.id, { labels, at: Date.now() });
+  return labels;
+}
+
+// After a label is made (or anything else that changes the list) in the app.
+export function forgetLabels(userId: string) {
+  labelCache.delete(userId);
+  unreadCache.delete(userId);
+}
+
 // A label and every label under it ("Clients/JR" and "Clients/JR/Lease").
 export async function labelWithSubLabels(user: User, labelId: string): Promise<{ id: string; name: string }[]> {
   if (labelId === INBOX) return [{ id: INBOX, name: "Inbox" }];
-  const all = user.isDemo
-    ? demoLabels()
-    : ((await gmailFor(user).users.labels.list({ userId: "me" })).data.labels ?? [])
-        .filter((l) => l.id && l.name)
-        .map((l) => ({ id: l.id!, name: l.name! }));
+  const all = user.isDemo ? demoLabels() : await gmailLabels(user);
   const self = all.find((l) => l.id === labelId);
   if (!self) return [{ id: labelId, name: "" }];
   return all.filter((l) => l.id === labelId || l.name.startsWith(`${self.name}/`)).map((l) => ({ id: l.id, name: l.name }));
@@ -207,33 +233,36 @@ export async function changedThreadsSince(user: User, startHistoryId: string): P
 }
 
 // The label's display name, or null if the user has no such label.
+// From the cached label list. A label it doesn't know may be one just made in
+// Gmail, so the list is fetched again once before saying it doesn't exist.
 export async function getLabelName(user: User, labelId: string): Promise<string | null> {
   if (labelId === INBOX) return "Inbox";
   if (user.isDemo) return demoLabels().find((l) => l.id === labelId)?.name ?? null;
-  try {
-    const res = await gmailFor(user).users.labels.get({ userId: "me", id: labelId, fields: "name" });
-    return res.data.name ?? null;
-  } catch (e) {
-    if ((e as { code?: number }).code === 404) return null;
-    throw e;
-  }
+  const known = (await gmailLabels(user)).find((l) => l.id === labelId);
+  if (known) return known.name;
+  forgetLabels(user.id);
+  return (await gmailLabels(user)).find((l) => l.id === labelId)?.name ?? null;
 }
 
 // The user's own Gmail labels (not system ones like INBOX or CATEGORY_*),
-// with unread thread counts. labels.list has no counts, so each label is fetched.
+// with unread thread counts. labels.list has no counts, so each label is
+// fetched: that's one call per label, so the counts are kept for UNREAD_TTL.
 export async function listLabels(user: User): Promise<MailLabel[]> {
   if (user.isDemo) return demoLabels();
-  const gmail = gmailFor(user);
-  const res = await gmail.users.labels.list({ userId: "me" });
-  const own = (res.data.labels ?? []).filter((l) => l.type === "user" && l.id && l.name);
-  const labels = await mapLimited(
-    own,
-    async (l) => {
-      const full = await withBackoff(() => gmail.users.labels.get({ userId: "me", id: l.id!, fields: "threadsUnread" }));
-      return { id: l.id!, name: l.name!, unread: full.data.threadsUnread ?? 0, color: l.color?.backgroundColor ?? undefined };
-    },
-  );
-  return labels.sort((x, y) => x.name.localeCompare(y.name));
+  const own = (await gmailLabels(user)).filter((l) => l.type === "user");
+  const hit = unreadCache.get(user.id);
+  let counts = hit && Date.now() - hit.at < UNREAD_TTL ? hit.counts : null;
+  if (!counts || own.some((l) => !counts!.has(l.id))) {
+    const gmail = gmailFor(user);
+    const pairs = await mapLimited(own, async (l) => {
+      const full = await withBackoff(() => gmail.users.labels.get({ userId: "me", id: l.id, fields: "threadsUnread" }));
+      return [l.id, full.data.threadsUnread ?? 0] as const;
+    });
+    counts = new Map(pairs);
+    if (unreadCache.size > 500) unreadCache.clear();
+    unreadCache.set(user.id, { counts, at: Date.now() });
+  }
+  return own.map((l) => ({ id: l.id, name: l.name, unread: counts!.get(l.id) ?? 0, color: l.color })).sort((x, y) => x.name.localeCompare(y.name));
 }
 
 // Labels the app may add to or remove from a thread: the user's own labels, and
@@ -268,9 +297,9 @@ export async function modifyThreadLabels(user: User, threadId: string, add: stri
 export async function createLabel(user: User, name: string): Promise<MailLabel> {
   if (user.isDemo) return demoCreateLabel(name);
   const gmail = gmailFor(user);
-  const existing = ((await gmail.users.labels.list({ userId: "me" })).data.labels ?? [])
-    .filter((l) => l.id && l.name)
-    .map((l) => ({ id: l.id!, name: l.name! }));
+  // A fresh list (not the cached one), so a label made in Gmail meanwhile is reused.
+  forgetLabels(user.id);
+  const existing = (await gmailLabels(user)).map((l) => ({ id: l.id, name: l.name }));
   const find = (path: string) => existing.find((l) => l.name.toLowerCase() === path.toLowerCase());
   let path = "";
   let label: { id: string; name: string } | undefined;
@@ -287,6 +316,7 @@ export async function createLabel(user: User, name: string): Promise<MailLabel> 
     }
     path = label.name; // keep the existing label's own casing for the next level
   }
+  forgetLabels(user.id); // the new label shows everywhere straight away
   return { id: label!.id, name: label!.name, unread: 0 };
 }
 

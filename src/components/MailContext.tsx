@@ -22,6 +22,7 @@ type MailContextValue = {
 };
 
 const RECENT_KEY = "mte.recentLabels";
+const LABELS_KEY = "mte.labels";
 
 const MailContext = createContext<MailContextValue | null>(null);
 
@@ -29,11 +30,26 @@ const MailContext = createContext<MailContextValue | null>(null);
 export function MailProvider({ me, children }: { me: string; children: React.ReactNode }) {
   const [labels, setLabels] = useState<MailLabel[]>([]);
 
+  // Last time's labels show straight away (kept in this browser, per account);
+  // the server's copy replaces them.
+  const labelsKey = `${LABELS_KEY}:${me}`;
   const reloadLabels = useCallback(() => {
-    void fetchLabels().then((r) => setLabels(r.labels));
-  }, []);
+    void fetchLabels().then((r) => {
+      if (!r.labels.length && r.error) return; // keep what's shown rather than blank it
+      setLabels(r.labels);
+      try {
+        localStorage.setItem(labelsKey, JSON.stringify(r.labels));
+      } catch {}
+    });
+  }, [labelsKey]);
 
-  useEffect(() => reloadLabels(), [reloadLabels]);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(labelsKey);
+      if (saved) setLabels(JSON.parse(saved) as MailLabel[]);
+    } catch {}
+    reloadLabels();
+  }, [labelsKey, reloadLabels]);
 
   const labelNames = useMemo(() => new Map(labels.map((l) => [l.id, l.name])), [labels]);
 

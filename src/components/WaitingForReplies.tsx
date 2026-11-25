@@ -5,8 +5,11 @@ import { useEffect, useState } from "react";
 import { fetchWaiting, notWaiting, type Waiting } from "@/app/actions";
 import { senderName, timeAgo } from "@/lib/format";
 import { Loading } from "./Loading";
+import { cached, isFresh, remember } from "@/lib/clientCache";
 
 const NUDGE_DAYS = 3;
+const CACHE_KEY = "waiting";
+const FRESH_MS = 5 * 60_000; // a list this recent is shown without asking Gmail again
 const cardLink = (threadId: string) => `/l/INBOX?thread=${encodeURIComponent(threadId)}`;
 
 // Emails you sent that nobody has answered yet: the newest message in the thread
@@ -24,22 +27,34 @@ export function WaitingForReplies({
   keep?: (w: Waiting) => boolean; // e.g. only the open label's
   onOpen?: (threadId: string) => void; // open in place, instead of following a link
   onAddToBoard?: (threadId: string) => void | Promise<void>; // place it in the board's first status
-  onFile?: (threadId: string) => void | Promise<void>; // file it (asks for a label first when needed)
-  onTrash?: (threadId: string) => void | Promise<void>; // to Gmail's Trash
+  onFile?: (threadId: string) => Promise<boolean>; // file it (asks for a label first when needed); true once filed
+  onTrash?: (threadId: string) => Promise<boolean>; // to Gmail's Trash; true once there
   firstLaneName?: string; // name of the first status on the board
   className?: string; // a host can drop the card surface when it has its own
 }) {
-  const [items, setItems] = useState<Waiting[] | null>(null);
+  // Last time's list shows straight away; the fresh one replaces it.
+  const [items, setItemsState] = useState<Waiting[] | null>(() => cached<Waiting[]>(CACHE_KEY) ?? null);
+  const setItems = (next: Waiting[] | null | ((prev: Waiting[] | null) => Waiting[] | null)) =>
+    setItemsState((prev) => {
+      const v = typeof next === "function" ? next(prev) : next;
+      if (v) remember(CACHE_KEY, v);
+      return v;
+    });
   const [error, setError] = useState("");
   const [added, setAdded] = useState<string[]>([]);
   const [busy, setBusy] = useState("");
 
   useEffect(() => {
+    if (isFresh(CACHE_KEY, FRESH_MS)) return; // fetched moments ago: no need to ask Gmail
     void fetchWaiting().then((res) => {
       if (res.error) setError(res.error);
-      setItems(res.items);
+      else setError("");
+      if (!res.error || !cached(CACHE_KEY)) {
+        setItemsState(res.items);
+        if (!res.error) remember(CACHE_KEY, res.items, true);
+      }
     });
-  }, []);
+  }, []); // once per mount
 
   const dismiss = async (w: Waiting) => {
     const before = items;
@@ -51,11 +66,24 @@ export function WaitingForReplies({
     }
   };
 
-  const run = async (key: string, threadId: string, fn: (id: string) => void | Promise<void>) => {
+  // Filed (dealt with) or trashed: off the list now. Filed ones stay off, as with
+  // "No reply needed"; trashed ones drop out of the sent mail by themselves.
+  const drop = (w: Waiting, remember: boolean) => {
+    setItems((prev) => prev?.filter((x) => x.messageId !== w.messageId) ?? null);
+    if (remember)
+      void notWaiting(w.messageId).then((res) => {
+        if (res.error) setError(res.error);
+      });
+  };
+
+  const run = async (key: string, w: Waiting, fn: (id: string) => void | Promise<boolean | void>) => {
+    const threadId = w.threadId;
     setBusy(key);
     try {
-      await fn(threadId);
+      const ok = await fn(threadId);
       if (key.startsWith("board:")) setAdded((prev) => (prev.includes(threadId) ? prev : [...prev, threadId]));
+      if (ok && key.startsWith("file:")) drop(w, true);
+      if (ok && key.startsWith("trash:")) drop(w, false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "That didn't work.");
     } finally {
@@ -70,7 +98,7 @@ export function WaitingForReplies({
   return (
     <section className={className}>
       <div className="mb-2 flex items-baseline gap-2">
-        <h2 className="text-sm font-semibold text-terracotta">⏳ Waiting for a reply</h2>
+        <h2 className="text-sm font-semibold text-terracotta">↩︎ Waiting for a reply</h2>
         {shown && shown.length > 0 && (
           <span className="text-xs text-muted">
             {shown.length} sent, no answer yet{nudges > 0 && ` · ${nudges} waiting ${NUDGE_DAYS}+ days`}
@@ -126,10 +154,10 @@ export function WaitingForReplies({
                 <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100 max-md:opacity-100">
                   {onFile && (
                     <button
-                      onClick={() => void run(`file:${w.messageId}`, w.threadId, onFile)}
+                      onClick={() => void run(`file:${w.messageId}`, w, onFile)}
                       disabled={!!busy}
                       className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none disabled:opacity-50"
-                      title="OK: file it under a label (asks first if it has none). Gmail is left alone."
+                      title="Dealt with: file it under a label (asks first if it has none) and stop waiting on it. Gmail is left alone."
                       aria-label="File"
                     >
                       👍
@@ -137,7 +165,7 @@ export function WaitingForReplies({
                   )}
                   {onAddToBoard && !w.status && !w.done && !added.includes(w.threadId) && (
                     <button
-                      onClick={() => void run(`board:${w.messageId}`, w.threadId, onAddToBoard)}
+                      onClick={() => void run(`board:${w.messageId}`, w, onAddToBoard)}
                       disabled={!!busy}
                       className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none disabled:opacity-50"
                       title={`Add this to ${firstLaneName} on the board (it isn't on one yet).`}
@@ -148,7 +176,7 @@ export function WaitingForReplies({
                   )}
                   {onTrash && (
                     <button
-                      onClick={() => void run(`trash:${w.messageId}`, w.threadId, onTrash)}
+                      onClick={() => void run(`trash:${w.messageId}`, w, onTrash)}
                       disabled={!!busy}
                       className="btn-press rounded-lg bg-oat px-1.5 py-0.5 text-sm leading-none disabled:opacity-50"
                       title="Move to Gmail's Trash"

@@ -20,6 +20,7 @@ model User {
   pinnedLabels  String[]       @default([]) // labels shown at the top of the sidebar, in order
   triageFrom    DateTime? // labelled mail older than this counts as done: kept out of the triage column and Recent
   ignoredSenders String[]     @default([]) // addresses whose mail is kept out of the Inbox column (Gmail is untouched)
+  allowedSenders String[]     @default([]) // addresses whose Updates/Promotions mail shows with Primary instead of in the tray
   notWaiting    String[]       @default([]) // sent message ids that need no reply: kept off "Waiting for a reply"
   createdAt     DateTime       @default(now())
   workspaces    Workspace[]
@@ -123,6 +124,7 @@ model Placement {
   email       Email     @relation(fields: [emailId], references: [id], onDelete: Cascade)
   position    Int       @default(0)
   movedAt     DateTime  @default(now()) // when it came into this status
+  archivedAt  DateTime? // in a finished status: cleared off the board (it's in the List). Until then it shows in that status
 
   @@unique([emailId])
   @@index([laneId])

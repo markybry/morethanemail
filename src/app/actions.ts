@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import {
   createLabel,
+  forgetLabels,
   getThread,
   isAssignableLabel,
   labelWithSubLabels,
@@ -223,6 +224,13 @@ export async function searchEverything(
   }
 }
 
+// The Refresh button: forget what the server keeps of Gmail (labels, unread
+// counts), so the next load asks Gmail afresh.
+export async function resyncMail() {
+  const user = await requireUser();
+  forgetLabels(user.id);
+}
+
 export async function fetchLabels(): Promise<{ labels: MailLabel[]; error?: string }> {
   const user = await requireUser();
   try {
@@ -352,10 +360,27 @@ export async function setLaneReopenOnReply(laneId: string, reopenOnReply: boolea
   revalidateBoards();
 }
 
-// A finished status: moving a card there takes it off the board and into the List. Gmail is left as it is.
+// A finished status: cards in it are done. They stay on show there until
+// archived, then they're kept in the List. Gmail is left as it is.
 export async function setLaneFinished(laneId: string, finished: boolean) {
   await ownLane(laneId);
   await db.lane.update({ where: { id: laneId }, data: { finished } });
+  revalidateBoards();
+}
+
+// Clear done cards off the board (they stay in the List, still done). Only
+// cards in a finished status; none named means all of that status's.
+export async function archiveDoneCards(laneId: string, threadIds?: string[]) {
+  const { user, lane } = await ownLane(laneId);
+  if (!lane.finished) return;
+  await db.placement.updateMany({
+    where: {
+      laneId,
+      archivedAt: null,
+      ...(threadIds ? { email: { threadId: { in: threadIds }, userId: user.id } } : {}),
+    },
+    data: { archivedAt: new Date() },
+  });
   revalidateBoards();
 }
 
@@ -654,7 +679,8 @@ export async function arrangeEmails(
               workspaceId,
               laneId: l.laneId,
               position,
-              ...(laneBefore.get(idOf.get(t)!) !== l.laneId ? { movedAt: new Date() } : {}),
+              // A card arriving in a status is on show there again (not archived).
+              ...(laneBefore.get(idOf.get(t)!) !== l.laneId ? { movedAt: new Date(), archivedAt: null } : {}),
             },
           }),
         ),
@@ -1034,6 +1060,27 @@ export async function unignoreSender(address: string): Promise<string[]> {
   const user = await requireUser();
   const list = user.ignoredSenders.filter((a) => a !== cleanAddress(address));
   await db.user.update({ where: { id: user.id }, data: { ignoredSenders: list } });
+  revalidateBoards();
+  revalidatePath("/settings");
+  return list;
+}
+
+// Senders worth seeing: their mail in Gmail's Updates, Promotions, Social or
+// Forums tabs shows with the Primary mail instead of folded into the tray.
+export async function allowSender(address: string): Promise<string[]> {
+  const user = await requireUser();
+  const a = cleanAddress(address);
+  if (!a.includes("@")) return user.allowedSenders;
+  const list = [...new Set([...user.allowedSenders, a])].slice(-500);
+  await db.user.update({ where: { id: user.id }, data: { allowedSenders: list } });
+  revalidateBoards();
+  return list;
+}
+
+export async function unallowSender(address: string): Promise<string[]> {
+  const user = await requireUser();
+  const list = user.allowedSenders.filter((a) => a !== cleanAddress(address));
+  await db.user.update({ where: { id: user.id }, data: { allowedSenders: list } });
   revalidateBoards();
   revalidatePath("/settings");
   return list;

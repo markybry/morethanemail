@@ -40,6 +40,7 @@ export default async function LabelPage({
       templates={templates}
       triageFrom={user.triageFrom?.toISOString() ?? null}
       ignoredSenders={user.ignoredSenders}
+      allowedSenders={user.allowedSenders}
     />
   );
 }

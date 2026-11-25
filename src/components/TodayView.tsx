@@ -28,8 +28,8 @@ export function TodayView({
   toggleTask: (cardId: string, taskId: string, done: boolean) => void;
   onOpen: (threadId: string) => void;
   onAddToBoard: (threadId: string) => Promise<void>;
-  onFileWaiting: (threadId: string) => Promise<void>;
-  onTrashWaiting: (threadId: string) => Promise<void>;
+  onFileWaiting: (threadId: string) => Promise<boolean>; // true once filed
+  onTrashWaiting: (threadId: string) => Promise<boolean>; // true once trashed
   firstLaneName: string;
 }) {
   // Cards not in a status (filed tickets from the Tasks tab, first-column
@@ -48,7 +48,15 @@ export function TodayView({
         .sort(byDue),
     [onBoard, off.cards],
   );
-  const overdue = actions.filter((a) => a.task.dueDate && isOverdue(a.task.dueDate, a.task.dueTime)).length;
+  const overdueActions = actions.filter((a) => a.task.dueDate && isOverdue(a.task.dueDate, a.task.dueTime));
+  const overdue = overdueActions.length;
+  // The Overdue number narrows Next actions to just those; the others jump to their section.
+  const [onlyOverdue, setOnlyOverdue] = useState(false);
+  useEffect(() => {
+    if (overdue === 0) setOnlyOverdue(false);
+  }, [overdue]);
+  const shownActions = onlyOverdue ? overdueActions : actions;
+  const jumpTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   const replies = onBoard.filter((x) => x.card.newReply);
   const stuck = onBoard.filter((x) => ageOf(x.card.threadId)?.stale);
 
@@ -64,9 +72,32 @@ export function TodayView({
     <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-5xl space-y-5 pb-6">
         <div className="grid grid-cols-3 gap-3">
-          <Stat i={0} label="Next actions" value={actions.length} />
-          <Stat i={1} label="Overdue" value={overdue} alert={overdue > 0} />
-          <Stat i={2} label="New replies" value={replies.length} alert={replies.length > 0} />
+          <Stat
+            i={0}
+            label="Next actions"
+            value={actions.length}
+            onClick={() => {
+              setOnlyOverdue(false);
+              jumpTo("today-actions");
+            }}
+          />
+          <Stat
+            i={1}
+            label="Overdue"
+            value={overdue}
+            alert={overdue > 0}
+            active={onlyOverdue}
+            title={onlyOverdue ? "Showing only overdue actions: click to show all" : "Show only the overdue actions"}
+            onClick={
+              overdue > 0
+                ? () => {
+                    setOnlyOverdue((v) => !v);
+                    jumpTo("today-actions");
+                  }
+                : undefined
+            }
+          />
+          <Stat i={2} label="New replies" value={replies.length} alert={replies.length > 0} onClick={() => jumpTo("today-replies")} />
         </div>
 
         <WaitingForReplies
@@ -79,10 +110,18 @@ export function TodayView({
         />
 
         <div className="grid gap-5 md:grid-cols-2">
-          <Panel title="Next actions" hint="One per card: the first open task. Add tasks in the Tasks tab.">
-            {actions.length === 0 && <Empty>No next actions here.</Empty>}
+          <Panel id="today-actions" title={onlyOverdue ? "Overdue actions" : "Next actions"} hint="One per card: the first open task. Add tasks in the Tasks tab.">
+            {onlyOverdue && (
+              <p className="mb-2 text-xs text-muted">
+                Only the {overdue} overdue.{" "}
+                <button onClick={() => setOnlyOverdue(false)} className="font-semibold text-terracotta hover:underline">
+                  Show all
+                </button>
+              </p>
+            )}
+            {shownActions.length === 0 && <Empty>No next actions here.</Empty>}
             <ul className="space-y-1.5">
-              {actions.map((r, i) => (
+              {shownActions.map((r, i) => (
                 <TaskLine
                   key={r.task.id}
                   row={r}
@@ -97,7 +136,7 @@ export function TodayView({
           </Panel>
 
           <div className="space-y-5">
-            <Panel title="New replies">
+            <Panel id="today-replies" title="New replies">
               {replies.length === 0 && <Empty>No new replies on these cards.</Empty>}
               <CardRows rows={replies.map(({ card, status }) => ({ card, right: status }))} onOpen={onOpen} />
             </Panel>
@@ -147,18 +186,49 @@ function CardRows({ rows, onOpen }: { rows: { card: BoardEmail; right: string }[
   );
 }
 
-function Stat({ i, label, value, alert }: { i: number; label: string; value: number; alert?: boolean }) {
-  return (
-    <div className="list-row animate-pop px-4 py-3" style={{ animationDelay: `${i * 60}ms` }}>
+// A number at the top. With onClick it's a button: it shows (or filters to) what it counts.
+function Stat({
+  i,
+  label,
+  value,
+  alert,
+  active,
+  title,
+  onClick,
+}: {
+  i: number;
+  label: string;
+  value: number;
+  alert?: boolean;
+  active?: boolean; // its filter is on
+  title?: string;
+  onClick?: () => void;
+}) {
+  const body = (
+    <>
       <div className={`text-2xl font-bold ${alert ? "text-terracotta" : "text-walnut"}`}>{value}</div>
-      <div className="text-xs text-muted">{label}</div>
+      <div className="text-xs text-muted">
+        {label}
+        {onClick && <span className="ml-1">{active ? "✕" : "›"}</span>}
+      </div>
+    </>
+  );
+  const cls = `list-row animate-pop px-4 py-3 text-left ${active ? "ring-2 ring-terracotta" : ""}`;
+  const style = { animationDelay: `${i * 60}ms` };
+  return onClick ? (
+    <button onClick={onClick} title={title} aria-pressed={active} className={`${cls} btn-press cursor-pointer hover:border-line-strong`} style={style}>
+      {body}
+    </button>
+  ) : (
+    <div className={cls} style={style}>
+      {body}
     </div>
   );
 }
 
-function Panel({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Panel({ id, title, hint, children }: { id?: string; title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="paper animate-rise rounded-3xl border border-line p-4">
+    <section id={id} className="paper animate-rise scroll-mt-3 rounded-3xl border border-line p-4">
       <h2 className="text-sm font-semibold text-terracotta">{title}</h2>
       {hint && <p className="text-xs text-muted">{hint}</p>}
       <div className="mt-2">{children}</div>

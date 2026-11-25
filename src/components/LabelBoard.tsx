@@ -21,6 +21,10 @@ import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from "@dnd-kit/utilities";
 import {
   addThreadToCard,
+  allowSender,
+  archiveDoneCards,
+  resyncMail,
+  ignoreSenders,
   applyLaneTemplate,
   arrangeEmails,
   createLane,
@@ -61,6 +65,13 @@ import { TodayView } from "./TodayView";
 import { TasksView } from "./TasksView";
 import { FileUnder } from "./FileUnder";
 import type { Due } from "./DuePicker";
+import { cached, clearAll, isFresh, remember } from "@/lib/clientCache";
+
+// A label's list fetched this recently is shown without asking Gmail again.
+const LIST_FRESH_MS = 3 * 60_000;
+
+// Gmail's inbox tabs other than Primary: their mail goes in the Inbox's tray.
+const OTHER_TABS = ["CATEGORY_UPDATES", "CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_FORUMS"];
 
 const VIEW_KEY = "mte.view"; // the last view picked: "today" (Summary, the default), "tasks", "list", "lanes" or "calendar"
 type BoardView = "lanes" | "calendar" | "list" | "today" | "tasks";
@@ -113,6 +124,7 @@ export function LabelBoard({
   templates: initialTemplates,
   triageFrom: initialTriageFrom,
   ignoredSenders: initialIgnored,
+  allowedSenders: initialAllowed,
 }: {
   workspace: WorkspaceDTO;
   initialEmails: Record<string, BoardEmail>;
@@ -120,6 +132,7 @@ export function LabelBoard({
   templates: LaneTemplateDTO[];
   triageFrom: string | null;
   ignoredSenders: string[];
+  allowedSenders: string[];
 }) {
   const { reloadLabels, labelNames, labels } = useMail();
   const { theme: look } = useTheme();
@@ -177,14 +190,17 @@ export function LabelBoard({
 
   // The board updates straight away; if saving then fails, put it back and say so
   // rather than leave a change on screen that will be gone on the next visit.
+  // Says whether it saved.
   const save = useCallback(async (write: () => Promise<unknown>, undo: () => void) => {
     try {
       await write();
       setSaveError("");
+      return true;
     } catch (e) {
       console.error("Saving the board failed", e);
       undo();
       setSaveError("Couldn't save that change, so it has been undone. Check your connection and try again.");
+      return false;
     }
   }, []);
 
@@ -225,7 +241,14 @@ export function LabelBoard({
   const [prefsReady, setPrefsReady] = useState(false);
   const [view, setView] = useState<BoardView>("today");
   // Senders ignored earlier (listed in Settings) stay out of the Inbox column.
-  const ignored = useMemo(() => new Set(initialIgnored), [initialIgnored]);
+  // Allowed senders' Updates/Promotions mail shows with Primary, not in the tray.
+  // Kept here too so a choice made from the tray takes effect straight away.
+  const [ignoredList, setIgnoredList] = useState(initialIgnored);
+  const [allowedList, setAllowedList] = useState(initialAllowed);
+  useEffect(() => setIgnoredList(initialIgnored), [initialIgnored]);
+  useEffect(() => setAllowedList(initialAllowed), [initialAllowed]);
+  const ignored = useMemo(() => new Set(ignoredList), [ignoredList]);
+  const allowed = useMemo(() => new Set(allowedList), [allowedList]);
   // A finished status that just took a card: it says so for a moment.
   const [justDone, setJustDone] = useState<string | null>(null);
   useEffect(() => {
@@ -233,25 +256,34 @@ export function LabelBoard({
     const t = setTimeout(() => setJustDone(null), 1600);
     return () => clearTimeout(t);
   }, [justDone]);
-  const load = useCallback(
-    async () => {
-      const res = await fetchLabelEmails(sourceLabelId, {
-        primaryOnly,
-        includeOlder: showOlder,
-      });
-      if (res.error) return;
-      mergeEmails(res.emails);
+  // The remembered copy follows what's done here (deleted, filed, moved), so
+  // coming back doesn't briefly show it as it was.
+  const listKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!listKey.current) return;
+    const pick = (ids: string[]) => ({ emails: ids.map((id) => emails[id]).filter((e): e is BoardEmail => !!e) });
+    remember(listKey.current, { list: pick(recentIds), sent: isInbox ? pick(sentIds) : undefined });
+  }, [emails, recentIds, sentIds, isInbox]);
+  // Show the list as it was last time straight away (kept in this tab), then
+  // the fresh one from Gmail. The remembered copy never overwrites what the
+  // page brought from the database, and changes nothing on the server.
+  const showList = useCallback(
+    (res: { emails: BoardEmail[] }, fromCache: boolean) => {
+      if (fromCache) mergeEmails(res.emails.filter((e) => !emailsRef.current[e.threadId]));
+      else mergeEmails(res.emails);
       // Emails added to a card show as that card.
       const cardIds = [...new Set(res.emails.map((e) => e.partOf ?? e.threadId))];
       setRecentIds(cardIds);
       const missing = cardIds.filter((id) => !emailsRef.current[id] && !res.emails.some((e) => e.threadId === id));
-      if (missing.length) void refreshEmails(missing).then((r) => mergeEmails(r.emails));
+      if (missing.length && !fromCache) void refreshEmails(missing).then((r) => mergeEmails(r.emails));
       // Cards already in a status, Done cards, and emails added to a card, aren't unsorted.
       // A Done card with a new reply comes back to triage (and out of Done).
       const reopens = new Set(lanesRef.current.filter((l) => l.reopenOnReply).map((l) => l.id));
-      const reopenedDone = res.emails
-        .filter((e) => e.done && e.newReply && !e.partOf && !!e.doneLaneId && reopens.has(e.doneLaneId))
-        .map((e) => e.threadId);
+      const reopenedDone = fromCache
+        ? []
+        : res.emails
+            .filter((e) => e.done && e.newReply && !e.partOf && !!e.doneLaneId && reopens.has(e.doneLaneId))
+            .map((e) => e.threadId);
       if (reopenedDone.length) {
         setEmails((prev) => {
           const next = { ...prev };
@@ -269,21 +301,55 @@ export function LabelBoard({
         .filter((e) => e.local && !placedRef.current.has(e.threadId))
         .map((e) => e.threadId);
       setUnsorted([...tickets, ...ids]);
-      if (isInbox) {
-        const sent = await fetchSentStarted();
-        if (!sent.error) {
-          mergeEmails(sent.emails);
-          const fresh = sent.emails
-            .filter((e) => !e.hidden && !placedRef.current.has(e.threadId) && !(e.homeId && e.homeId !== workspace.id) && !e.done)
-            .map((e) => e.threadId);
-          setSentIds(sent.emails.map((e) => e.threadId));
-          setUnsorted((prev) => [...prev, ...fresh.filter((id) => !prev.includes(id))]);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workspace.id, mergeEmails],
+  );
+  const showSent = useCallback(
+    (sent: { emails: BoardEmail[] }, fromCache: boolean) => {
+      if (fromCache) mergeEmails(sent.emails.filter((e) => !emailsRef.current[e.threadId]));
+      else mergeEmails(sent.emails);
+      const fresh = sent.emails
+        .filter((e) => !e.hidden && !placedRef.current.has(e.threadId) && !(e.homeId && e.homeId !== workspace.id) && !e.done)
+        .map((e) => e.threadId);
+      setSentIds(sent.emails.map((e) => e.threadId));
+      setUnsorted((prev) => [...prev, ...fresh.filter((id) => !prev.includes(id))]);
+    },
+    [workspace.id, mergeEmails],
+  );
+  const load = useCallback(
+    async () => {
+      const key = `list:${sourceLabelId}:${showOlder ? "all" : "new"}:${triageFrom ?? ""}`;
+      const hit = cached<{ list: { emails: BoardEmail[] }; sent?: { emails: BoardEmail[] } }>(key);
+      if (hit) {
+        showList(hit.list, true);
+        if (hit.sent) showSent(hit.sent, true);
+        // Fetched moments ago: don't ask Gmail again (the board's own checks
+        // for new replies still run).
+        if (isFresh(key, LIST_FRESH_MS)) {
+          listKey.current = key;
+          return;
         }
       }
+      const res = await fetchLabelEmails(sourceLabelId, {
+        primaryOnly,
+        includeOlder: showOlder,
+      });
+      if (res.error) return;
+      showList(res, false);
+      let sent: { emails: BoardEmail[] } | undefined;
+      if (isInbox) {
+        const s = await fetchSentStarted();
+        if (!s.error) {
+          sent = s;
+          showSent(s, false);
+        }
+      }
+      remember(key, { list: { emails: res.emails }, sent }, true);
+      listKey.current = key;
     },
     // triageFrom: the server applies it, so a new cut-off must reload the list.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sourceLabelId, isInbox, workspace.id, primaryOnly, showOlder, triageFrom, mergeEmails],
+    [sourceLabelId, isInbox, primaryOnly, showOlder, triageFrom, showList, showSent],
   );
 
   useEffect(() => {
@@ -388,7 +454,7 @@ export function LabelBoard({
       const now = new Date().toISOString();
       setLanes((prev) => prev.map((l) => (l.id === to ? { ...l, since: { ...l.since, [threadId]: now } } : l)));
     }
-    // A finished status takes the card off the board (it's in the List).
+    // A finished status marks the card done; it stays there until archived.
     const finished = from !== to && !!lanes.find((l) => l.id === to)?.finished;
     const affected = new Set([from, to].filter((x): x is string => !!x && x !== UNSORTED));
     const email = emailsRef.current[threadId] ?? emails[threadId];
@@ -403,12 +469,21 @@ export function LabelBoard({
     );
     if (!finished && emails[threadId]?.done)
       setEmails((prev) => (prev[threadId] ? { ...prev, [threadId]: { ...prev[threadId], done: false, doneLaneId: null } } : prev));
-    if (finished) {
-      setJustDone(to);
-      setLanes((prev) => prev.map((l) => (l.id === to ? { ...l, threadIds: l.threadIds.filter((x) => x !== threadId) } : l)));
+    if (finished)
       setEmails((prev) => (prev[threadId] ? { ...prev, [threadId]: { ...prev[threadId], done: true, doneLaneId: to } } : prev));
-      if (selected === threadId) setSelected(null);
-    }
+  };
+
+  // Clear a finished status's cards off the board: they're kept in the List.
+  // Seen through a label, only the cards shown here go.
+  const archiveDone = async (laneId: string, ids: string[]) => {
+    const lane = lanes.find((l) => l.id === laneId);
+    if (!lane?.finished || !ids.length) return;
+    const before = lane.threadIds;
+    const put = (to: string[]) => setLanes((prev) => prev.map((l) => (l.id === laneId ? { ...l, threadIds: to } : l)));
+    put(before.filter((t) => !ids.includes(t)));
+    if (selected && ids.includes(selected)) setSelected(null);
+    const ok = await save(() => archiveDoneCards(laneId, ids), () => put(before));
+    if (ok) setJustDone(laneId);
   };
 
   // From the email panel's lane picker.
@@ -499,6 +574,35 @@ export function LabelBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [inFirstColumn, recentIds, sentIds, emails, isIgnored, lanes],
   );
+  // Gmail's Updates, Promotions, Social and Forums mail folds into a tray under
+  // the Inbox, unless it's already been dealt with (a status, Done, filed, a
+  // label of yours) or its sender is allowed.
+  const inTray = useCallback(
+    (t: string) => {
+      const e = emails[t];
+      if (!isInbox || !e || e.local || e.done || e.hidden || hasOwnLabel(e)) return false;
+      if (lanes.some((l) => l.threadIds.includes(t))) return false;
+      if (allowed.has(senderAddress(e.from))) return false;
+      return cardLabelIds(e).some((id) => OTHER_TABS.includes(id));
+    },
+    [isInbox, emails, lanes, allowed],
+  );
+  const inboxMain = useMemo(() => shownInbox.filter((t) => !inTray(t)), [shownInbox, inTray]);
+  const inboxTray = useMemo(() => shownInbox.filter(inTray), [shownInbox, inTray]);
+  const allowFrom = async (threadId: string) => {
+    const e = emails[threadId];
+    if (!e) return;
+    const a = senderAddress(e.from);
+    setAllowedList((prev) => [...new Set([...prev, a])]);
+    await save(() => allowSender(a).then(setAllowedList), () => setAllowedList((prev) => prev.filter((x) => x !== a)));
+  };
+  const ignoreFrom = async (threadId: string) => {
+    const e = emails[threadId];
+    if (!e) return;
+    const a = senderAddress(e.from);
+    setIgnoredList((prev) => [...new Set([...prev, a])]);
+    await save(() => ignoreSenders([a]).then(setIgnoredList), () => setIgnoredList((prev) => prev.filter((x) => x !== a)));
+  };
   const tagOf = (threadId: string) => {
     const e = emails[threadId];
     return statusOf(threadId) ?? (e?.done ? "Done" : e?.hidden ? "Filed" : sentIds.includes(threadId) && !cardLabelIds(e).includes("INBOX") ? "Sent" : undefined);
@@ -523,7 +627,8 @@ export function LabelBoard({
 
 
   // The mail still to triage: shown in the List tab, and used by "open next".
-  const firstList = isInbox ? shownInbox : shownUnsorted;
+  // Primary first, then the tray, so triage keys step on into the tray.
+  const firstList = isInbox ? [...inboxMain, ...inboxTray] : shownUnsorted;
 
   const collision: CollisionDetection = (args) => {
     const hits = pointerWithin(args);
@@ -779,10 +884,11 @@ export function LabelBoard({
     return () => clearTimeout(t);
   }, [undo]);
 
-  const trash = async (threadId: string) => {
+  // Says whether it went to Trash.
+  const trash = async (threadId: string): Promise<boolean> => {
     const e = emailsRef.current[threadId] ?? emails[threadId];
     const ids = (e?.threads ?? []).map((t) => t.threadId).filter((t) => !t.startsWith("local:"));
-    if (!e || ids.length === 0) return;
+    if (!e || ids.length === 0) return false;
     if (selected === threadId) {
       if (lanes.some((l) => l.threadIds.includes(threadId))) setSelected(null);
       else openNext(threadId);
@@ -798,7 +904,7 @@ export function LabelBoard({
     if (res.error) {
       restore();
       setSaveError(res.error);
-      return;
+      return false;
     }
     setUndo({
       text: `Moved “${e.title}” to Trash.`,
@@ -810,16 +916,18 @@ export function LabelBoard({
         setRecentIds((prev) => (prev.includes(threadId) ? prev : [threadId, ...prev]));
       },
     });
+    return true;
   };
 
-  const fileNow = async (threadId: string, filed: boolean) => {
+  // Says whether it saved.
+  const fileNow = async (threadId: string, filed: boolean): Promise<boolean> => {
     const e = emailsRef.current[threadId] ?? emails[threadId];
-    if (!e) return;
+    if (!e) return false;
     if (filed && selected === threadId) openNext(threadId);
     const set = (v: boolean) => setEmails((prev) => (prev[threadId] ? { ...prev, [threadId]: { ...prev[threadId], hidden: v } } : prev));
     set(filed);
     // Filing only hides it here: the email stays exactly where it is in Gmail.
-    await save(() => setHidden(snapshotOf(e), filed), () => set(!filed));
+    return save(() => setHidden(snapshotOf(e), filed), () => set(!filed));
   };
 
   // Only labelled things are filed: anything without a label asks for one first
@@ -857,6 +965,7 @@ export function LabelBoard({
       });
       if (andFile) void fileNow(id, true);
     }
+    if (andFile) settleWaitingFile(ids, true);
     setFileAsk(null);
     setLabelAsk(null);
     return undefined;
@@ -881,15 +990,27 @@ export function LabelBoard({
     if (!first) return setSaveError("Add a status to the board first.");
     await place(threadId, first.id);
   };
-  const fileFromWaiting = async (threadId: string) => {
+  // Filing from the waiting list: says whether it was filed, so the row can go.
+  // When a label has to be picked first, that answer waits for the dialog.
+  const waitingFile = useRef<{ threadId: string; resolve: (filed: boolean) => void } | null>(null);
+  const settleWaitingFile = (ids: string[] | null, filed: boolean) => {
+    const w = waitingFile.current;
+    if (!w || (ids && !ids.includes(w.threadId))) return;
+    waitingFile.current = null;
+    w.resolve(filed);
+  };
+  const fileFromWaiting = async (threadId: string): Promise<boolean> => {
     const card = await ensureWaitingCard(threadId);
-    if (!card) return;
-    if (!hasOwnLabel(card)) setFileAsk([threadId]);
-    else await fileNow(threadId, true);
+    if (!card) return false;
+    if (hasOwnLabel(card)) return fileNow(threadId, true);
+    // No label yet: it's asked for, and filed once one is picked (not if the dialog is closed).
+    settleWaitingFile(null, false);
+    return new Promise<boolean>((resolve) => {
+      waitingFile.current = { threadId, resolve };
+      setFileAsk([threadId]);
+    });
   };
-  const trashFromWaiting = async (threadId: string) => {
-    if (await ensureWaitingCard(threadId)) await trash(threadId);
-  };
+  const trashFromWaiting = async (threadId: string) => !!(await ensureWaitingCard(threadId)) && trash(threadId);
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
@@ -962,6 +1083,9 @@ export function LabelBoard({
         <div className="board-bg flex min-w-0 flex-1 flex-col max-md:contents">
         <div className="flex items-center gap-2 px-4 pt-3 max-md:hidden">
           <ViewSwitch view={view} onView={changeView} />
+          <div className="ml-auto">
+            <RefreshButton />
+          </div>
         </div>
         {view === "list" ? (
           <section
@@ -975,7 +1099,16 @@ export function LabelBoard({
               emails={emails}
               inLens={inLens}
               inLensIds={inLensIds}
-              inboxIds={firstList}
+              inboxIds={isInbox ? inboxMain : shownUnsorted}
+              trayIds={inboxTray}
+              triage={{
+                firstLaneName: lanes[0]?.name ?? null,
+                addToBoard: (id) => lanes[0] && void place(id, lanes[0].id),
+                file: (id) => file(id, true),
+                trash: (id) => void trash(id),
+              }}
+              onAllowSender={allowFrom}
+              onIgnoreSender={ignoreFrom}
               tagOf={tagOf}
               cutoff={{ from: triageFrom, applies: cutoffApplies }}
               onShowOlder={setShowOlder}
@@ -1017,7 +1150,7 @@ export function LabelBoard({
             className="animate-fade-in board-bg flex min-h-0 min-w-0 flex-1 p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:w-[calc(100vw-1.5rem)] max-md:flex-none max-md:shrink-0 max-md:snap-start max-md:p-3"
           >
             <TodayView
-              onBoard={shownLanes.flatMap((l) => l.threadIds.filter((t) => emails[t]).map((t) => ({ card: emails[t], status: l.name })))}
+              onBoard={shownLanes.filter((l) => !l.finished).flatMap((l) => l.threadIds.filter((t) => emails[t]).map((t) => ({ card: emails[t], status: l.name })))}
               inLensIds={inLensIds}
               ageOf={ageOf}
               toggleTask={toggleTask}
@@ -1034,7 +1167,7 @@ export function LabelBoard({
             className="animate-fade-in board-bg flex min-h-0 min-w-0 flex-1 p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:w-[calc(100vw-1.5rem)] max-md:flex-none max-md:shrink-0 max-md:snap-start max-md:p-3"
           >
             <TasksView
-              onBoard={shownLanes.flatMap((l) => l.threadIds.filter((t) => emails[t]).map((t) => ({ card: emails[t], status: l.name })))}
+              onBoard={shownLanes.filter((l) => !l.finished).flatMap((l) => l.threadIds.filter((t) => emails[t]).map((t) => ({ card: emails[t], status: l.name })))}
               inLensIds={inLensIds}
               labelName={lens?.name ?? null}
               onCreate={(t, due) => newCard(t, { filed: true, task: true, ...due })}
@@ -1087,6 +1220,7 @@ export function LabelBoard({
               rows={orderedRows}
               rowOf={rowOf}
               cheer={justDone === lane.id}
+              onArchive={() => archiveDone(lane.id, lane.threadIds)}
               onNew={async (t) => void (await newCard(t, { laneId: lane.id }))}
               showEmptyRows={!!activeId && overLane === lane.id}
               width={laneWidth}
@@ -1127,21 +1261,21 @@ export function LabelBoard({
             <LaneTemplates
               templates={templates}
               hasLanes={lanes.length > 0}
-              onUse={(t) =>
-                save(async () => {
+              onUse={async (t) => {
+                await save(async () => {
                   const added = await applyLaneTemplate(workspace.id, t.lanes);
                   setLanes((prev) => [...prev, ...added]);
-                }, () => {})
-              }
-              onSave={(name) =>
-                save(async () => {
+                }, () => {});
+              }}
+              onSave={async (name) => {
+                await save(async () => {
                   const t = await saveLaneTemplate(name, lanes.map((l) => ({ name: l.name, reopenOnReply: l.reopenOnReply, finished: l.finished })));
                   setTemplates((prev) => [...prev, t]);
-                }, () => {})
-              }
-              onDelete={(t) => {
+                }, () => {});
+              }}
+              onDelete={async (t) => {
                 setTemplates((prev) => prev.filter((x) => x.id !== t.id));
-                return save(() => deleteLaneTemplate(t.id), () => setTemplates((prev) => [...prev, t]));
+                await save(() => deleteLaneTemplate(t.id), () => setTemplates((prev) => [...prev, t]));
               }}
             />
           </div>
@@ -1233,7 +1367,16 @@ export function LabelBoard({
           onClose={() => setSelected(null)}
         />
       )}
-      {fileAsk && <FileUnder count={fileAsk.length} onPick={(label) => fileUnder(fileAsk, label)} onClose={() => setFileAsk(null)} />}
+      {fileAsk && (
+        <FileUnder
+          count={fileAsk.length}
+          onPick={(label) => fileUnder(fileAsk, label)}
+          onClose={() => {
+            settleWaitingFile(null, false);
+            setFileAsk(null);
+          }}
+        />
+      )}
       {labelAsk && (
         <FileUnder count={labelAsk.length} labelOnly onPick={(label) => fileUnder(labelAsk, label, false)} onClose={() => setLabelAsk(null)} />
       )}
@@ -1260,6 +1403,7 @@ function Lane({
   showEmptyRows,
   rowOf,
   cheer,
+  onArchive,
   onNew,
   width,
   colors,
@@ -1279,7 +1423,8 @@ function Lane({
   rows: Row[] | null;
   showEmptyRows: boolean; // empty sub-labels stay hidden except while a card is being dragged
   rowOf: (e: BoardEmail | undefined) => string;
-  cheer: boolean; // a card was just dropped here and left for the List
+  cheer: boolean; // its cards were just archived to the List
+  onArchive: () => void; // a finished status: clear its cards off the board
   onNew: (title: string) => Promise<void>; // a new card with no email, in this status
   width: ReturnType<typeof useStoredWidth>;
   colors: (typeof LANE_THEMES)[number];
@@ -1308,8 +1453,17 @@ function Lane({
             ↩
           </span>
         )}
+        {lane.finished && lane.threadIds.length > 0 && (
+          <button
+            onClick={onArchive}
+            className="btn-press ml-1 rounded-lg bg-cream/80 px-2 py-0.5 text-xs font-semibold text-bark hover:text-terracotta"
+            title="Clear these done cards off the board. They're kept in the List (Gmail is left alone)."
+          >
+            Archive
+          </button>
+        )}
         {lane.finished && (
-          <span className="text-xs text-muted" title="Finished: cards dropped here leave the board and go to the List">
+          <span className="text-xs text-muted" title="Finished: cards here are done. Archive clears them off the board; they're kept in the List">
             ✓
           </span>
         )}
@@ -1331,8 +1485,8 @@ function Lane({
             className={`px-1 text-xs ${lane.finished ? "font-bold text-terracotta" : "text-muted"}`}
             title={
               lane.finished
-                ? "Finished: cards dropped here leave the board and go to the List. Click to stop."
-                : "Mark as finished: cards dropped here leave the board and go to the List"
+                ? "Finished: cards here are done (Archive keeps them in the List). Click to stop."
+                : "Mark as finished: cards here count as done, and can be archived to the List"
             }
             aria-pressed={lane.finished}
           >
@@ -1351,11 +1505,11 @@ function Lane({
         {lane.finished && lane.threadIds.length === 0 &&
           (cheer ? (
             <p key="cheer" className="animate-pop rounded-2xl border-2 border-moss/50 bg-ok-bg px-3 py-4 text-center text-xs font-bold text-ok-ink">
-              <span className="animate-wiggle mr-1 inline-block">✓</span> Moved to the List
+              <span className="animate-wiggle mr-1 inline-block">✓</span> Archived to the List
             </p>
           ) : (
             <p className="rounded-2xl border-2 border-dashed border-line px-3 py-4 text-center text-xs text-muted">
-              Drop a card here when it&apos;s done. It leaves the board and is kept in the List.
+              Drop a card here when it&apos;s done. Archive clears done cards off the board; they&apos;re kept in the List.
             </p>
           ))}
         {rows ? (
@@ -1541,6 +1695,33 @@ function ViewSwitch({ view, onView, small }: { view: BoardView; onView: (v: Boar
   );
 }
 
+// Resync with Gmail: forget everything kept (in the browser and on the server)
+// and load the page afresh. For when something looks out of date.
+function RefreshButton({ small }: { small?: boolean }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        clearAll();
+        try {
+          await resyncMail();
+        } catch {}
+        window.location.reload();
+      }}
+      className={`btn-press shrink-0 rounded-full bg-oat font-semibold whitespace-nowrap text-bark hover:text-terracotta disabled:opacity-60 ${
+        small ? "px-2.5 py-0.5 text-xs" : "px-3 py-0.5 text-sm"
+      }`}
+      title="Something out of date? Fetch everything from Gmail again"
+      aria-label="Refresh from Gmail"
+    >
+      <span className={`inline-block ${busy ? "animate-spin" : ""}`}>⟳</span>
+      {!small && <span className="ml-1">{busy ? "Refreshing…" : "Refresh"}</span>}
+    </button>
+  );
+}
+
 function ColumnTabs({
   columns,
   view,
@@ -1553,6 +1734,7 @@ function ColumnTabs({
   return (
     <nav className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-line bg-cream px-2 py-1.5 [scrollbar-width:none] md:hidden" aria-label="Columns">
       <ViewSwitch view={view} onView={onView} small />
+      <RefreshButton small />
       {columns.map((c) => (
         <button
           key={c.id}

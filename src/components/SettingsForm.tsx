@@ -2,17 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { unignoreSender } from "@/app/actions";
+import { unallowSender, unignoreSender } from "@/app/actions";
 import { THEME_IDS, THEMES, type ThemeId } from "@/lib/themes";
 import { useMail } from "./MailContext";
 import { useTheme } from "./ThemeContext";
 
-type Props = { user: { name: string; email: string; isDemo: boolean }; ignoredSenders: string[] };
+type Props = { user: { name: string; email: string; isDemo: boolean }; ignoredSenders: string[]; allowedSenders: string[] };
 
-export function SettingsForm({ user, ignoredSenders }: Props) {
+export function SettingsForm({ user, ignoredSenders, allowedSenders }: Props) {
   return (
     <div className="space-y-4">
       <Appearance />
+      <Allowed initial={allowedSenders} />
       <Ignored initial={ignoredSenders} />
       <Pinned />
       <Card title="Account">
@@ -175,6 +176,42 @@ function Pinned() {
           Pin
         </button>
       </div>
+    </Card>
+  );
+}
+
+// Senders whose Updates/Promotions mail shows with the main Inbox, not in the tray.
+function Allowed({ initial }: { initial: string[] }) {
+  const [list, setList] = useState(initial);
+  const [busy, setBusy] = useState("");
+  return (
+    <Card title="Always-shown senders">
+      <p className="mb-2 text-xs text-muted">
+        Mail Gmail puts in Updates, Promotions, Social or Forums is folded into a tray under the Inbox. Mail from these
+        senders shows with your main mail instead.
+      </p>
+      {list.length === 0 ? (
+        <p className="text-sm text-muted">None yet. Choose &ldquo;Always show sender&rdquo; on an email in the tray.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {list.map((a) => (
+            <li key={a} className="list-row flex items-center gap-2 px-3 py-1.5 text-sm">
+              <span className="min-w-0 flex-1 truncate text-bark">{a}</span>
+              <button
+                disabled={busy === a}
+                onClick={async () => {
+                  setBusy(a);
+                  setList(await unallowSender(a));
+                  setBusy("");
+                }}
+                className="shrink-0 text-xs font-semibold text-muted hover:text-terracotta disabled:opacity-50"
+              >
+                Back to tray
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 }
