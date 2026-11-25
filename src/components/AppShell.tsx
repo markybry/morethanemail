@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ThemeId } from "@/lib/themes";
 import { MailProvider } from "./MailContext";
 import { SearchBar } from "./SearchBar";
+import { RefreshButton } from "./RefreshButton";
 import { Sidebar } from "./Sidebar";
 import { ThemeProvider } from "./ThemeContext";
 import { Logo } from "./Logo";
@@ -39,13 +40,17 @@ function Frame({ user, children }: { user: User; children: React.ReactNode }) {
         <Suspense>
           <SearchBar className="min-w-0 flex-1" />
         </Suspense>
+        <RefreshButton className="px-2.5" />
       </header>
       <Sidebar user={user} mobileOpen={menuOpen} onClose={() => setMenuOpen(false)} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="shrink-0 border-b border-line bg-cream px-4 py-2 max-md:hidden">
-          <Suspense>
-            <SearchBar className="mx-auto max-w-2xl" />
-          </Suspense>
+          <div className="mx-auto flex max-w-2xl items-center gap-2">
+            <Suspense>
+              <SearchBar className="min-w-0 flex-1" />
+            </Suspense>
+            <RefreshButton />
+          </div>
         </div>
         <main className="min-h-0 min-w-0 flex-1">{children}</main>
       </div>

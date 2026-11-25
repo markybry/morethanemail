@@ -87,6 +87,35 @@ export async function fetchLabelEmails(
   }
 }
 
+// Mail that arrived between two times, for the Calendar: under a label (and its
+// sub-labels), or for the Inbox everything received (sent mail and chats left
+// out, ignored senders too). Gmail matches a thread when any of its messages
+// falls in the range; the Calendar places each by its latest message.
+export async function fetchEmailsBetween(
+  labelId: string,
+  from: string,
+  to: string,
+  pageToken?: string,
+): Promise<ListResult> {
+  const user = await requireUser();
+  try {
+    const start = Math.floor(new Date(from).getTime() / 1000);
+    const end = Math.floor(new Date(to).getTime() / 1000);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return { emails: [], error: "That date range isn't valid." };
+    const isInbox = labelId === "INBOX" || labelId === "ALL";
+    const res = await listThreads(user, {
+      labels: isInbox ? undefined : await labelWithSubLabels(user, labelId),
+      query: `after:${start} before:${end}${isInbox ? " -in:sent -in:chats -in:drafts" : ""}`,
+      excludeFrom: isInbox ? user.ignoredSenders : undefined,
+      pageToken,
+    });
+    return { emails: await withStoredMeta(user.id, res.threads), nextPageToken: res.nextPageToken };
+  } catch (e) {
+    console.error("fetchEmailsBetween failed", e);
+    return { emails: [], error: mailErrorMessage(e) };
+  }
+}
+
 // New emails the user sent recently (conversations they started that aren't in
 // the inbox), for the Inbox column. Threads already on another card are left out.
 export async function fetchSentStarted(): Promise<{ emails: BoardEmail[]; error?: string }> {

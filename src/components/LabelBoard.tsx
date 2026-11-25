@@ -23,7 +23,6 @@ import {
   addThreadToCard,
   allowSender,
   archiveDoneCards,
-  resyncMail,
   ignoreSenders,
   applyLaneTemplate,
   arrangeEmails,
@@ -65,10 +64,12 @@ import { TodayView } from "./TodayView";
 import { TasksView } from "./TasksView";
 import { FileUnder } from "./FileUnder";
 import type { Due } from "./DuePicker";
-import { cached, clearAll, isFresh, remember } from "@/lib/clientCache";
+import { cached, isFresh, remember } from "@/lib/clientCache";
 
 // A label's list fetched this recently is shown without asking Gmail again.
 const LIST_FRESH_MS = 3 * 60_000;
+// When the cards on the board were last checked for new replies (any label).
+const CARDS_CHECKED = "cardsChecked";
 
 // Gmail's inbox tabs other than Primary: their mail goes in the Inbox's tray.
 const OTHER_TABS = ["CATEGORY_UPDATES", "CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_FORUMS"];
@@ -369,8 +370,19 @@ export function LabelBoard({
   const [refreshIds] = useState(() => [
     ...new Set([...workspace.lanes.flatMap((l) => l.threadIds), ...(initialThreadId ? [initialThreadId] : [])]),
   ]);
+  // Every label shows the same workflow, so after a check moments ago (on
+  // another label, say) there's no need to ask Gmail again: the timer below
+  // keeps checking. A linked thread is always fetched.
   useEffect(() => {
-    void refreshEmails(refreshIds).then((r) => mergeEmails(r.emails));
+    if (isFresh(CARDS_CHECKED, REFRESH_MS)) {
+      if (initialThreadId) void refreshEmails([initialThreadId]).then((r) => mergeEmails(r.emails));
+      return;
+    }
+    void refreshEmails(refreshIds).then((r) => {
+      if (!r.error) remember(CARDS_CHECKED, true, true);
+      mergeEmails(r.emails);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per board
   }, [refreshIds, mergeEmails]);
   // Then keep checking while the board is open: when the tab comes back into
   // view, and every couple of minutes while it's visible.
@@ -380,7 +392,10 @@ export function LabelBoard({
       if (document.visibilityState !== "visible" || Date.now() - last < 30_000) return;
       last = Date.now();
       const ids = [...new Set(lanesRef.current.flatMap((l) => l.threadIds))];
-      void refreshEmails(ids).then((r) => mergeEmails(r.emails));
+      void refreshEmails(ids).then((r) => {
+        if (!r.error) remember(CARDS_CHECKED, true, true);
+        mergeEmails(r.emails);
+      });
     };
     const timer = setInterval(check, REFRESH_MS);
     document.addEventListener("visibilitychange", check);
@@ -1083,9 +1098,6 @@ export function LabelBoard({
         <div className="board-bg flex min-w-0 flex-1 flex-col max-md:contents">
         <div className="flex items-center gap-2 px-4 pt-3 max-md:hidden">
           <ViewSwitch view={view} onView={changeView} />
-          <div className="ml-auto">
-            <RefreshButton />
-          </div>
         </div>
         {view === "list" ? (
           <section
@@ -1181,10 +1193,12 @@ export function LabelBoard({
             className="animate-fade-in board-bg flex min-h-0 min-w-0 flex-1 p-4 md:bg-transparent! md:bg-none! md:shadow-none! max-md:w-[calc(100vw-1.5rem)] max-md:flex-none max-md:shrink-0 max-md:snap-start max-md:overflow-y-auto max-md:p-3"
           >
             <CalendarBoard
+              labelId={sourceLabelId}
               cardIds={[...shownLanes.flatMap((l) => l.threadIds), ...shownUnsorted]}
               emails={emails}
               statusOf={statusOf}
-              onOpen={setSelected}
+              mergeEmails={mergeEmails}
+              onOpen={openAny}
               onReschedule={reschedule}
               onNew={async (t, due) => void (await newCard(t, due))}
             />
@@ -1295,7 +1309,7 @@ export function LabelBoard({
             Undo
           </button>
           <button onClick={() => setUndo(null)} className="text-muted hover:text-bark" aria-label="Dismiss">
-            ✕
+            <span className="glyph">✕</span>
           </button>
         </div>
       )}
@@ -1306,7 +1320,7 @@ export function LabelBoard({
         >
           <span className="flex-1">{saveError}</span>
           <button onClick={() => setSaveError("")} className="text-muted hover:text-bark" aria-label="Dismiss">
-            ✕
+            <span className="glyph">✕</span>
           </button>
         </div>
       )}
@@ -1445,12 +1459,12 @@ function Lane({
       <div className="group flex items-center gap-1 px-3 pt-2.5 pb-1">
         <ThemeIcon icon={icon} size={20} className="cursor-default text-lg hover:animate-wiggle" />
         <InlineEdit value={lane.name} onSave={onRename} className={`font-display text-base font-semibold ${colors.text}`} />
-        <span key={lane.threadIds.length} className={`animate-pop rounded-full px-2 text-[11px] font-bold text-cream ${colors.count}`}>
+        <span key={lane.threadIds.length} className={`animate-pop rounded-full px-2 text-[0.6875rem] font-bold text-cream ${colors.count}`}>
           {lane.threadIds.length}
         </span>
         {lane.reopenOnReply && (
           <span className="text-xs text-muted" title="A new reply sends a card back to the first column">
-            ↩
+            <span className="glyph">↩</span>
           </span>
         )}
         {lane.finished && lane.threadIds.length > 0 && (
@@ -1464,7 +1478,7 @@ function Lane({
         )}
         {lane.finished && (
           <span className="text-xs text-muted" title="Finished: cards here are done. Archive clears them off the board; they're kept in the List">
-            ✓
+            <span className="glyph">✓</span>
           </span>
         )}
         <div className="ml-auto flex items-center opacity-0 transition group-hover:opacity-100 max-md:opacity-100">
@@ -1478,7 +1492,7 @@ function Lane({
             }
             aria-pressed={lane.reopenOnReply}
           >
-            ↩
+            <span className="glyph">↩</span>
           </button>
           <button
             onClick={() => onFinishedChange(!lane.finished)}
@@ -1490,13 +1504,13 @@ function Lane({
             }
             aria-pressed={lane.finished}
           >
-            ✓
+            <span className="glyph">✓</span>
           </button>
           <button disabled={isFirst} onClick={() => onMove(-1)} className="px-1 text-muted disabled:opacity-30" title="Move left">
-            ‹
+            <span className="glyph">‹</span>
           </button>
           <button disabled={isLast} onClick={() => onMove(1)} className="px-1 text-muted disabled:opacity-30" title="Move right">
-            ›
+            <span className="glyph">›</span>
           </button>
           <ConfirmButton label="✕" confirmLabel="Delete status?" onConfirm={onDelete} small />
         </div>
@@ -1695,33 +1709,6 @@ function ViewSwitch({ view, onView, small }: { view: BoardView; onView: (v: Boar
   );
 }
 
-// Resync with Gmail: forget everything kept (in the browser and on the server)
-// and load the page afresh. For when something looks out of date.
-function RefreshButton({ small }: { small?: boolean }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <button
-      disabled={busy}
-      onClick={async () => {
-        setBusy(true);
-        clearAll();
-        try {
-          await resyncMail();
-        } catch {}
-        window.location.reload();
-      }}
-      className={`btn-press shrink-0 rounded-full bg-oat font-semibold whitespace-nowrap text-bark hover:text-terracotta disabled:opacity-60 ${
-        small ? "px-2.5 py-0.5 text-xs" : "px-3 py-0.5 text-sm"
-      }`}
-      title="Something out of date? Fetch everything from Gmail again"
-      aria-label="Refresh from Gmail"
-    >
-      <span className={`inline-block ${busy ? "animate-spin" : ""}`}>⟳</span>
-      {!small && <span className="ml-1">{busy ? "Refreshing…" : "Refresh"}</span>}
-    </button>
-  );
-}
-
 function ColumnTabs({
   columns,
   view,
@@ -1734,7 +1721,6 @@ function ColumnTabs({
   return (
     <nav className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-line bg-cream px-2 py-1.5 [scrollbar-width:none] md:hidden" aria-label="Columns">
       <ViewSwitch view={view} onView={onView} small />
-      <RefreshButton small />
       {columns.map((c) => (
         <button
           key={c.id}

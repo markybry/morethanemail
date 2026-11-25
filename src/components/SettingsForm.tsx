@@ -61,14 +61,39 @@ function Card({ title, children, hint }: { title: string; children: React.ReactN
 }
 
 function Appearance() {
-  const { theme, setTheme, density, setDensity, motion, setMotion } = useTheme();
+  const { theme, setTheme, density, setDensity, motion, setMotion, scale, setScale } = useTheme();
   const motions = [
     ["on", "On"],
     ["system", "Follow device"],
     ["off", "Off"],
   ] as const;
+  const scales = [
+    ["auto", "Auto"],
+    ["default", "Default"],
+    ["large", "Large"],
+    ["xl", "Extra large"],
+  ] as const;
   return (
     <Card title="Appearance">
+      <div className="mb-4">
+        <span className="text-sm font-semibold text-walnut">UI size</span>
+        <div className="mt-1 flex w-fit overflow-hidden rounded-full border border-line-strong bg-cream text-xs font-semibold">
+          {scales.map(([s, name]) => (
+            <button
+              key={s}
+              onClick={() => setScale(s)}
+              aria-pressed={scale === s}
+              className={`px-3 py-1 transition ${scale === s ? "bg-moss text-cream" : "text-bark hover:bg-oat"}`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          Text, buttons and icons all grow together. Auto makes everything larger on wide high-resolution screens (QHD and up). Saved on this
+          device.
+        </p>
+      </div>
       <div className="mb-4">
         <span className="text-sm font-semibold text-walnut">Animation</span>
         <div className="mt-1 flex w-fit overflow-hidden rounded-full border border-line-strong bg-cream text-xs font-semibold">

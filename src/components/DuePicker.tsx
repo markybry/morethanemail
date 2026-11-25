@@ -181,11 +181,11 @@ function Calendar({ value, align, onPick }: { value: Due; align: "left" | "right
 
       <div className="flex items-center border-t border-line pt-2">
         <button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} className="rounded px-2 py-0.5 text-muted hover:bg-oat" aria-label="Previous month">
-          ‹
+          <span className="glyph">‹</span>
         </button>
         <span className="flex-1 text-center font-semibold text-walnut">{month.toLocaleDateString([], { month: "long", year: "numeric" })}</span>
         <button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} className="rounded px-2 py-0.5 text-muted hover:bg-oat" aria-label="Next month">
-          ›
+          <span className="glyph">›</span>
         </button>
       </div>
       <div className="mt-1 grid grid-cols-7 text-center text-xs text-muted">

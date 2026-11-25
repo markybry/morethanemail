@@ -134,7 +134,7 @@ export function WaitingForReplies({
                 <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
                   {/* Where it is on the Workspace. */}
                   <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold ${
                       w.done ? "bg-ok-bg text-ok-ink" : w.status ? "bg-info-bg text-info-ink" : "border border-dashed border-line-strong"
                     }`}
                     title={w.done ? "Its card is done on the Workspace" : w.status ? "Its card's status on the Workspace" : "Not tracked on the Workspace"}

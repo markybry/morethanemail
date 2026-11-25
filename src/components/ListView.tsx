@@ -8,6 +8,12 @@ import { senderName, shortDate } from "@/lib/format";
 import { useMail } from "./MailContext";
 import { NewCardForm } from "./NewCard";
 import { Loading } from "./Loading";
+import { ThreadView } from "./ThreadView";
+import { cached, isFresh, remember } from "@/lib/clientCache";
+
+// The List's lists, kept like the board's (see clientCache).
+const FILED_KEY = "filed";
+const ALL_FRESH_MS = 3 * 60_000;
 import { WaitingForReplies } from "./WaitingForReplies";
 
 // Everything under the label (all labelled mail in the Workspace), older mail
@@ -65,16 +71,20 @@ export function ListView({
   onTrashWaiting: (threadId: string) => Promise<boolean>; // true once trashed
   firstLaneName: string; // name of the first status on the board
 }) {
-  const [done, setDone] = useState<FiledCard[] | null>(null);
-  const [filed, setFiled] = useState<FiledCard[] | null>(null);
+  // Done and filed cards: last time's show straight away, the fresh ones replace them.
+  const filedHit = cached<{ done: FiledCard[]; filed: FiledCard[] }>(FILED_KEY);
+  const [done, setDone] = useState<FiledCard[] | null>(filedHit?.done ?? null);
+  const [filed, setFiled] = useState<FiledCard[] | null>(filedHit?.filed ?? null);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     let live = true;
+    if (filedHit) mergeEmails([...filedHit.done, ...filedHit.filed].map((f) => f.card).filter((c) => !emails[c.threadId]));
     void fetchFiled().then((res) => {
       if (!live) return;
       if (res.error) setError(res.error);
+      else remember(FILED_KEY, { done: res.done, filed: res.filed }, true);
       // Cards already on the board keep their live state; the rest join it so they can be opened.
       mergeEmails([...res.done, ...res.filed].map((f) => f.card).filter((c) => !emails[c.threadId]));
       setDone(res.done);
@@ -344,6 +354,10 @@ function AllMail({
     } catch {}
   };
 
+  // The unsearched list is kept like the board's lists: shown straight away
+  // next time, and Gmail isn't asked again if it was fetched moments ago.
+  // Searches and "Load more" always ask Gmail.
+  const allKey = `all:${labelId}`;
   const load = useCallback(
     async (q: string, pageToken?: string) => {
       setBusy(true);
@@ -357,13 +371,23 @@ function AllMail({
       mergeEmails(own);
       setItems((prev) => (pageToken ? [...(prev ?? []), ...own.filter((e) => !prev?.some((p) => p.threadId === e.threadId))] : own));
       setNext(res.nextPageToken);
+      if (!q && !pageToken) remember(allKey, { items: own, next: res.nextPageToken }, true);
     },
-    [labelId, mergeEmails],
+    [labelId, mergeEmails, allKey],
   );
 
   useEffect(() => {
+    const hit = cached<{ items: BoardEmail[]; next?: string }>(allKey);
+    if (hit) {
+      mergeEmails(hit.items.filter((e) => !emails[e.threadId]));
+      setItems(hit.items);
+      setNext(hit.next);
+      setSearched("");
+      if (isFresh(allKey, ALL_FRESH_MS)) return;
+    }
     void load("");
-  }, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per label
+  }, [load, allKey]);
 
   return (
     <div>
@@ -471,12 +495,17 @@ function Row({
 
   const latest = latestThread(card);
   const preview = (card.local ? card.snippet : latest.snippet).trim();
+  // Read it here: the whole email opens under the row (fetched only then).
+  const readId = "threadId" in latest ? latest.threadId : card.threadId;
+  const canRead = !readId.startsWith("local:");
+  const [reading, setReading] = useState(false);
   return (
     <li
-      className="list-row group animate-rise flex cursor-pointer flex-col gap-1.5 px-3 py-2.5 md:flex-row md:gap-4"
+      className="list-row group animate-rise cursor-pointer px-3 py-2.5"
       style={{ animationDelay: `${Math.min(i, 15) * 25}ms` }}
       onClick={() => onOpen(card.threadId)}
     >
+      <div className="flex flex-col gap-1.5 md:flex-row md:gap-4">
       {/* Left: what it is. */}
       <div className="min-w-0 md:w-1/3 md:shrink-0">
         <div className="flex items-baseline gap-1.5">
@@ -496,9 +525,9 @@ function Row({
         </div>
         {(tag || labels.length > 0 || actions.length > 0) && (
           <div className="mt-1 flex flex-wrap items-center gap-1">
-            {tag && <span className="rounded-full bg-info-bg px-2 py-0.5 text-[11px] font-semibold text-info-ink">{tag}</span>}
+            {tag && <span className="rounded-full bg-info-bg px-2 py-0.5 text-[0.6875rem] font-semibold text-info-ink">{tag}</span>}
             {labels.map((l) => (
-              <span key={l.id} className="rounded-full border border-line bg-paper px-2 py-0.5 text-[11px] font-semibold text-bark">
+              <span key={l.id} className="rounded-full border border-line bg-paper px-2 py-0.5 text-[0.6875rem] font-semibold text-bark">
                 <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: colorOf(l.id) }} />
                 {l.name.split("/").join(" › ")}
               </span>
@@ -518,11 +547,42 @@ function Row({
           </div>
         )}
       </div>
-      {/* Right: the first lines of the email (or the card's summary). */}
-      <div className="min-w-0 flex-1 md:border-l md:border-line md:pl-4">
+      {/* Right: the first lines of the email (or the card's summary). Clicking them opens the email here. */}
+      <div
+        className="min-w-0 flex-1 md:border-l md:border-line md:pl-4"
+        onClick={(e) => {
+          if (!canRead) return;
+          e.stopPropagation();
+          setReading((v) => !v);
+        }}
+      >
         {card.summary.trim() && <p className="line-clamp-2 text-xs font-semibold text-bark">{card.summary.trim()}</p>}
-        <p className="line-clamp-3 text-xs leading-relaxed text-muted">{preview || "No preview."}</p>
+        {!reading && <p className="line-clamp-3 text-sm leading-relaxed text-muted">{preview || "No preview."}</p>}
+        {canRead && (
+          <button
+            aria-expanded={reading}
+            className="mt-1 text-xs font-semibold text-terracotta hover:underline"
+            title={reading ? "Close the email" : "Read the whole email here"}
+          >
+            {reading ? "▴ Close" : "▾ Read here"}
+          </button>
+        )}
       </div>
+      </div>
+      {reading && (
+        // Reading and clicking inside the email shouldn't open the side panel.
+        <div className="mt-2 cursor-auto border-t border-line pt-2" onClick={(e) => e.stopPropagation()}>
+          <ThreadView threadId={readId} />
+          <div className="mt-2 flex gap-3">
+            <button onClick={() => onOpen(card.threadId)} className="text-xs font-semibold text-terracotta hover:underline">
+              Open card (reply, tasks, labels)
+            </button>
+            <button onClick={() => setReading(false)} className="text-xs font-semibold text-muted hover:text-terracotta">
+              ▴ Close
+            </button>
+          </div>
+        </div>
+      )}
     </li>
   );
 }

@@ -250,7 +250,7 @@ function SortableTask({
         aria-label={`Done: ${t.title}`}
       />
       <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-walnut">
-        {isNext && <span className="shrink-0 rounded-full bg-accent-soft px-1.5 text-[10px] font-bold tracking-wide text-accent-ink uppercase">Next</span>}
+        {isNext && <span className="shrink-0 rounded-full bg-accent-soft px-1.5 text-[0.625rem] font-bold tracking-wide text-accent-ink uppercase">Next</span>}
         <InlineEdit value={t.title} onSave={(title) => onPatch({ title })} />
       </div>
       {onMakeNext && (
@@ -280,7 +280,7 @@ function RemoveButton({ onClick }: { onClick: () => void }) {
       title="Delete task"
       aria-label="Delete task"
     >
-      ✕
+      <span className="glyph">✕</span>
     </button>
   );
 }

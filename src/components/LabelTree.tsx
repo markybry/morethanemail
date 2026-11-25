@@ -107,7 +107,7 @@ export function MailNav() {
                 </span>
                 <span className="ml-auto flex items-center gap-1 pl-2">
                   {count > 0 && (
-                    <span className="rounded-full px-1.5 text-[11px] font-bold text-side-strong ring-1 ring-side-strong/30" title="Open cards">
+                    <span className="rounded-full px-1.5 text-[0.6875rem] font-bold text-side-strong ring-1 ring-side-strong/30" title="Open cards">
                       {count}
                     </span>
                   )}
@@ -152,7 +152,7 @@ export function MailNav() {
             title="Back"
           >
             <span aria-hidden className="text-sm leading-none">
-              ‹
+              <span className="glyph">‹</span>
             </span>
             <span className="truncate">{shown.includes("/") ? lastOf(parentOf(shown)) : "All labels"}</span>
           </button>
@@ -240,7 +240,7 @@ function LabelRow({
       </span>
       <span className="ml-auto flex items-center gap-1 pl-2">
         {!!node.label?.unread && (
-          <span className="rounded-full px-1.5 text-[11px] font-extrabold text-shadow" style={{ background: color }}>
+          <span className="rounded-full px-1.5 text-[0.6875rem] font-extrabold text-shadow" style={{ background: color }}>
             {node.label.unread}
           </span>
         )}
@@ -257,7 +257,7 @@ function LabelRow({
             }}
             className="-my-1 -mr-2 rounded-lg px-2 py-0.5 text-base leading-none text-side-muted hover:bg-white/10 hover:text-side-accent"
           >
-            ›
+            <span className="glyph">›</span>
           </span>
         )}
       </span>
@@ -316,9 +316,9 @@ function PinButton({ pinned, onToggle }: { pinned: boolean; onToggle: () => void
         e.stopPropagation();
         onToggle();
       }}
-      className={`w-4 text-center text-xs text-muted hover:text-side-accent hidden group-hover:inline max-md:inline`}
+      className={`w-6 text-center text-xs text-muted hover:text-side-accent hidden group-hover:inline max-md:inline`}
     >
-      {pinned ? "✕" : "📌"}
+      <span className="glyph">{pinned ? "✕" : "📌"}</span>
     </span>
   );
 }

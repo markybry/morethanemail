@@ -2,7 +2,7 @@
 // [data-theme=...]; this file holds the names and the icons each theme uses.
 // An icon is an emoji, or "sprite:<name>" for the pixel-art sprites.
 
-export type ThemeId = "woodland" | "beach" | "georgian" | "pixel" | "dev" | "dark" | "light";
+export type ThemeId = "woodland" | "beach" | "georgian" | "pixel" | "studio" | "dev" | "dark" | "light";
 
 export type ThemeIcons = {
   logo: string;
@@ -113,6 +113,25 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
       ],
     },
     text: { sorted: "INBOX CLEAR! +100 XP", empty: "NO FILES FOUND", loading: "LOADING..." },
+  },
+  // Modern and calm: off-white, one indigo accent, soft shadows, line icons.
+  studio: {
+    id: "studio",
+    name: "◇ Studio",
+    icons: {
+      logo: "line:mail",
+      workspace: "line:grid",
+      dashboard: "line:gauge",
+      tasks: "line:check-square",
+      addLane: "line:plus",
+      empty: "line:inbox",
+      sorted: "line:sparkles",
+      loading: "line:loader",
+      hint: "line:bulb",
+      lanes: ["line:circle-dot", "line:clock", "line:flag", "line:send", "line:archive", "line:check-circle"],
+      labels: ["line:folder", "line:briefcase", "line:home", "line:star", "line:heart", "line:tag", "line:book", "line:bolt", "line:globe", "line:leaf"],
+    },
+    text: { sorted: "Inbox zero. Nicely done.", empty: "Nothing with this label yet.", loading: "Syncing your mail…" },
   },
   // Plain and dense, like an issue tracker: easy to scan, no decoration.
   dev: {

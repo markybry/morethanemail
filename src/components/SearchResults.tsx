@@ -115,11 +115,11 @@ function EmailRow({ email: e, i }: { email: BoardEmail; i: number }) {
         </span>
         <span className="hidden shrink-0 gap-1 sm:flex">
           {e.labelIds.includes("INBOX") && (
-            <span className="rounded-full bg-info-bg px-2 py-0.5 text-[11px] font-semibold text-info-ink">Inbox</span>
+            <span className="rounded-full bg-info-bg px-2 py-0.5 text-[0.6875rem] font-semibold text-info-ink">Inbox</span>
           )}
-          {e.partOf && <span className="rounded-full bg-info-bg px-2 py-0.5 text-[11px] font-semibold text-info-ink">On a card</span>}
+          {e.partOf && <span className="rounded-full bg-info-bg px-2 py-0.5 text-[0.6875rem] font-semibold text-info-ink">On a card</span>}
           {labels.map((l) => (
-            <span key={l.id} className="rounded-full border border-line bg-paper px-2 py-0.5 text-[11px] font-semibold text-bark">
+            <span key={l.id} className="rounded-full border border-line bg-paper px-2 py-0.5 text-[0.6875rem] font-semibold text-bark">
               <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ background: colorOf(l.id) }} />
               {l.name.split("/").join(" › ")}
             </span>

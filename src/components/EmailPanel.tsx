@@ -463,7 +463,7 @@ function Labels({
               className="text-muted hover:text-red-600 disabled:opacity-40"
               title={id === "INBOX" ? "Archive (remove from Inbox)" : "Remove this label in Gmail"}
             >
-              ✕
+              <span className="glyph">✕</span>
             </button>
           </span>
         ))}

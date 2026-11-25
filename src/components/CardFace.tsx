@@ -197,7 +197,7 @@ export function CardFace({
         </div>
       )}
       {(email.newReply || !!age || chips.length > 0 || email.threads.length > 1 || email.tasks.length > 0 || email.notes.length > 0 || email.links.length > 0) && (
-        <div className={`flex flex-wrap text-xs ${compact ? "mt-1.5 gap-1 [&>span]:py-0 [&>span]:text-[11px]" : "mt-2 gap-1.5"}`}>
+        <div className={`flex flex-wrap text-xs ${compact ? "mt-1.5 gap-1 [&>span]:py-0 [&>span]:text-[0.6875rem]" : "mt-2 gap-1.5"}`}>
           {email.newReply && (
             <Badge tone="blue">
               <span className="relative mr-1 inline-flex h-1.5 w-1.5 align-middle">

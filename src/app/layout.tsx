@@ -41,10 +41,13 @@ export default async function RootLayout({
   // Animation is on unless turned down in Settings (see globals.css).
   const motionCookie = (await cookies()).get("mte.motion")?.value;
   const motion = motionCookie === "system" || motionCookie === "off" ? motionCookie : "on";
+  // UI size (Settings > Appearance); Auto grows on wide high-res screens.
+  const scaleCookie = (await cookies()).get("mte.scale")?.value;
+  const scale = scaleCookie === "default" || scaleCookie === "large" || scaleCookie === "xl" ? scaleCookie : "auto";
   const fonts = [nunito, fraunces, garamond, cormorant, vt323, pressStart, inter, jetbrains].map((f) => f.variable).join(" ");
   return (
     // Font variables sit on <html> too, so each theme's --theme-sans/--theme-display can use them.
-    <html lang="en" className={`${fonts} h-full`} data-theme={theme} data-motion={motion}>
+    <html lang="en" className={`${fonts} h-full`} data-theme={theme} data-motion={motion} data-scale={scale}>
       <body className="h-full antialiased">{children}</body>
     </html>
   );

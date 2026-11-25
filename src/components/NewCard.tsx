@@ -53,7 +53,7 @@ export function NewCardForm({
           {busy ? "…" : "Add"}
         </button>
         <button type="button" onClick={onClose} className="px-1 text-sm text-muted hover:text-bark" aria-label="Cancel">
-          ✕
+          <span className="glyph">✕</span>
         </button>
       </div>
       {children}

@@ -64,7 +64,7 @@ export function ConfirmButton({
         armed ? "bg-red-600 text-white" : "text-muted hover:bg-oat hover:text-red-600"
       }`}
     >
-      {armed ? confirmLabel : label}
+      {armed ? confirmLabel : [...label].length === 1 ? <span className="glyph">{label}</span> : label}
     </button>
   );
 }

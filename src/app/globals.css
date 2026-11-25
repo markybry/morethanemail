@@ -211,6 +211,32 @@
   }
 }
 
+/* UI size (Settings > Appearance): every theme's base size is multiplied by
+   --ui-scale, and nearly everything is sized from that, so the whole app grows
+   together. Auto enlarges on wide, high-resolution screens. */
+:root {
+  --ui-scale: 1;
+}
+html {
+  font-size: calc(16px * var(--ui-scale));
+}
+html[data-scale="large"] {
+  --ui-scale: 1.15;
+}
+html[data-scale="xl"] {
+  --ui-scale: 1.3;
+}
+@media (min-width: 2200px) {
+  html[data-scale="auto"] {
+    --ui-scale: 1.15;
+  }
+}
+@media (min-width: 3200px) {
+  html[data-scale="auto"] {
+    --ui-scale: 1.3;
+  }
+}
+
 /* ---------- Woodland (default) ---------- */
 :root {
   --theme-sans: var(--font-nunito);
@@ -418,7 +444,7 @@ html[data-theme="beach"] .field:focus {
 /* ---------- Georgian writing desk ---------- */
 /* Mahogany, green leather with gold tooling, parchment, brass and wax red. */
 html[data-theme="georgian"] {
-  font-size: 17px;
+  font-size: calc(17px * var(--ui-scale));
   --theme-sans: var(--font-garamond);
   --theme-display: var(--font-cormorant);
 
@@ -525,7 +551,7 @@ html[data-theme="georgian"] h3 {
 /* ---------- Pixel office ---------- */
 /* Chunky pixels: square corners, 2px outlines, hard drop shadows, pixel fonts. */
 html[data-theme="pixel"] {
-  font-size: 19px;
+  font-size: calc(19px * var(--ui-scale));
   --theme-sans: var(--font-vt323);
   --theme-display: var(--font-press);
 
@@ -655,7 +681,7 @@ html[data-theme="pixel"] svg[shape-rendering="crispEdges"] {
 /* An issue tracker look: white and grey, one blue accent, monospace meta,
    flat 1px borders, tight spacing and no motion. Easy to scan at a glance. */
 html[data-theme="dev"] {
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-scale));
   --theme-sans: var(--font-inter);
   --theme-display: var(--font-jetbrains);
 
@@ -776,7 +802,7 @@ html[data-theme="dev"] .card-tactile .text-xs {
    no textures. Accents are light, so text on them (text-cream) is dark. */
 html[data-theme="dark"] {
   color-scheme: dark;
-  font-size: 15px;
+  font-size: calc(15px * var(--ui-scale));
   --theme-sans: var(--font-inter);
   --theme-display: var(--font-inter);
 
@@ -912,7 +938,7 @@ html[data-theme="dark"] iframe[title="Email content"] {
    blue accent, no textures, calm motion. */
 html[data-theme="light"] {
   color-scheme: light;
-  font-size: 15px;
+  font-size: calc(15px * var(--ui-scale));
   --theme-sans: var(--font-inter);
   --theme-display: var(--font-inter);
 
@@ -1036,6 +1062,153 @@ html[data-theme="light"] [class*="hover\:animate-wiggle"]:hover,
 html[data-theme="light"] .animate-bob,
 html[data-theme="light"] .animate-float {
   animation: none;
+}
+
+/* Studio: modern and calm. Off-white, one indigo accent, soft shadows,
+   rounded cards, line icons (see themes.ts). */
+html[data-theme="studio"] {
+  color-scheme: light;
+  font-size: calc(15px * var(--ui-scale));
+  --theme-sans: var(--font-inter);
+  --theme-display: var(--font-inter);
+
+  --radius-xl: 0.625rem;
+  --radius-2xl: 0.875rem;
+  --radius-3xl: 1.125rem;
+
+  --color-paper: #f7f7fa; /* page and board */
+  --color-cream: #ffffff; /* cards, panels */
+  --color-oat: #f0f0f5; /* subtle fills */
+  --color-walnut: #16161d; /* strongest text */
+  --color-bark: #45455a; /* secondary text */
+  --color-ink: #1f1f29; /* body text */
+  --color-muted: #6e6e85; /* dates, snippets */
+  --color-faint: #c6c6d4;
+  --color-line: #e7e7ef;
+  --color-line-strong: #d6d6e2;
+  --color-moss: #12a079;
+  --color-terracotta: #5b5bd6; /* the main accent: indigo */
+  --color-mustard: #d08a12;
+  --color-dusk: #8e4ec6;
+  --color-accent-soft: #eeeefc;
+  --color-accent-ink: #3e3ea8;
+  --color-shadow: #16161d;
+  --color-side-text: #45455a;
+  --color-side-muted: #7c7c93;
+  --color-side-strong: #16161d;
+  --color-side-accent: #5b5bd6;
+  --color-ok-bg: #e2f6ef;
+  --color-ok-ink: #0d7356;
+  --color-bad-bg: #fdecec;
+  --color-bad-ink: #b42323;
+  --color-warn-bg: #fdf3dc;
+  --color-warn-ink: #8a5a06;
+  --color-info-bg: #eeeefc;
+  --color-info-ink: #3e3ea8;
+  --color-note: #fffaeb;
+  --color-note-line: #f1e2b0;
+  --color-note-edge: #f1e2b0;
+  --color-card-edge: #e7e7ef;
+  --color-card-line: #e7e7ef;
+
+  /* Statuses: soft panels, each with its own colour in the bar and count. */
+  --lane-1-bg: #f0f0f7;
+  --lane-1-ring: #e7e7ef;
+  --lane-1-bar: #5b5bd6;
+  --lane-1-text: #1f1f29;
+  --lane-2-bg: #f0f0f7;
+  --lane-2-ring: #e7e7ef;
+  --lane-2-bar: #0ea5c6;
+  --lane-2-text: #1f1f29;
+  --lane-3-bg: #f0f0f7;
+  --lane-3-ring: #e7e7ef;
+  --lane-3-bar: #d08a12;
+  --lane-3-text: #1f1f29;
+  --lane-4-bg: #f0f0f7;
+  --lane-4-ring: #e7e7ef;
+  --lane-4-bar: #8e4ec6;
+  --lane-4-text: #1f1f29;
+  --lane-5-bg: #f0f0f7;
+  --lane-5-ring: #e7e7ef;
+  --lane-5-bar: #12a079;
+  --lane-5-text: #1f1f29;
+  --lane-6-bg: #f0f0f7;
+  --lane-6-ring: #e7e7ef;
+  --lane-6-bar: #6e6e85;
+  --lane-6-text: #1f1f29;
+}
+html[data-theme="studio"] h1,
+html[data-theme="studio"] h2,
+html[data-theme="studio"] h3,
+html[data-theme="studio"] .font-display {
+  letter-spacing: -0.015em;
+}
+html[data-theme="studio"] .paper,
+html[data-theme="studio"] .board-bg {
+  background-image: none;
+}
+/* A white sidebar with a hairline edge; rows tint indigo on hover. */
+html[data-theme="studio"] .felt {
+  background-color: #ffffff;
+  background-image: none;
+  border-right: 1px solid var(--color-line);
+}
+html[data-theme="studio"] .felt .hover\:bg-white\/10:hover,
+html[data-theme="studio"] .felt .hover\:bg-white\/5:hover {
+  background-color: var(--color-accent-soft);
+}
+html[data-theme="studio"] .felt .bg-black\/20,
+html[data-theme="studio"] .felt .bg-black\/15 {
+  background: var(--color-oat);
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+html[data-theme="studio"] .felt [class*="shadow-[inset"] {
+  box-shadow: none;
+}
+html[data-theme="studio"] .lane {
+  box-shadow: none;
+}
+html[data-theme="studio"] .card-tactile,
+html[data-theme="studio"] .list-row {
+  border: 1px solid var(--color-card-line);
+  box-shadow:
+    0 1px 2px rgb(22 22 29 / 0.04),
+    0 1px 1px rgb(22 22 29 / 0.02);
+}
+html[data-theme="studio"] .card-tactile:hover,
+html[data-theme="studio"] .list-row:hover {
+  border-color: #cfcfe8;
+  box-shadow: 0 6px 16px -6px rgb(91 91 214 / 0.22);
+}
+html[data-theme="studio"] .btn-press,
+html[data-theme="studio"] .btn-press:active {
+  box-shadow: none;
+}
+html[data-theme="studio"] .field {
+  background: #fff;
+  border-color: var(--color-line-strong);
+  box-shadow: none;
+}
+html[data-theme="studio"] .field:focus {
+  border-color: var(--color-terracotta);
+  box-shadow: 0 0 0 3px rgb(91 91 214 / 0.2);
+}
+html[data-theme="studio"] .animate-wiggle,
+html[data-theme="studio"] [class*="hover\:animate-wiggle"]:hover,
+html[data-theme="studio"] .animate-bob {
+  animation: none;
+}
+
+/* Symbol-only buttons (✕ close/remove, ‹ › chevrons, ↩, ✓): a readable size
+   whatever the text around them, so they aren't specks on a high-res screen. */
+.glyph {
+  display: inline-block;
+  min-width: 1em;
+  font-size: 1.125rem;
+  line-height: 1;
+  text-align: center;
+  vertical-align: -0.1em;
 }
 
 /* Scrollbars stay out of sight until you hover the area that scrolls. */
